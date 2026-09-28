@@ -57,15 +57,31 @@ ls "$HOME/Library/Application Support/Yaseen Draw/"
 npm test          # vitest, THREE projects: client (jsdom), desktop (node), tools (node)
 npm run typecheck
 npm run build     # electron-vite build → desktop/out
+npm run e2e       # build, then the Playwright suite (e2e/) against desktop/out
 ```
 
+- `npm run e2e` (⚡ YAZ-2073 D17): every test launches the BUILT app with Playwright's Electron
+  launcher on its own profile and vaults under the OS temp dir — the real profile and vaults are
+  never read. Windows are transparent while it runs (`E2E_SHOW=1` shows them), but each launch still
+  takes keyboard focus, so do not type elsewhere during a run. Trash, Finder, default-app and browser
+  hand-offs are recorded, not performed (`e2e/support/mainHook.cjs`); the image-paste test and the
+  two copy-path tests borrow the system clipboard and put its text or image back. About 110 tests,
+  a few minutes at the default 3 workers (`E2E_WORKERS=n`); `npm run e2e -- <file or -g pattern>`
+  runs a subset, and a failing test's sandbox is kept under `$TMPDIR/yaseen-draw-e2e/`.
+- `E2E_PACKAGED=1 npx playwright test -c e2e/playwright.config.ts` runs the same suite against the
+  packaged bundle (`npm run desktop:build` first). A bundle ignores `-r`, so the OS stubs are
+  installed right after launch — by then the bundle has registered itself as the `yaseendraw://`
+  handler, exactly as launching it by hand does (the installed app takes it back on its next launch).
+- The hand pass is [`docs/REGRESSION.md`](docs/REGRESSION.md): stable scenario IDs, ★ core. It
+  covers what the suite cannot see (the packaged app, Finder and LaunchServices, how things look, a
+  real browser on a share link, Windows).
 - If `npm` isn't in the shell's PATH (agent shells often lack it), use its install location directly — e.g. `/opt/homebrew/bin/npm` (ARM mac), `/usr/local/bin/npm` (Intel mac), or the Volta/nvm/fnm install under `$HOME`.
 
 ### Behaviour checks: the dev app in an isolated profile
 
-🔒 (OD1 on YAZ-1805): there is no end-to-end UI-driver suite in this repo and none is to be
-added — not by an agent, not in CI. CI is typecheck + unit tests + build. Behaviour is verified by
-LAUNCHING the app and using it.
+CI is typecheck + unit tests + build. Behaviour is verified by `npm run e2e` (above; ⚡ YAZ-2073 D17
+amended 🔒 OD1 on YAZ-1805, which forbade any UI driver) and by LAUNCHING the app and using it —
+the `docs/REGRESSION.md` list.
 
 The recipe, which never touches the real app state:
 
@@ -114,8 +130,8 @@ draw.io support (YAZ-1802) has its own demo vault: `node tools/seedDrawioDemoVau
 origin plus "Sam's" clone so the first sync shows the keep-both copies (one `.drawio`, one
 `.DRAWIO`); its `00 READ ME` lists what to try.
 
-Then run the scenario list by hand (or by computer-use). The standing list, from the demo Yasin
-approved on YAZ-1775, is: external disk edit hot-reloads a clean tab · paste → one asset, small
+Then run the scenario list by hand (or by computer-use) — `docs/REGRESSION.md` is the standing
+list; the demo Yasin approved on YAZ-1775 is folded into it: external disk edit hot-reloads a clean tab · paste → one asset, small
 JSON, survives relaunch · same image twice → one asset · missing asset → placeholder, no crash ·
 corrupt and empty files → readable error · 40-image and 10 MB boards open · unicode + nested paths
 rename/move · two windows on one board (reload when clean, bar when dirty) · a canvas preference

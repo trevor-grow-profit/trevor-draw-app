@@ -35,7 +35,10 @@ and `docs/CONTRACTS.md` for the bridge, app-state and packaging contracts.
 npm test         # unit tests (vitest, three projects: client jsdom, desktop node, tools node)
 npm run typecheck
 npm run build    # electron-vite build into desktop/out + the share viewer into share/dist
+npm run e2e      # build, then the Playwright suite against the built app (sandboxed profile + vaults)
 ```
+
+What the E2E suite cannot see is checked by hand from `docs/REGRESSION.md`.
 
 ## Build the app
 
@@ -189,8 +192,8 @@ live — and never written into a vault.
 ## Out of scope
 
 There is no browser mode: the app runs only inside Electron. The file layer has no path jail:
-anything under your user account can be read or written. There is no end-to-end UI-driver suite,
-by agents or in CI — behaviour is verified by launching the app in an isolated profile (see
-`LAUNCH.md`).
+anything under your user account can be read or written. The end-to-end suite (`npm run e2e`) is
+local, not part of CI; the rest of behaviour is verified by launching the app in an isolated profile
+(see `LAUNCH.md` and `docs/REGRESSION.md`).
 Distribution is deliberately minimal (locked decisions): no Developer-ID signing or notarization,
 no auto-update, no Intel or universal builds.
