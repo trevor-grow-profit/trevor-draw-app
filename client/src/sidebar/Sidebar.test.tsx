@@ -16,7 +16,7 @@ import { EMPTY_SCENE_JSON } from '../drawings/drawingScene'
 // how a test hands the Sidebar a focus restored from an earlier session (YAZ-1605).
 import { storage } from '../lib/storage'
 import { BridgeRequestError } from '../api'
-import { BOARD_PREVIEW_DWELL_MS, countChildren, Sidebar, type SidebarClipboard } from './Sidebar'
+import { BOARD_PREVIEW_DWELL_MS, WATCH_REFRESH_MS, countChildren, Sidebar, type SidebarClipboard } from './Sidebar'
 import { datedSeed } from './createEntry'
 
 // The hover preview's picture (YAZ-1800) is drawn by the engine, which jsdom cannot run: the cache is
@@ -138,6 +138,12 @@ async function mount(over: Partial<SidebarProps> = {}, tweakBridge?: (bridge: Re
   return { bridge, props, el, rerender }
 }
 
+/** A watcher change refreshes the tree once `WATCH_REFRESH_MS` of quiet has passed (YAZ-2073 5E); this waits it out. */
+const quiet = () =>
+  act(async () => {
+    if (vi.isFakeTimers()) await vi.advanceTimersByTimeAsync(WATCH_REFRESH_MS)
+    else await new Promise((r) => setTimeout(r, WATCH_REFRESH_MS + 5))
+  })
 const fileRow = (el: HTMLElement) => el.querySelector<HTMLButtonElement>('.tree__row--file')
 const searchInput = (el: HTMLElement) => el.querySelector<HTMLInputElement>('input[aria-label="Search boards"]')
 /**
@@ -509,6 +515,7 @@ describe('Sidebar stale tab activation (I3, GRO-2235)', () => {
     const { bridge, props } = await mount({ activeFile: '/v/a.excalidraw', watch })
     bridge.tree.mockImplementation(async (r: string) => ({ root: r, tree: TREE.filter((n) => n.path !== '/v/a.excalidraw'), generatedAt: 3 }))
     await act(async () => emit?.({ type: 'unlink', path: '/v/a.excalidraw' }))
+    await quiet()
     expect(props.onFileMissing).not.toHaveBeenCalled()
   })
 })
@@ -1005,6 +1012,7 @@ describe('search results (YAZ-803)', () => {
       notify?.({ type: 'add', path: '/v/Abacus.excalidraw', mtime: 2 })
       await Promise.resolve()
     })
+    await quiet()
     expect(rowLabels(el)).toEqual(['Alpha', 'Anchor', 'Abacus'])
   })
 
@@ -1062,6 +1070,7 @@ describe('search results (YAZ-803)', () => {
     expect(activeLabel(el)).toBe('Anchor') // index 1 of two rows
     bridge.tree.mockResolvedValue({ root: '/v', tree: [drawing('Alpha')], generatedAt: 2 })
     await act(async () => [...listeners].forEach((l) => l({ type: 'unlink', path: '/v/Docs/Anchor.excalidraw' })))
+    await quiet()
     expect(rowLabels(el)).toEqual(['Alpha'])
     expect(activeLabel(el)).toBe('Alpha') // the stale index 1 clamps onto the last row, not onto nothing
     await press(input, 'Enter')
@@ -1788,6 +1797,7 @@ describe('focus mode (YAZ-1605)', () => {
     await focusRow(el, `${v}/Projects`)
     bridge.tree.mockResolvedValue({ root: v, tree: FOCUS(v).filter((n) => n.path !== `${v}/Projects`), generatedAt: 2 } as never)
     await act(async () => fire({ type: 'unlinkDir', path: `${v}/Projects` }))
+    await quiet()
     expect(eye(el)).toBeNull()
     expect(topLabels(el)).toEqual(['Notes', 'Projects-Archive', 'top'])
     expect(bridge.window.setIdentity).toHaveBeenCalledWith({ focusDirs: [] })
@@ -1802,6 +1812,7 @@ describe('focus mode (YAZ-1605)', () => {
     await act(async () => itemByLabel(el, 'Focus on 2 folders')?.click())
     bridge.tree.mockResolvedValue({ root: v, tree: FOCUS(v).filter((n) => n.path !== `${v}/Projects`), generatedAt: 2 } as never)
     await act(async () => fire({ type: 'unlinkDir', path: `${v}/Projects` }))
+    await quiet()
     expect(eye(el)).not.toBeNull()
     expect(topLabels(el)).toEqual(['Notes'])
     expect(bridge.window.setIdentity).toHaveBeenCalledWith({ focusDirs: [`${v}/Notes`] })
@@ -2115,6 +2126,7 @@ describe('favorites (YAZ-1766)', () => {
     expect(topLabels(el)).toEqual(['Notes', 'Projects'])
     bridge.tree.mockResolvedValue({ root: v, tree: FAV(v).filter((n) => n.path !== `${v}/Projects`), generatedAt: 2 } as never)
     await act(async () => fire?.({ type: 'unlinkDir', path: `${v}/Projects` }))
+    await quiet()
     expect(topLabels(el)).toEqual(['Notes'])
     expect(bridge.favorites.set).not.toHaveBeenCalled()
   })
@@ -2314,6 +2326,7 @@ describe('Sidebar multi-select: search, Escape-when-empty, and the prune', () =>
     // b is deleted on disk: the watcher-driven refresh brings the tree that no longer has it.
     bridge.tree.mockResolvedValue({ root: '/v', tree: [A], generatedAt: 2 })
     await act(async () => emit?.({ type: 'unlink', path: '/v/b.excalidraw' }))
+    await quiet()
     expect(selectedRows(el).map((r) => r.dataset.path)).toEqual(['/v/a.excalidraw'])
   })
 
@@ -2333,6 +2346,7 @@ describe('Sidebar multi-select: search, Escape-when-empty, and the prune', () =>
     expect(selectedRows(el)).toHaveLength(3)
     bridge.tree.mockResolvedValue({ root: '/v', tree: [KEPT, A], generatedAt: 2 })
     await act(async () => emit?.({ type: 'unlinkDir', path: '/v/gone' }))
+    await quiet()
     expect(selectedRows(el).map((r) => r.dataset.path)).toEqual(['/v/kept', '/v/a.excalidraw'])
   })
 })
@@ -2954,7 +2968,9 @@ describe('sort control (🔒 YAZ-1835)', () => {
     const resolvers: Array<(v: { root: string; tree: TreeNode[]; generatedAt: number }) => void> = []
     bridge.tree.mockImplementation(() => new Promise((r) => resolvers.push(r)))
     await act(async () => notify?.({ type: 'change', path: '/v/Apple.excalidraw', mtime: 1 }))
+    await quiet()
     await act(async () => notify?.({ type: 'change', path: '/v/Apple.excalidraw', mtime: 2 }))
+    await quiet()
     expect(resolvers).toHaveLength(2)
     const renamed = (name: string, at: number) => ({ root: '/v', tree: [{ type: 'file' as const, name, path: `/v/${name}`, size: 1, mtime: 1, kind: 'drawing' as const }], generatedAt: at })
     await act(async () => resolvers[1]?.(renamed('newer.excalidraw', 20)))
@@ -2971,6 +2987,7 @@ describe('sort control (🔒 YAZ-1835)', () => {
     const saved = SORTABLE.map((n) => (n.type === 'file' && n.name === 'Apple.excalidraw' ? { ...n, meta: { createdAt: 400, updatedAt: 5000 } } : n))
     bridge.tree.mockResolvedValue({ root: '/v', tree: saved, generatedAt: 2 })
     await act(async () => notify?.({ type: 'change', path: '/v/Apple.excalidraw', mtime: 5000 }))
+    await quiet()
     expect(bridge.tree.mock.calls.length).toBe(calls + 1)
     expect(rowPaths(el)[0]).toBe('Apple.excalidraw')
   })
@@ -3021,11 +3038,13 @@ describe('Info popover (🔒 YAZ-1835 D6/D7)', () => {
     const later = Date.now()
     bridge.tree.mockResolvedValue({ root: '/v', tree: SORTABLE.map((n) => (n.type === 'file' && n.name === 'Apple.excalidraw' ? { ...n, meta: { createdAt: 400, updatedAt: later } } : n)), generatedAt: 2 })
     await act(async () => notify?.({ type: 'change', path: '/v/Apple.excalidraw', mtime: later }))
+    await quiet()
     expect(row(el, 'Updated')).not.toBe(before)
     expect(row(el, 'Updated')).toMatch(/· just now$/)
     // The board vanishes: the popover has nothing to describe and closes.
     bridge.tree.mockResolvedValue({ root: '/v', tree: SORTABLE.filter((n) => n.name !== 'Apple.excalidraw'), generatedAt: 3 })
     await act(async () => notify?.({ type: 'unlink', path: '/v/Apple.excalidraw' }))
+    await quiet()
     expect(popover(el)).toBeNull()
   })
 
@@ -3055,9 +3074,11 @@ describe('Info popover (🔒 YAZ-1835 D6/D7)', () => {
     expect(popover(el)).not.toBeNull()
     bridge.tree.mockResolvedValue({ root: '/v', tree: SORTABLE.filter((n) => n.name !== 'Apple.excalidraw'), generatedAt: 2 })
     await act(async () => notify?.({ type: 'unlink', path: '/v/Apple.excalidraw' }))
+    await quiet()
     expect(popover(el)).toBeNull()
     bridge.tree.mockResolvedValue({ root: '/v', tree: SORTABLE, generatedAt: 3 })
     await act(async () => notify?.({ type: 'add', path: '/v/Apple.excalidraw', mtime: 3 }))
+    await quiet()
     expect(popover(el)).toBeNull()
   })
 })
@@ -3152,6 +3173,7 @@ describe('hover preview (YAZ-1800)', () => {
     expect(panel()).not.toBeNull()
     bridge.tree.mockResolvedValue({ root: '/v', tree: TREE.map((n) => (n.path === '/v/a.excalidraw' ? { ...n, mtime: 9 } : n)), generatedAt: 2 })
     await act(async () => w.emit?.({ type: 'change', path: '/v/a.excalidraw', mtime: 9 }))
+    await quiet()
     expect(panel()).not.toBeNull()
     expect(previewLoad).toHaveBeenLastCalledWith(['/v', '/v/a.excalidraw', 9, 'light', 'adapt'].join('\n'))
   })
@@ -3164,6 +3186,7 @@ describe('hover preview (YAZ-1800)', () => {
     await dwell()
     bridge.tree.mockResolvedValue({ root: '/v', tree: TREE.filter((n) => n.path !== '/v/a.excalidraw'), generatedAt: 2 })
     await act(async () => w.emit?.({ type: 'unlink', path: '/v/a.excalidraw' }))
+    await quiet()
     expect(panel()).toBeNull()
   })
 
@@ -3210,5 +3233,66 @@ describe('hover preview (YAZ-1800)', () => {
     expect(panel()).not.toBeNull()
     await rerender({ settings: { ...DEFAULT_SETTINGS, hoverPreview: false } })
     expect(panel()).toBeNull()
+  })
+})
+
+/**
+ * The watch-driven refresh, coalesced (YAZ-2073 5E, 🔒 D10): a change waits out `WATCH_REFRESH_MS`
+ * of quiet, so a burst (a sync pull, a folder copy) is ONE `fs:tree`, not one per file; `ready`
+ * still refreshes at once (🔒 YAZ-1835 D4 is unchanged: every change is followed by a fresh tree).
+ */
+describe('watch-driven refresh (YAZ-2073 5E)', () => {
+  afterEach(() => vi.useRealTimers())
+  const watched = () => {
+    const w: { emit: (ev: WatchEvent) => void; watch: SidebarProps['watch'] } = { emit: () => undefined, watch: { subscribe: (l) => ((w.emit = l), () => (w.emit = () => undefined)) } }
+    return w
+  }
+  const mountWatched = async () => {
+    const w = watched()
+    const m = await mount({ watch: w.watch })
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    return { ...m, emit: (ev: WatchEvent) => act(async () => w.emit(ev)), calls: () => m.bridge.tree.mock.calls.length }
+  }
+
+  it('a burst of changes inside the quiet window is one tree walk, made once the burst goes quiet', async () => {
+    const { bridge, emit, calls } = await mountWatched()
+    const before = calls()
+    bridge.tree.mockResolvedValue({ root: '/v', tree: TREE.filter((n) => n.path !== '/v/a.excalidraw'), generatedAt: 2 })
+    for (let i = 0; i < 50; i++) {
+      await emit({ type: 'change', path: `/v/f${i}.excalidraw`, mtime: i })
+      await act(async () => void vi.advanceTimersByTime(WATCH_REFRESH_MS - 1))
+    }
+    expect(calls()).toBe(before)
+    await quiet()
+    expect(calls()).toBe(before + 1)
+  })
+
+  it('`ready` refreshes at once and takes a pending change refresh with it', async () => {
+    const { emit, calls } = await mountWatched()
+    const before = calls()
+    await emit({ type: 'add', path: '/v/new.excalidraw', mtime: 1 })
+    await emit({ type: 'ready', root: '/v' })
+    expect(calls()).toBe(before + 1)
+    await quiet()
+    expect(calls()).toBe(before + 1)
+  })
+
+  it('an `error` shows at once and walks nothing', async () => {
+    const { el, emit, calls } = await mountWatched()
+    const before = calls()
+    await emit({ type: 'error', message: 'watch failed' })
+    expect(el.querySelector('.sidebar__msg--error')?.textContent).toContain('watch failed')
+    await quiet()
+    expect(calls()).toBe(before)
+  })
+
+  it('a refresh still pending when the sidebar unmounts never runs', async () => {
+    const { emit, calls } = await mountWatched()
+    const before = calls()
+    await emit({ type: 'unlink', path: '/v/a.excalidraw' })
+    act(() => root?.unmount())
+    root = null
+    await quiet()
+    expect(calls()).toBe(before)
   })
 })
