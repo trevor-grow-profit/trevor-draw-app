@@ -143,6 +143,11 @@ draw.io support (YAZ-1802) has its own demo vault: `node tools/seedDrawioDemoVau
 origin plus "Sam's" clone so the first sync shows the keep-both copies (one `.drawio`, one
 `.DRAWIO`); its `00 READ ME` lists what to try.
 
+The laser pointer (YAZ-1989) has its own too: `node tools/seedLaserDemoVault.mjs --vault
+"<dir>/Laser Pointer Changes" --profile <profile-dir>` — a board per case (pan and zoom, a link, a
+dark canvas, slides, images, a second board to switch to, a save check, 400 shapes), opened on its
+`00 READ ME`, which is the REGRESSION `1989-*` list.
+
 Then run the scenario list by hand (or by computer-use) — `docs/REGRESSION.md` is the standing
 list; the demo Yasin approved on YAZ-1775 is folded into it: external disk edit hot-reloads a clean tab · paste → one asset, small
 JSON, survives relaunch · same image twice → one asset · missing asset → placeholder, no crash ·
