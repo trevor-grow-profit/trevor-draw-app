@@ -2,7 +2,7 @@
   "name": "desktop",
   "private": true,
   "author": "Yasin Arshad",
-  "version": "0.1.12",
+  "version": "0.1.13",
   "description": "Yaseen Draw — Electron shell (main + preload); the renderer is ../client",
   "main": "out/main/index.js",
   "scripts": {
