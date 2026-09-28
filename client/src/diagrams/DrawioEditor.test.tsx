@@ -10,7 +10,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { DRAWIO_ORIGIN } from '@shared/drawio'
-import type { DiagramDarkColors, WatchEvent } from '@shared/types'
+import type { DiagramDarkColors } from '@shared/types'
 
 vi.mock('../api', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../api')>()
@@ -21,6 +21,7 @@ vi.mock('./renderDiagram', () => ({ renderDiagramImage: vi.fn() }))
 
 import { api, BridgeRequestError } from '../api'
 import { BOARD_COMMAND_EVENT } from '../documents/boardCommand'
+import { fakeWatch } from '../documents/boardTestKit'
 import { _resetRenameContinuity } from '../lib/renameContinuity'
 import { BROKEN_DIAGRAM_DOCUMENT, DrawioEditor } from './DrawioEditor'
 import { renderDiagramImage } from './renderDiagram'
@@ -36,16 +37,7 @@ const PATH = '/vault/Flow.drawio'
 const XML = '<mxfile><diagram id="p" name="Page-1"><mxGraphModel><root/></mxGraphModel></diagram></mxfile>'
 const EDITED = XML.replace('Page-1', 'Edited')
 
-const listeners = new Set<(ev: WatchEvent) => void>()
-const watch = {
-  subscribe: (listener: (ev: WatchEvent) => void) => {
-    listeners.add(listener)
-    return () => listeners.delete(listener)
-  },
-}
-function watcherSaw(ev: WatchEvent): void {
-  act(() => listeners.forEach((l) => l(ev)))
-}
+const { watch, watcherSaw } = fakeWatch()
 
 let root: Root | null = null
 let container: HTMLElement
@@ -100,7 +92,6 @@ async function appTheme(theme: 'light' | 'dark'): Promise<void> {
 
 beforeEach(() => {
   vi.useFakeTimers({ shouldAdvanceTime: true })
-  listeners.clear()
   posted = []
   Object.defineProperty(window, 'yaseenDraw', {
     configurable: true,
@@ -288,7 +279,6 @@ describe('File › Export Image… (🔒 YAZ-1802 D9)', () => {
     await exportImage()
     expect(notice).toHaveBeenLastCalledWith("The draw.io diagram couldn't be exported.", 'error')
   })
-
 })
 
 describe('saving', () => {
@@ -314,7 +304,6 @@ describe('saving', () => {
     await settle()
     expect(save).toHaveBeenCalledWith(expect.objectContaining({ xml: EDITED }))
   })
-
 })
 
 describe('changes on disk', () => {
@@ -332,5 +321,4 @@ describe('changes on disk', () => {
     await settle()
     expect(save).toHaveBeenCalledWith(expect.objectContaining({ expectedMtime: 300 }))
   })
-
 })

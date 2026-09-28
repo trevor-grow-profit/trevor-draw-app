@@ -210,7 +210,7 @@ export function useBoardDocument(options: BoardDocumentOptions) {
 }
 
 /** What the chips show: the save status (the autosave reports it) and the vault's sync, App's. */
-export interface ChipState {
+interface ChipState {
   status: SaveStatus
   sync: GithubSyncStatus | null | undefined
   onSyncNow: (() => void) | undefined

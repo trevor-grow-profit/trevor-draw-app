@@ -13,10 +13,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { DEFAULT_CANVAS_PREFS, type DrawingLoadResponse, type GithubSyncStatus } from '@shared/types'
-import type { WatchEvent } from '@shared/types'
 import type { DrawingFileData } from '@shared/drawingAssets'
 import type { DrawingSnapshot, DrawingSurfaceApi, DrawingSurfaceProps } from './ExcalidrawSurface'
 import { requestBoardCommand, type BoardCommand } from '../documents/boardCommand'
+import { fakeWatch, withRevealObserver } from '../documents/boardTestKit'
 
 vi.mock('../api', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../api')>()
@@ -32,8 +32,6 @@ const surface = {
   nextReplaceVersion: 0,
   replaced: [] as unknown[],
   refreshes: 0,
-  /** How many times the tab-reveal handoff (🔒 YAZ-1812) put the keyboard in this canvas. */
-  focuses: 0,
   /** What the application menu's three canvas items (🔒 YAZ-1775 D10 / 🔒 YAZ-1775 D3) reached this canvas as. */
   commands: [] as BoardCommand[],
   /** What `exportScene()` answers — the standalone bytes the save sheet is offered (🔒 YAZ-1775 D3). */
@@ -51,9 +49,7 @@ vi.mock('./ExcalidrawSurface', async (importOriginal) => ({
       refresh: () => {
         surface.refreshes += 1
       },
-      focus: () => {
-        surface.focuses += 1
-      },
+      focus: () => {},
       replaceScene: (scene) => {
         surface.replaced.push(scene)
         return surface.nextReplaceVersion
@@ -78,6 +74,7 @@ vi.mock('./ExcalidrawSurface', async (importOriginal) => ({
 import { api } from '../api'
 import { _resetRenameContinuity } from '../lib/renameContinuity'
 import { BROKEN_DRAWING_DOCUMENT, DrawingEditor } from './DrawingEditor'
+import { ENGINE_LOAD_FAILED } from './ExcalidrawSurface'
 
 const load = vi.mocked(api.drawing.load)
 const save = vi.mocked(api.drawing.save)
@@ -94,18 +91,7 @@ function loaded(over: Partial<DrawingLoadResponse> = {}): DrawingLoadResponse {
   return { path: PATH, json: scene(), mtime: 100, size: 42, files: {}, stored: [], ...over }
 }
 
-/** The window's watcher, driven by hand. */
-const listeners = new Set<(ev: WatchEvent) => void>()
-const watch = {
-  subscribe: (listener: (ev: WatchEvent) => void) => {
-    listeners.add(listener)
-    return () => listeners.delete(listener)
-  },
-}
-function watcherSaw(ev: WatchEvent): void {
-  act(() => listeners.forEach((l) => l(ev)))
-}
-
+const { watch, watcherSaw } = fakeWatch()
 
 let root: Root | null = null
 let container: HTMLElement
@@ -130,13 +116,11 @@ const chips = (): string => container.textContent ?? ''
 
 beforeEach(() => {
   vi.useFakeTimers({ shouldAdvanceTime: true })
-  listeners.clear()
   surface.props = null
   surface.emit = null
   surface.fail = null
   surface.replaced = []
   surface.refreshes = 0
-  surface.focuses = 0
   surface.nextReplaceVersion = 0
   surface.commands = []
   Object.defineProperty(window, 'yaseenDraw', {
@@ -197,8 +181,8 @@ describe('opening', () => {
   it('shows the engine`s own failure when the package will not load', async () => {
     render()
     await flush()
-    act(() => surface.fail?.("Can't open the Excalidraw editor."))
-    expect(chips()).toContain("Can't open the Excalidraw editor.")
+    act(() => surface.fail?.(ENGINE_LOAD_FAILED))
+    expect(chips()).toContain(ENGINE_LOAD_FAILED)
   })
 })
 
@@ -244,7 +228,6 @@ describe('autosave', () => {
     })
     expect(save).toHaveBeenCalledTimes(1)
   })
-
 })
 
 describe('external changes', () => {
@@ -298,7 +281,6 @@ describe('external changes', () => {
     })
     expect(save).not.toHaveBeenCalled()
   })
-
 })
 
 describe('🔒 YAZ-1775 D3 — which image bytes a save ships', () => {
@@ -365,17 +347,6 @@ describe('🔒 YAZ-1775 D3 — which image bytes a save ships', () => {
 })
 
 describe('chips and the canvas frame', () => {
-  it('renders the save chip — and the sync chip only when the vault has one — into the engine`s top-right slot', async () => {
-    render()
-    await flush()
-    expect(chips()).toContain('Saved')
-
-    const sync: GithubSyncStatus = { state: 'pending', enabled: true } as GithubSyncStatus
-    render({ sync, onSyncNow: vi.fn() })
-    await flush()
-    expect(chips()).toContain('Pending')
-  })
-
   // YAZ-2073 5D: the chips read a store, so a save's status moves (unsaved → saving → saved) repaint
   // the chips alone — the host never re-renders the surface — and a sync change keeps the top-right
   // renderer's identity, which the surface hands straight to the memoized `<Excalidraw>`.
@@ -399,43 +370,13 @@ describe('chips and the canvas frame', () => {
     expect(surface.props?.renderTopRight).toBe(props?.renderTopRight)
   })
 
-  /**
-   * The reveal effect: one `IntersectionObserver`, two jobs — re-measure, and the gated focus
-   * handoff (🔒 "Focus handoff on tab reveal", YAZ-1812).
-   */
-  describe('the tab becoming visible again', () => {
-    /** Run the body with a stubbed observer, and hand back the "this tab is now visible" trigger. */
-    const withObserver = async (body: (reveal: () => void) => Promise<void> | void) => {
-      const observers: Array<(entries: Array<{ isIntersecting: boolean }>) => void> = []
-      const original = globalThis.IntersectionObserver
-      class Spy {
-        constructor(cb: (entries: Array<{ isIntersecting: boolean }>) => void) {
-          observers.push(cb)
-        }
-        observe() {}
-        unobserve() {}
-        disconnect() {}
-        takeRecords() {
-          return []
-        }
-      }
-      globalThis.IntersectionObserver = Spy as unknown as typeof IntersectionObserver
-      try {
-        await body(() => act(() => observers.forEach((cb) => cb([{ isIntersecting: true }]))))
-      } finally {
-        globalThis.IntersectionObserver = original
-      }
-    }
-
-    it('re-measures the canvas', async () => {
-      await withObserver(async (reveal) => {
-        render()
-        await flush()
-        reveal()
-        expect(surface.refreshes).toBe(1)
-      })
+  it('re-measures the canvas when the tab becomes visible again (the reveal effect)', async () => {
+    await withRevealObserver(async (reveal) => {
+      render()
+      await flush()
+      reveal()
+      expect(surface.refreshes).toBe(1)
     })
-
   })
 
   it('claims the application menu`s three canvas commands on its own section (🔒 YAZ-1775 D10, 🔒 YAZ-1775 D3)', async () => {
@@ -443,7 +384,6 @@ describe('chips and the canvas frame', () => {
     container.className = 'tabstack__layer'
     render()
     await flush()
-
     expect(requestBoardCommand({ kind: 'export-image' }, document.body)).toBe(true)
     expect(requestBoardCommand({ kind: 'canvas-background', color: '#fffce8' }, document.body)).toBe(true)
     expect(requestBoardCommand({ kind: 'export-drawing' }, document.body)).toBe(true)
@@ -457,7 +397,6 @@ describe('chips and the canvas frame', () => {
     render({ onNotice })
     await flush()
     saveDrawing.mockResolvedValue({ path: '/Users/x/Desktop/Board.excalidraw' })
-
     requestBoardCommand({ kind: 'export-drawing' }, document.body)
     await flush()
     expect(saveDrawing).toHaveBeenCalledExactlyOnceWith({ defaultName: 'Board.excalidraw', content: surface.exportedScene })

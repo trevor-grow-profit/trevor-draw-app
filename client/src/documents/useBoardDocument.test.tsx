@@ -8,7 +8,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
-import type { GithubSyncStatus, WatchEvent } from '@shared/types'
+import type { GithubSyncStatus } from '@shared/types'
 
 vi.mock('../share/liveShare', () => ({ noteBoardSaved: vi.fn() }))
 
@@ -16,7 +16,8 @@ import { BridgeRequestError } from '../api'
 import type { Autosave } from '../lib/autosave'
 import { _resetRenameContinuity, dirtyPaths, flushRenamedPath, retirePath } from '../lib/renameContinuity'
 import { noteBoardSaved } from '../share/liveShare'
-import { BOARD_COMMAND_EVENT, requestBoardCommand } from '../documents/boardCommand'
+import { BOARD_COMMAND_EVENT, requestBoardCommand } from './boardCommand'
+import { fakeWatch, withRevealObserver } from './boardTestKit'
 import { BoardChips, exportWithNotice, useBoardDocument } from './useBoardDocument'
 
 const ROOT = '/vault'
@@ -28,16 +29,7 @@ const onCommand = vi.fn()
 const onShown = vi.fn()
 const focus = vi.fn()
 
-const listeners = new Set<(ev: WatchEvent) => void>()
-const watch = {
-  subscribe: (listener: (ev: WatchEvent) => void) => {
-    listeners.add(listener)
-    return () => listeners.delete(listener)
-  },
-}
-function watcherSaw(ev: WatchEvent): void {
-  act(() => listeners.forEach((l) => l(ev)))
-}
+const { watch, watcherSaw } = fakeWatch()
 
 let flushListener: (() => Promise<void> | void) | null = null
 let board: ReturnType<typeof useBoardDocument>
@@ -89,7 +81,6 @@ const button = (name: string): HTMLButtonElement => [...container.querySelectorA
 
 beforeEach(() => {
   vi.useFakeTimers({ shouldAdvanceTime: true })
-  listeners.clear()
   flushListener = null
   Object.defineProperty(window, 'yaseenDraw', {
     configurable: true,
@@ -306,27 +297,8 @@ describe('the menu and the tab reveal', () => {
     expect(onCommand).toHaveBeenCalledOnce()
   })
 
-  /** Run the body with a stubbed observer, and hand back the "this tab is now visible" trigger. */
-  const withObserver = async (body: (reveal: () => void) => Promise<void> | void) => {
-    const observers: Array<(entries: Array<{ isIntersecting: boolean }>) => void> = []
-    const original = globalThis.IntersectionObserver
-    class Spy {
-      constructor(cb: (entries: Array<{ isIntersecting: boolean }>) => void) {
-        observers.push(cb)
-      }
-      observe() {}
-      disconnect() {}
-    }
-    globalThis.IntersectionObserver = Spy as unknown as typeof IntersectionObserver
-    try {
-      await body(() => act(() => observers.forEach((cb) => cb([{ isIntersecting: true }]))))
-    } finally {
-      globalThis.IntersectionObserver = original
-    }
-  }
-
   it('a revealed tab takes the keyboard when nothing else holds it, or from the tab being LEFT', async () => {
-    await withObserver((reveal) => {
+    await withRevealObserver((reveal) => {
       container.className = 'tabstack'
       opened()
       reveal()
@@ -341,7 +313,7 @@ describe('the menu and the tab reveal', () => {
   })
 
   it('NEVER takes it from the sidebar search bar, the vault switcher or a dialog — but is told it is shown', async () => {
-    await withObserver((reveal) => {
+    await withRevealObserver((reveal) => {
       opened()
       const chrome = document.createElement('input')
       document.body.appendChild(chrome)
