@@ -105,7 +105,7 @@ const scene = (elements, { bg = '#ffffff', files = {} } = {}) => ({ type: 'excal
 function write(rel, content) {
   const file = path.join(VAULT, rel)
   fs.mkdirSync(path.dirname(file), { recursive: true })
-  fs.writeFileSync(file, typeof content === 'string' ? content : `${JSON.stringify(content, null, 2)}\n`)
+  fs.writeFileSync(file, typeof content === 'string' || Buffer.isBuffer(content) ? content : `${JSON.stringify(content, null, 2)}\n`)
   return file
 }
 const board = (rel, elements, opts) => write(`${rel}.excalidraw`, scene(elements, opts))

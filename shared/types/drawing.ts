@@ -18,12 +18,21 @@ export interface DrawingLoadRequest {
   root: string
   /** The document, vault-relative or absolute under `root`. Never a basename search. */
   path: string
+  /**
+   * For a PICTURE of the scene, never an editor (🔒 YAZ-2073 D6): the longest side, in pixels, of
+   * the image the scene is drawn into. Each picture then comes back no bigger than it can appear
+   * there — a PNG thumbnail made in main — or as its own bytes when it cannot be smaller.
+   */
+  imageMaxPx?: number
 }
 
 export interface DrawingLoadResponse {
   /** Absolute path that was read — what every later save addresses. */
   path: string
-  /** The file's bytes as UTF-8 text, exactly as they sit on disk. */
+  /**
+   * The file's bytes as UTF-8 text, exactly as they sit on disk — except that a LEGACY scene's
+   * embedded `files` map comes back empty (🔒 YAZ-2073 D7): those bytes travel once, in `files`.
+   */
   json: string
   /** Disk mtime of the read: the `expectedMtime` the first save goes back with. */
   mtime: number
