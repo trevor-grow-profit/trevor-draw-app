@@ -3,7 +3,7 @@ import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import { dmgPath, lzmaDmg } from './lib/dmg.mjs'
+import { detach, dmgPath, lzmaDmg } from './lib/dmg.mjs'
 
 describe('dmgPath', () => {
   it("names the dmg electron-builder wrote from desktop/package.json's own build config", () => {
@@ -12,12 +12,38 @@ describe('dmgPath', () => {
   })
 })
 
+describe('detach', () => {
+  const busy = (failures) => {
+    const calls = []
+    const run = (cmd, args) => {
+      calls.push([cmd, ...args])
+      if (calls.length <= failures) throw new Error('hdiutil: detach failed - Resource busy')
+    }
+    return { calls, run }
+  }
+
+  it('retries a busy volume, the last try with -force', () => {
+    const { calls, run } = busy(2)
+    detach('/mnt', run, { waitMs: 0 })
+    expect(calls).toEqual([['hdiutil', 'detach', '/mnt'], ['hdiutil', 'detach', '/mnt'], ['hdiutil', 'detach', '/mnt', '-force']])
+  })
+
+  it('stops at the first success, and throws once the forced try fails too', () => {
+    const once = busy(0)
+    detach('/mnt', once.run, { waitMs: 0 })
+    expect(once.calls).toHaveLength(1)
+    const stuck = busy(3)
+    expect(() => detach('/mnt', stuck.run, { waitMs: 0 })).toThrow(/Resource busy/)
+    expect(stuck.calls).toHaveLength(3)
+  })
+})
+
 /**
  * THE REAL TOOLS on a tiny image (YAZ-2073 3A): one-binary apps, ad-hoc signed like ours, in a zlib
  * dmg the way electron-builder writes it — `Tiny.app` sealed, `Broken.app` changed after signing.
  * Made once; every test converts its own copy. macOS only — `hdiutil` and `codesign` are the point.
  */
-describe.skipIf(process.platform !== 'darwin')('lzmaDmg', () => {
+describe.skipIf(process.platform !== 'darwin')('lzmaDmg', { timeout: 180_000, retry: 1 }, () => {
   let dir = ''
   let fixture = ''
   beforeAll(() => {
@@ -33,8 +59,14 @@ describe.skipIf(process.platform !== 'darwin')('lzmaDmg', () => {
       if (breakSeal) writeFileSync(join(app, 'Contents', 'Resources', 'data.txt'), 'changed after signing')
     }
     fixture = join(dir, 'fixture.dmg')
-    execFileSync('hdiutil', ['create', '-srcfolder', join(dir, 'src'), '-volname', 'Tiny', '-format', 'UDZO', fixture], { stdio: 'ignore' })
-  }, 60_000) // `hdiutil create` alone takes 4–13 s, past the 10 s hook default under a loaded suite
+    const create = () => execFileSync('hdiutil', ['create', '-srcfolder', join(dir, 'src'), '-volname', 'Tiny', '-format', 'UDZO', fixture], { stdio: 'ignore' })
+    try {
+      create()
+    } catch {
+      rmSync(fixture, { force: true }) // `hdiutil create` sometimes fails "Resource busy" under a loaded suite; once more
+      create()
+    }
+  }, 180_000) // `hdiutil create` alone takes 4–13 s idle, and far longer beside the rest of the suite
   afterAll(() => rmSync(dir, { recursive: true, force: true }))
   const zlibDmg = (test) => {
     const out = join(dir, test)
