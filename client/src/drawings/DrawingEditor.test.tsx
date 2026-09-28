@@ -17,10 +17,10 @@ import type { DrawingFileData } from '@shared/drawingAssets'
 import type { DrawingSnapshot, DrawingSurfaceApi, DrawingSurfaceProps } from './ExcalidrawSurface'
 import { requestBoardCommand, type BoardCommand } from './boardCommand'
 
-vi.mock('../api', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('../api')>()),
-  api: { drawing: { load: vi.fn(), save: vi.fn() }, dialog: { saveDrawing: vi.fn() } },
-}))
+vi.mock('../api', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../api')>()
+  return { ...actual, api: { ...actual.api, drawing: { load: vi.fn(), save: vi.fn() }, dialog: { saveDrawing: vi.fn() } } }
+})
 
 /** The engine stub: records what it was given and hands the host the two callbacks it owns. */
 const surface = {

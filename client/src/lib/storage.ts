@@ -13,6 +13,7 @@ import {
   type WindowIdentity,
 } from '@shared/types'
 import { basename } from './paths'
+import { api } from '../api'
 
 /**
  * The renderer's view of the app state (D9, GRO-2159): an in-memory cache of the main-owned
@@ -48,12 +49,11 @@ function patchFolder(root: string, patch: Partial<FolderState>): void {
 export const storage = {
   /** Load the state + identity and start following changes; call once before the first render. */
   async init(): Promise<void> {
-    const bridge = window.yaseenDraw
-    const [s, id] = await Promise.all([bridge.state.get(), bridge.window.identity()])
+    const [s, id] = await Promise.all([api.state.get(), api.window.identity()])
     state = s
     identity = id
     unsubscribe?.()
-    unsubscribe = bridge.state.onChange((next) => {
+    unsubscribe = api.state.onChange((next) => {
       state = next
       listeners.forEach((l) => l())
     })
@@ -78,21 +78,21 @@ export const storage = {
       ? { root }
       : { root, file: null, tabs: [] as string[], sidebarLens: DEFAULT_SIDEBAR_LENS, focusDirs: [] as string[], focusFavorites: [] as string[] }
     identity = { ...identity, ...patch }
-    send('window.setIdentity', () => window.yaseenDraw.window.setIdentity(patch))
+    send('window.setIdentity', () => api.window.setIdentity(patch))
   },
 
   getRecentRoots: (): RecentRoots => state.recents,
   pushRecentRoot(path: string, now = Date.now()): RecentRoots {
     const next = addRecentRoot(state.recents, path, now)
     state = { ...state, recents: next }
-    send('state.pushRecent', () => window.yaseenDraw.state.pushRecent(path))
+    send('state.pushRecent', () => api.state.pushRecent(path))
     return next
   },
 
   /** Drop a dead folder from the MRU (its directory vanished on disk, C2 — GRO-2164). */
   removeRecentRoot(path: string): void {
     state = { ...state, recents: state.recents.filter((r) => r.path !== path) }
-    send('state.removeRecent', () => window.yaseenDraw.state.removeRecent(path))
+    send('state.removeRecent', () => api.state.removeRecent(path))
   },
 
   /** What the app calls a vault (Docs YAZ-1974 D4): its display name, else its folder name. */
@@ -102,20 +102,20 @@ export const storage = {
     const clean = cleanVaultName(raw)
     const name = clean === basename(root) ? null : clean
     patchFolder(root, { name })
-    send('state.setFolder', () => window.yaseenDraw.state.setFolder(root, { name }))
+    send('state.setFolder', () => api.state.setFolder(root, { name }))
   },
 
   /** The Files lens's order for this vault (🔒 YAZ-1835 D3); another window's change lands through `subscribe`. */
   getSortOrder: (root: string): SortOrder => folderOf(root).sortOrder,
   setSortOrder(root: string, sortOrder: SortOrder): void {
     patchFolder(root, { sortOrder })
-    send('state.setFolder', () => window.yaseenDraw.state.setFolder(root, { sortOrder }))
+    send('state.setFolder', () => api.state.setFolder(root, { sortOrder }))
   },
 
   getExpanded: (root: string): string[] => folderOf(root).expanded,
   setExpanded(root: string, dirs: string[]): void {
     patchFolder(root, { expanded: dirs })
-    send('state.setFolder', () => window.yaseenDraw.state.setFolder(root, { expanded: dirs }))
+    send('state.setFolder', () => api.state.setFolder(root, { expanded: dirs }))
   },
 
   /**
@@ -127,14 +127,14 @@ export const storage = {
   setFocusDirs(dirs: readonly string[]): void {
     const focusDirs = [...dirs]
     identity = { ...identity, focusDirs }
-    send('window.setIdentity', () => window.yaseenDraw.window.setIdentity({ focusDirs }))
+    send('window.setIdentity', () => api.window.setIdentity({ focusDirs }))
   },
   /** The Favorites tab's own focus list (YAZ-1766 D5): the favorited dirs it is narrowed to. */
   getFocusFavorites: (): string[] => identity.focusFavorites,
   setFocusFavorites(dirs: readonly string[]): void {
     const focusFavorites = [...dirs]
     identity = { ...identity, focusFavorites }
-    send('window.setIdentity', () => window.yaseenDraw.window.setIdentity({ focusFavorites }))
+    send('window.setIdentity', () => api.window.setIdentity({ focusFavorites }))
   },
 
   /** The window identity records what is open now: THIS window's restored file, not the folder's shared lastFile (GRO-2160). */
@@ -151,30 +151,30 @@ export const storage = {
     identity = { ...identity, file, tabs: [...tabs] }
     if (root !== null && fileChanged) {
       patchFolder(root, { lastFile: file })
-      send('state.setFolder', () => window.yaseenDraw.state.setFolder(root, { lastFile: file }))
+      send('state.setFolder', () => api.state.setFolder(root, { lastFile: file }))
     }
-    send('window.setIdentity', () => window.yaseenDraw.window.setIdentity({ tabs: [...tabs], file }))
+    send('window.setIdentity', () => api.window.setIdentity({ tabs: [...tabs], file }))
   },
 
   /** Already validated field-by-field by the main process on load (`desktop/src/main/store.ts`). */
   getSettings: (): SettingsState => state.settings,
   setSettings(settings: SettingsState): void {
     state = { ...state, settings }
-    send('state.setSettings', () => window.yaseenDraw.state.setSettings(settings))
+    send('state.setSettings', () => api.state.setSettings(settings))
   },
 
   /** Sidebar visibility is window identity; global state broadcasts cannot change another window. */
   getSidebarCollapsed: (): boolean => identity.sidebarCollapsed,
   setSidebarCollapsed(collapsed: boolean): void {
     identity = { ...identity, sidebarCollapsed: collapsed }
-    send('window.setIdentity', () => window.yaseenDraw.window.setIdentity({ sidebarCollapsed: collapsed }))
+    send('window.setIdentity', () => api.window.setIdentity({ sidebarCollapsed: collapsed }))
   },
 
   /** Already clamped to [SIDEBAR_MIN_W, SIDEBAR_MAX_W] by the main process on load and on write. */
   getSidebarWidth: (): number => state.sidebarWidth,
   setSidebarWidth(width: number): void {
     state = { ...state, sidebarWidth: width }
-    send('state.setSidebarWidth', () => window.yaseenDraw.state.setSidebarWidth(width))
+    send('state.setSidebarWidth', () => api.state.setSidebarWidth(width))
   },
 
   /**
@@ -186,6 +186,6 @@ export const storage = {
   getSidebarLens: (): SidebarLens => identity.sidebarLens,
   setSidebarLens(lens: SidebarLens): void {
     identity = { ...identity, sidebarLens: lens }
-    send('window.setIdentity', () => window.yaseenDraw.window.setIdentity({ sidebarLens: lens }))
+    send('window.setIdentity', () => api.window.setIdentity({ sidebarLens: lens }))
   },
 }

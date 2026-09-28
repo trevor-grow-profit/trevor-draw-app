@@ -92,10 +92,10 @@ describe('api', () => {
     const file = { rename: vi.fn(), onRenamed: vi.fn() }
     Object.defineProperty(window.yaseenDraw, 'file', { value: file, configurable: true })
     file.rename.mockResolvedValue({ oldPath: '/v/a.excalidraw', newPath: '/v/b.excalidraw' })
-    await expect(api.rename({ oldPath: '/v/a.excalidraw', newPath: '/v/b.excalidraw' })).resolves.toEqual({ oldPath: '/v/a.excalidraw', newPath: '/v/b.excalidraw' })
+    await expect(api.file.rename({ oldPath: '/v/a.excalidraw', newPath: '/v/b.excalidraw' })).resolves.toEqual({ oldPath: '/v/a.excalidraw', newPath: '/v/b.excalidraw' })
     expect(file.rename).toHaveBeenCalledWith({ oldPath: '/v/a.excalidraw', newPath: '/v/b.excalidraw' })
     file.rename.mockRejectedValue({ code: 'ALREADY_EXISTS', message: 'a file with this name already exists', path: '/v/b.excalidraw' })
-    const err = (await api.rename({ oldPath: '/v/a.excalidraw', newPath: '/v/b.excalidraw' }).catch((e: unknown) => e)) as BridgeRequestError
+    const err = (await api.file.rename({ oldPath: '/v/a.excalidraw', newPath: '/v/b.excalidraw' }).catch((e: unknown) => e)) as BridgeRequestError
     expect(err).toBeInstanceOf(BridgeRequestError)
     expect(err.code).toBe('ALREADY_EXISTS')
     expect(err.path).toBe('/v/b.excalidraw')

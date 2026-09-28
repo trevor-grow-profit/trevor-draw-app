@@ -148,9 +148,9 @@ against its entry (so a missing or mistyped door fails `npm run typecheck`, and
 Every `ipcMain.handle` answers with an `Envelope<T>`: `{ ok: true, value }` or
 `{ ok: false, error }` carrying a structured `BridgeError` (`code`, `message`, optional `path` /
 `mtime`), which the preload rethrows. Electron flattens a thrown Error to its message, which is
-why failure travels as data. `client/src/api.ts` re-wraps it as a `BridgeRequestError` for the
-calls that go through it; `state`, `window`, `menu`, `link` and `watch` are called straight off
-`window.yaseenDraw` and reject with the plain object. The codes are `BridgeErrorCode`
+why failure travels as data. The renderer reaches the bridge only through `api`
+(`client/src/api.ts`), the same table over `window.yaseenDraw`, which re-wraps every rejection as a
+`BridgeRequestError`. The codes are `BridgeErrorCode`
 (`shared/types/errors.ts`); sharing added `NOT_SET_UP` (Settings › Sharing has not been set up).
 
 | `window.yaseenDraw` | Channel | What it does |

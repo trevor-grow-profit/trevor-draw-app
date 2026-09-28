@@ -533,7 +533,7 @@ export function Sidebar({
   /** Context menu "Open in new window" (D2, GRO-2168): a fresh window on {root, file}; this one untouched. (⌘-click opens a background tab instead since I3.) */
   const openFileNewWindow = useCallback(
     (path: string) => {
-      window.yaseenDraw.window.open({ root, file: path }).catch((err: unknown) => console.error('[sidebar] window.open failed:', err))
+      api.window.open({ root, file: path }).catch((err: unknown) => console.error('[sidebar] window.open failed:', err))
     },
     [root],
   )
@@ -553,9 +553,9 @@ export function Sidebar({
     },
     [onNotice],
   )
-  const reveal = useMemo(() => osDoor(api.reveal, (name) => `reveal "${name}"`, () => 'reveal'), [osDoor])
-  const openVsCode = useMemo(() => osDoor(api.openVsCode, (name) => `open "${name}" in VS Code`, () => 'open in VS Code'), [osDoor])
-  const openDefault = useMemo(() => osDoor(api.openDefault, (name) => `open "${name}"`, (name) => `open "${name}"`), [osDoor])
+  const reveal = useMemo(() => osDoor(api.shell.reveal, (name) => `reveal "${name}"`, () => 'reveal'), [osDoor])
+  const openVsCode = useMemo(() => osDoor(api.shell.openVsCode, (name) => `open "${name}" in VS Code`, () => 'open in VS Code'), [osDoor])
+  const openDefault = useMemo(() => osDoor(api.shell.openDefault, (name) => `open "${name}"`, (name) => `open "${name}"`), [osDoor])
 
   // ---- Delete (GRO-2272): context menu "Delete" → confirm sheet → App trashes the entry ----
 

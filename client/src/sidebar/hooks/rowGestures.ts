@@ -100,11 +100,11 @@ export function useFileClipboard(root: string, refresh: () => void, dispatch: Di
     // read and must win — the read only fills a window nothing has pushed to yet.
     let live = true
     let pushed = false
-    const unsubscribe = api.onClipChanged((state) => {
+    const unsubscribe = api.file.onClipChanged((state) => {
       pushed = true
       setClip(state)
     })
-    api.clipState().then(
+    api.file.clipState().then(
       (state) => {
         if (live && !pushed) setClip(state)
       },
@@ -124,7 +124,7 @@ export function useFileClipboard(root: string, refresh: () => void, dispatch: Di
   const clipTo = useCallback(
     (paths: string[], op: 'copy' | 'cut') => {
       const what = countItems(paths.length)
-      api.clip({ paths, op }).then(
+      api.file.clip({ paths, op }).then(
         () => onNotice(op === 'cut' ? `Cut ${what}` : `Copied ${what}`, op),
         (err: unknown) => onNotice(`Can't ${op}: ${err instanceof Error ? err.message : String(err)}`, 'error'),
       )
@@ -142,7 +142,7 @@ export function useFileClipboard(root: string, refresh: () => void, dispatch: Di
   const pasteInto = useCallback(
     async (dir: string) => {
       try {
-        const res = await api.paste({ targetDir: dir })
+        const res = await api.file.paste({ targetDir: dir })
         if (dir !== root) dispatch({ type: 'expandTo', root, file: `${dir}/x` })
         refresh()
         const first = res.failed[0]

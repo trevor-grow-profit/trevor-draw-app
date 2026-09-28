@@ -6,7 +6,7 @@ interface UsePickFolderOptions {
 }
 
 /**
- * "Open folder" flow: the native open-directory dialog (`window.yaseenDraw.pickFolder()`).
+ * "Open folder" flow: the native open-directory dialog (`api.pickFolder()`).
  * Only one dialog is ever in flight; `pick()` is a no-op while it is open. A cancelled or
  * failed dialog changes nothing.
  */

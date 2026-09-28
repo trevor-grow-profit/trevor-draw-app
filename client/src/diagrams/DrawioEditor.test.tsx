@@ -11,10 +11,10 @@ import { createRoot, type Root } from 'react-dom/client'
 import { DRAWIO_ORIGIN } from '@shared/drawio'
 import type { DiagramDarkColors, WatchEvent } from '@shared/types'
 
-vi.mock('../api', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('../api')>()),
-  api: { diagram: { load: vi.fn(), save: vi.fn() }, dialog: { saveImage: vi.fn() } },
-}))
+vi.mock('../api', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../api')>()
+  return { ...actual, api: { ...actual.api, diagram: { load: vi.fn(), save: vi.fn() }, dialog: { saveImage: vi.fn() } } }
+})
 vi.mock('../share/liveShare', () => ({ noteBoardSaved: vi.fn() }))
 vi.mock('./renderDiagram', () => ({ renderDiagramImage: vi.fn() }))
 

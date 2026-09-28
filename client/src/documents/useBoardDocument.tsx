@@ -28,7 +28,7 @@
  */
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react'
 import type { GithubSyncStatus, SaveDrawingResponse } from '@shared/types'
-import { BridgeRequestError } from '../api'
+import { api, BridgeRequestError } from '../api'
 import type { WatchSource } from '../hooks/useWatch'
 import { Autosave, SaveConflict, type SaveStatus } from '../lib/autosave'
 import type { NoticeKind } from '../lib/notice'
@@ -140,7 +140,7 @@ export function useBoardDocument(options: BoardDocumentOptions) {
   // The close/quit handshake (main holds the window until this settles, 5 s cap) and the unmount
   // flush. A retired host does neither — that is what keeps a delete deleted.
   useEffect(() => {
-    const offFlush = window.yaseenDraw.window.onFlush(async () => {
+    const offFlush = api.window.onFlush(async () => {
       if (!retired.current) await autosave.current?.flush()
     })
     return () => {

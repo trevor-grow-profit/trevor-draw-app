@@ -205,10 +205,10 @@ export function TabBar({ tabs, active, onActivate, onClose, onMove, canBack, can
           >
             Copy path
           </button>
-          <button type="button" className="ctx-menu__item" role="menuitem" onClick={() => osAction(api.reveal({ path: menu.path }), `Can't reveal "${basename(menu.path)}" — it is no longer there`, "Can't reveal")}>
+          <button type="button" className="ctx-menu__item" role="menuitem" onClick={() => osAction(api.shell.reveal({ path: menu.path }), `Can't reveal "${basename(menu.path)}" — it is no longer there`, "Can't reveal")}>
             Reveal in Finder
           </button>
-          <button type="button" className="ctx-menu__item" role="menuitem" onClick={() => osAction(api.openVsCode({ path: menu.path }), `Can't open "${basename(menu.path)}" in VS Code — it is no longer there`, "Can't open in VS Code")}>
+          <button type="button" className="ctx-menu__item" role="menuitem" onClick={() => osAction(api.shell.openVsCode({ path: menu.path }), `Can't open "${basename(menu.path)}" in VS Code — it is no longer there`, "Can't open in VS Code")}>
             Open in VS Code
           </button>
         </ContextMenuSurface>

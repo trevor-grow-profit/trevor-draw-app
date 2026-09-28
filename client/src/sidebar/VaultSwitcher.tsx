@@ -61,6 +61,7 @@ import { TextField } from '../components/TextField'
 import { useVaultName } from '../lib/useVaultName'
 import { ContextMenu } from './ContextMenu'
 import { buildVaultMenuSections } from './vaultMenuSections'
+import { api } from '../api'
 
 export interface VaultSwitcherProps {
   root: string
@@ -229,7 +230,7 @@ export function VaultSwitcher({ root, onPickFolder, pickDisabled, openRequest, o
         inputRef.current?.focus()
       })
   }
-  const choose = (path: string): void => settle(path, window.yaseenDraw.window.openRecent(path), 'openRecent')
+  const choose = (path: string): void => settle(path, api.window.openRecent(path), 'openRecent')
 
   /** Remove from recent vaults (D3): forgets the MRU entry only — the folder is untouched — and the row leaves at once. */
   const removeRow = (path: string): void => {
