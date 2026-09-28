@@ -6,7 +6,7 @@
     "appBytes": { "max": 319892281, "target": 300000000 },
     "frameworksBytes": { "max": 239785559 },
     "asarBytes": { "max": 70615308 },
-    "shareViewerBytes": { "max": 9217533 },
+    "shareViewerBytes": { "max": 9229685, "$comment": "Raised from 9217533 with YAZ-1989: the viewer bundles the engine, which now carries the laser modes (packaged-app measure, v0.1.13)." },
     "dmgBytes": { "max": 116068034, "target": 115000000 },
     "lprojCount": { "max": 55 },
     "chromiumLocaleBytes": { "max": 1121390 },
