@@ -1,18 +1,17 @@
-import { watch, type FSWatcher } from 'chokidar'
-import type { Stats } from 'node:fs'
 import path from 'node:path'
 import type { WatchEvent } from '@shared/types'
 import { isSkipped } from './fsUtils'
+import { watchTree, type TreeWatcher } from './treeWatcher'
 
 type Listener = (ev: WatchEvent) => void
 
 interface Entry {
-  watcher: FSWatcher
+  watcher: TreeWatcher
   listeners: Set<Listener>
   ready: boolean
 }
 
-/** One chokidar watcher per root, shared by every window; closed when the last subscriber leaves. */
+/** One watcher per root (`treeWatcher.ts`), shared by every window; closed when the last subscriber leaves. */
 const entries = new Map<string, Entry>()
 
 export function activeWatcherRoots(): string[] {
@@ -26,25 +25,16 @@ function ignored(root: string, p: string): boolean {
 }
 
 function createEntry(root: string): Entry {
-  const watcher = watch(root, {
-    ignoreInitial: true,
-    alwaysStat: true,
-    awaitWriteFinish: { stabilityThreshold: 200, pollInterval: 50 },
-    ignored: (p: string) => ignored(root, p),
-  })
+  const watcher = watchTree(root, { ignored: (p) => ignored(root, p) })
   const entry: Entry = { watcher, listeners: new Set(), ready: false }
   const emit = (ev: WatchEvent) => entry.listeners.forEach((l) => l(ev))
-  // `alwaysStat` guarantees stats on add/change; the guard only narrows the type.
-  const fileEvent = (type: 'add' | 'change', p: string, stats?: Stats) => {
-    if (stats !== undefined) emit({ type, path: p, mtime: stats.mtimeMs })
-  }
   watcher
     .on('ready', () => {
       entry.ready = true
       emit({ type: 'ready', root })
     })
-    .on('add', (p, stats) => fileEvent('add', p, stats))
-    .on('change', (p, stats) => fileEvent('change', p, stats))
+    .on('add', (p, stats) => emit({ type: 'add', path: p, mtime: stats.mtimeMs }))
+    .on('change', (p, stats) => emit({ type: 'change', path: p, mtime: stats.mtimeMs }))
     .on('unlink', (p) => emit({ type: 'unlink', path: p }))
     .on('addDir', (p) => p !== root && emit({ type: 'addDir', path: p }))
     .on('unlinkDir', (p) => p !== root && emit({ type: 'unlinkDir', path: p }))

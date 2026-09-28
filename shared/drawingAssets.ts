@@ -112,8 +112,8 @@ export function parseDataUrl(dataURL: string): { mimeType: string; base64: strin
 /**
  * A LEGACY scene — an upstream export, or one an older build wrote — embeds its bytes under
  * `files`. Lift every usable entry out and hand back the scene with `files: {}`, the shape every
- * save writes: pretty-printed like Excalidraw's own writer, plus the trailing newline a text
- * file in a git vault ends with.
+ * save writes: pretty-printed like Excalidraw's own writer (`serializeBoard`), plus the trailing
+ * newline a text file in a git vault ends with.
  *
  * BYTE-STABLE WHEN NOTHING CHANGED. A scene that is already lean round-trips as ITSELF, so
  * saving an untouched document never rewrites it into a different spelling — which would show up
@@ -122,24 +122,27 @@ export function parseDataUrl(dataURL: string): { mimeType: string; base64: strin
  * Throws when the bytes are not a scene object; the caller decides what that means.
  */
 export function stripEmbeddedFiles(json: string): { json: string; embedded: Record<string, DrawingFileData> } {
-  const parsed: unknown = JSON.parse(json)
-  if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) throw new Error('not an Excalidraw scene')
-  const scene = parsed as Record<string, unknown>
+  const { lean, embedded } = stripEmbeddedScene(parseSceneObject(json))
+  return { json: serializeBoard(lean), embedded }
+}
+
+/** `stripEmbeddedFiles` on a scene already parsed, for a caller that parses once (YAZ-2073 5G). */
+export function stripEmbeddedScene(scene: Record<string, unknown>): { lean: Record<string, unknown>; embedded: Record<string, DrawingFileData> } {
   const embedded: Record<string, DrawingFileData> = {}
   const files = scene.files
-  let hadEntries = false
   if (typeof files === 'object' && files !== null) {
     for (const [id, entry] of Object.entries(files as Record<string, unknown>)) {
-      hadEntries = true
       if (typeof entry !== 'object' || entry === null) continue
       const { mimeType, dataURL } = entry as Record<string, unknown>
       if (typeof mimeType !== 'string' || typeof dataURL !== 'string' || parseDataUrl(dataURL) === null) continue
       embedded[id] = { mimeType, dataURL }
     }
   }
-  const lean = `${JSON.stringify({ ...scene, files: {} }, null, 2)}\n`
-  return { json: !hadEntries && lean === json ? json : lean, embedded }
+  return { lean: { ...scene, files: {} }, embedded }
 }
+
+/** How every board main writes is spelled: 2-space JSON and a trailing newline. */
+export const serializeBoard = (scene: Record<string, unknown>): string => `${JSON.stringify(scene, null, 2)}\n`
 
 // ---------- The `yaseendraw` block (🔒 YAZ-1834 D1/D3/D5/D7) ----------
 
@@ -150,6 +153,12 @@ export const BOARD_META_HEAD_BYTES = 1024
 
 const isPlainObject = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v)
 const isEpochMs = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v)
+/** The text as a scene object; throws on anything else (the callers decide what that means). */
+function parseSceneObject(json: string): Record<string, unknown> {
+  const parsed: unknown = JSON.parse(json)
+  if (!isPlainObject(parsed)) throw new Error('not an Excalidraw scene')
+  return parsed
+}
 
 /** A block as it sits in a file: the two dates, plus whatever the backfill put beside them (D5). */
 export type BoardMetaBlock = BoardMeta & Record<string, unknown>
@@ -176,14 +185,17 @@ const BLOCK_OPENS = new RegExp(`^\\s*\\{\\s*"${BOARD_META_KEY}"\\s*:\\s*\\{`)
  * Throws when the text is not a JSON object; the save door has validated the scene before this.
  */
 export function stampBoardMeta(json: string, at: { createdAt: number; updatedAt: number }, prior: BoardMetaBlock | null = null): string {
-  const parsed: unknown = JSON.parse(json)
-  if (!isPlainObject(parsed)) throw new Error('not an Excalidraw scene')
-  const { [BOARD_META_KEY]: own, ...rest } = parsed
+  return serializeBoard(stampBoardMetaScene(parseSceneObject(json), at, prior))
+}
+
+/** `stampBoardMeta` on a scene already parsed, for a caller that parses once (YAZ-2073 5G). */
+export function stampBoardMetaScene(scene: Record<string, unknown>, at: { createdAt: number; updatedAt: number }, prior: BoardMetaBlock | null = null): Record<string, unknown> {
+  const { [BOARD_META_KEY]: own, ...rest } = scene
   const existing = prior ?? own
   // `_stale` is pulled out so the old `updatedAt` cannot ride along inside `...extras`.
   const { createdAt, updatedAt: _stale, ...extras } = isPlainObject(existing) ? existing : {}
   const block = { createdAt: isEpochMs(createdAt) ? createdAt : at.createdAt, updatedAt: at.updatedAt, ...extras }
-  return `${JSON.stringify({ [BOARD_META_KEY]: block, ...rest }, null, 2)}\n`
+  return { [BOARD_META_KEY]: block, ...rest }
 }
 
 /**

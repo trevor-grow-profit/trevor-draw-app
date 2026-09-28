@@ -31,6 +31,8 @@ interface Harness {
   host: GitSyncHost
   /** One entry per pass, in order. */
   passes: string[]
+  /** One entry per idle pull's cheap look (`remoteMoved`, YAZ-2073 5H), in order. */
+  looks: string[]
   /** Roots whose pass carried `flush: true` (the quit variant, YAZ-1111). */
   flushes: string[]
   statuses: GithubSyncStatus[]
@@ -50,6 +52,8 @@ interface HarnessOpts {
   pollMs?: number
   /** `n` is the 1-based pass count for that root. */
   pass?: (root: string, n: number) => Promise<GithubSyncStatus>
+  /** What an idle pull's look answers; by default the remote always moved, so every poll is a full pass. */
+  moved?: (root: string) => Promise<boolean>
   inspect?: (root: string) => Promise<GithubSyncStatus>
 }
 
@@ -57,6 +61,7 @@ const NEVER = 60 * 60 * 1000
 
 function harness(opts: HarnessOpts = {}): Harness {
   const passes: string[] = []
+  const looks: string[] = []
   /** Roots whose pass was requested with `flush: true` (the quit variant, YAZ-1111). */
   const flushes: string[] = []
   const statuses: GithubSyncStatus[] = []
@@ -93,6 +98,10 @@ function harness(opts: HarnessOpts = {}): Harness {
       const n = passes.filter((p) => p === root).length
       return opts.pass === undefined ? { root, state: 'synced' } : await opts.pass(root, n)
     },
+    remoteMoved: async (root) => {
+      looks.push(root)
+      return opts.moved === undefined ? true : await opts.moved(root)
+    },
     quietMs: opts.quietMs ?? NEVER,
     retryMs: opts.retryMs ?? NEVER,
     focusCooldownMs: opts.focusCooldownMs ?? NEVER,
@@ -103,6 +112,7 @@ function harness(opts: HarnessOpts = {}): Harness {
   return {
     host,
     passes,
+    looks,
     flushes,
     statuses,
     writes,
@@ -446,6 +456,47 @@ describe('idle pull (YAZ-1897 D6)', () => {
     expect(h.passes).toHaveLength(1)
     await until(() => h.passes.length === 2) // the debounce's pass
     await until(() => h.passes.length === 3) // …and the poll it re-armed
+    manager.setOpenRoots([])
+  })
+
+  it('a look that finds both sides level runs NO pass and says nothing, then looks again (YAZ-2073 5H)', async () => {
+    const h = harness({ pollMs: 15, moved: async () => false })
+    h.enabled.set(ROOT, true)
+    const manager = createGitSync(h.host)
+    manager.setOpenRoots([ROOT])
+    await until(() => h.looks.length >= 3)
+    expect(h.passes).toEqual([ROOT]) // adoption's pass only
+    expect(h.statuses.map((s) => s.state)).toEqual(['syncing', 'synced'])
+    expect((await manager.status(ROOT)).state).toBe('synced')
+    manager.setOpenRoots([])
+  })
+
+  it('a look that finds the remote moved (or could not tell) escalates to a full pass', async () => {
+    let moved = false
+    const h = harness({ pollMs: 15, moved: async () => moved })
+    h.enabled.set(ROOT, true)
+    const manager = createGitSync(h.host)
+    manager.setOpenRoots([ROOT])
+    await until(() => h.looks.length >= 1)
+    expect(h.passes).toHaveLength(1)
+    moved = true
+    await until(() => h.passes.length === 2)
+    expect(h.flushes).toEqual([])
+    expect(h.statuses.filter((s) => s.state === 'syncing')).toHaveLength(1) // still quiet: no flash for the pull
+    manager.setOpenRoots([])
+  })
+
+  it('only the idle pull looks first: adoption, edits and syncNow run the full pass straight away', async () => {
+    const h = harness({ quietMs: 10, moved: async () => false })
+    h.enabled.set(ROOT, true)
+    const manager = createGitSync(h.host)
+    manager.setOpenRoots([ROOT])
+    await until(() => h.passes.length === 1)
+    h.emitVault(ROOT, change('a.md', 1))
+    await until(() => h.passes.length === 2)
+    await manager.syncNow(ROOT)
+    expect(h.passes).toHaveLength(3)
+    expect(h.looks).toEqual([])
     manager.setOpenRoots([])
   })
 

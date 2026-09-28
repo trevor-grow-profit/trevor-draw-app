@@ -55,14 +55,22 @@ export const BOARD_MERGE_RULES = ['*.[eE][xX][cC][aA][lL][iI][dD][rR][aA][wW] -m
 const SHARES_PATH = `${VAULT_CONFIG_DIR}/${SHARES_FILE}`
 const FAVORITES_PATH = `${VAULT_CONFIG_DIR}/${FAVORITES_FILE}`
 
+/** Each vault's `info/attributes` path: asked of git once, then every pass is one read (YAZ-2073 5H). */
+const attributesFiles = new Map<string, string>()
+
 /**
  * D2, kept in `.git/info/attributes`: this machine only, never committed, and never the user's own
- * `.gitattributes`. Append-only and idempotent, so it runs on every pass.
+ * `.gitattributes`. Append-only and idempotent, so it runs on every pass — and puts back a rule
+ * someone deleted.
  */
 export async function ensureBoardMergeRule(bin: string, root: string): Promise<void> {
-  const where = await git(bin, root, ['rev-parse', '--git-path', 'info/attributes'])
-  if (where.code !== 0) return
-  const file = path.resolve(root, where.stdout.trim())
+  let file = attributesFiles.get(root)
+  if (file === undefined) {
+    const where = await git(bin, root, ['rev-parse', '--git-path', 'info/attributes'])
+    if (where.code !== 0) return
+    file = path.resolve(root, where.stdout.trim())
+    attributesFiles.set(root, file)
+  }
   const next = withLines(await readFile(file, 'utf8').catch(() => null), BOARD_MERGE_RULES)
   if (next === null) return
   await mkdir(path.dirname(file), { recursive: true })

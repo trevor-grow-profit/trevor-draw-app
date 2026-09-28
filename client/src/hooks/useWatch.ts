@@ -9,7 +9,7 @@ export interface WatchSource {
 
 /**
  * One bridge `watch(root)` subscription per root; fans events out to subscribers. Main owns the
- * chokidar watcher and sends `ready` once the subscription is live, which subscribers use to
+ * watcher (`fs/treeWatcher.ts`) and sends `ready` once the subscription is live, which subscribers use to
  * refetch state they may have missed.
  */
 export function useWatch(root: string | null): WatchSource {

@@ -152,7 +152,7 @@ calls that go through it; `state`, `window`, `menu`, `link` and `watch` are call
 | `dialog.openDrawing()` | `dialog:open-file` | the native OPEN-FILE dialog, `.excalidraw` filter → `{ path, name, content }` or `{ cancelled: true }`; the bytes come back because the picked file is outside the vault |
 | `dialog.saveDrawing(req)` | `dialog:save-file` | the native SAVE sheet AND the atomic write behind it → `{ path }` or `{ cancelled: true }`; the only path ever written is the one the user just typed |
 | `dialog.saveImage(req)` | `dialog:save-image` | the same one door for a draw.io diagram's Export Image… (🔒 YAZ-1802 D9): `{ defaultName, png, svg }` (both data URLs, both drawn before the sheet opens); a PNG / SVG sheet, and the picked name's extension decides which is written — any other is `UNSUPPORTED_EXTENSION` |
-| `watch(root, cb)` | `watch:*` | chokidar under the root; `ready` / `change` / `add` / `unlink` / `error` |
+| `watch(root, cb)` | `watch:*` | one recursive watcher under the root (`fs/treeWatcher.ts`, YAZ-2073 5F); `ready` / `change` / `add` / `unlink` / `addDir` / `unlinkDir` / `error` |
 | `file.rename(req)` | `fs:rename` | same-parent rename or a move; never overwrites |
 | `file.delete(req)` | `fs:delete` | `shell.trashItem` ONLY — never `fs.rm`, no permanent fallback |
 | `file.clip` / `paste` / `clipState` | `fs:clip*`, `fs:paste` | main owns the ONE app-wide file clipboard |
@@ -197,6 +197,13 @@ Rules that hold across the whole surface:
   (YAZ-2073 D12).
 - **Echo suppression by mtime.** A write's own watcher event is recognised by the mtime the write
   returned and ignored; a genuine external change while the buffer is dirty raises the conflict bar.
+- **One watcher engine** (`fs/treeWatcher.ts`, 🔒 YAZ-2073 D9) under the vault, `.yaseendraw/` and
+  library watches: one recursive `fs.watch` per folder (no fd per file), each path looked at once it
+  has been quiet 100 ms (`SETTLE_MS`) and classified by `lstat` against what it knew, `ready` after
+  one walk of what is there, the app's own `atomicWrite` tmp files never announced. A folder that
+  does not exist yet is waited for. On a macOS network volume (no `local` in `mount`), or where
+  `fs.watch` throws, chokidar polling (1 s) runs instead, loaded only then. What consumers see is
+  pinned by `watchConformance.test.ts`, which passed against chokidar before the switch.
 - **One door per direction, per kind.** Where a kind has a dedicated pair (`drawing:load` /
   `drawing:save`), nothing else may read or write those bytes. A save is an ORDER as well as a
   write: the images the scene names land before the scene that names them, and the dates ride
@@ -359,7 +366,7 @@ The rules are pure (`shared/mediaLibrary.ts`); the disk half (`desktop/src/main/
 follows the app's file idioms: a read never creates the file, a mutation that changes nothing does
 not write, writes are tmp + rename and serialised, a file that is not a version-1 library is moved
 aside as `media.json.corrupt-<epoch>`, and a bad ROW in a good file is dropped rather than costing
-the rest. ONE chokidar watches the library folder (depth 0, `media.json` only), re-pointed when
+the rest. ONE watcher watches the library folder (depth 0, `media.json` only), re-pointed when
 `settings.libraryFolder` changes; an own write notifies every window synchronously and its echo is
 dropped by mtime, an external write (the other machine, through a synced vault) notifies as usual.
 `media:changed` carries no payload because every window re-lists regardless of its vault — that is
@@ -449,7 +456,7 @@ has gone drops out, an unreadable fragment is skipped rather than offered as a t
 inserted, and an index that is missing or is not a version-1 index is rebuilt from the folder — the
 bad one moved aside as `components.json.corrupt-<epoch>`. A READ NEVER WRITES: the reconciliation is
 in memory and only a mutation puts it on disk, so listing costs a read-only disk nothing and does
-not churn a synced folder. One chokidar watches the library folder at depth 1 (the index, and the
+not churn a synced folder. One watcher watches the library folder at depth 1 (the index, and the
 two files a component is — an `atomicWrite` tmp file is silence), own writes are echo-suppressed by
 path + mtime, and `components:changed` carries no payload because every window re-lists regardless
 of its vault. A delete is `shell.trashItem`, never `fs.rm`, and a trash that fails leaves the row.
@@ -625,7 +632,9 @@ YAZ-1897; the scenario catalogue (S1–S28) is the 📘 comment there.
   points at the pre-rebase commit (local only, replaced by the next merge).
 - **D6 — the idle pull.** A vault whose last pass ended `synced` runs a quiet pass every 60 s
   (`pollMs`): no `syncing` broadcast first, no broadcast at all when nothing changed, never while
-  edits are settling, `pending` or `attention`.
+  edits are settling, `pending` or `attention`. It looks before it passes (YAZ-2073 5H):
+  `remoteMoved` runs `fetch` + one `rev-list` (2 git spawns; a full pass makes 9), and only a
+  remote that moved, an unpushed commit, no upstream or a failed look escalates to the full pass.
 - **D4 — seeing it.** A merge puts up one notice ("Merged Sam's changes into “Roadmap” · 2 shapes
   edited on both — kept the newest.") with **See changes**; a notice with an action waits to be
   dismissed. Right-click a board › **Version history** (`client/src/history/`) lists its versions;
@@ -830,7 +839,10 @@ the store cache, which `state:changed` refreshes.
 **🔒 D4 — the tree refreshes on EVERY watcher event.** A save is a `change`, and a save is what
 moves `updatedAt`; the Sidebar used to skip `change`. One tree walk per save (one stat and a 1 KB
 head read per board), with no own-write echo guard on purpose: our own save is the reorder we want.
-Walks overlap, so an answer older than the tree on screen is dropped by `generatedAt`.
+Walks overlap, so an answer older than the tree on screen is dropped by `generatedAt`. Coalesced
+(YAZ-2073 5E): main runs one walk per root at a time and callers arriving mid-walk share ONE trailing
+walk, and the Sidebar waits out 120 ms of watcher quiet (`WATCH_REFRESH_MS`; `ready` refreshes at
+once), so a 230-file sync pull is a couple of walks, not 230 concurrent ones.
 
 **🔒 D5 — the control.** One button (`.sidebar__sort`) in the lens row, Files lens only, hidden
 while a query is typed; it opens the same `ContextMenu` the rows use with three items and a `✓`
@@ -1333,7 +1345,10 @@ but for two config hooks, inside an iframe on its OWN origin.
   both with role `Editor` and `LSHandlerRank` `Owner`, so Finder hands both to this app (🔒 YAZ-1775 D1).
 - Windows: unsigned x64 NSIS installer.
 - `files: ["out/**"]` is the whole app payload: the main bundle carries its dependencies (chokidar is
-  pure JS and gets bundled), so the packaged app ships no `node_modules`. The one `extraResources`
+  pure JS and gets bundled), so the packaged app ships no `node_modules`. That holds because
+  `desktop/package.json` has no `dependencies` (electron-builder packs those; chokidar is a
+  devDependency) and `externalizeDeps` is off for main and preload; `tools/mainBundle.test.mjs`
+  builds both and fails on any `require` but Node built-ins and electron (YAZ-2073 3E). The one `extraResources`
   entry is the share viewer's built assets (`share/dist/assets` → `Contents/Resources/share-viewer`,
   YAZ-1883), which main uploads at share setup; `viewerAssetsDir` in `ipc/share.ts` reads there when
   packaged and from the repo checkout in dev. It carries no fonts: setup publishes the renderer's

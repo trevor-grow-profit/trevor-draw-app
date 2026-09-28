@@ -28,7 +28,8 @@ import { isRecord } from '@shared/guards'
  *     machine's shapes. Never while edits are settling (the debounce's pass is coming anyway, and
  *     a pass kept away from active drawing is a pass that never meets a mid-rebase save), never
  *     while `pending` (the retry owns it) or `attention` (the next edit or focus does). Quiet means
- *     no `syncing` flash on the chip every minute — only the result is broadcast.
+ *     no `syncing` flash on the chip every minute — only the result is broadcast. It LOOKS first
+ *     (`host.remoteMoved`, YAZ-2073 5H): two git spawns, and the full pass only when there is news.
  *
  * Two invariants everything else is built to protect:
  *   - ONE pass at a time per root, and a burst of triggers during a running pass collapses into
@@ -54,6 +55,8 @@ export interface GitSyncHost {
   onStatus(status: GithubSyncStatus): void
   /** `flush` is the quit variant (YAZ-1111): commit always, no fetch/rebase, short-capped push. */
   syncPass(root: string, opts?: { flush?: boolean }): Promise<GithubSyncStatus>
+  /** The idle pull's cheap look (YAZ-2073 5H): false only when the branch and its remote are provably level. */
+  remoteMoved(root: string): Promise<boolean>
   /** Optional read-only facts for an unmanaged (off) root — the settings panel wants remote/branch even when sync is off. */
   inspect?(root: string): Promise<GithubSyncStatus>
   quietMs?: number
@@ -96,7 +99,7 @@ interface Entry {
 }
 
 
-/** `flush` is the quit variant (YAZ-1111); `poll` is the idle pull (YAZ-1897 D6), which shows no `syncing`. */
+/** `flush` is the quit variant (YAZ-1111); `poll` is the idle pull (YAZ-1897 D6), which shows no `syncing` and looks first (YAZ-2073 5H). */
 type PassMode = 'normal' | 'flush' | 'poll'
 
 /** Every timer an entry can hold, cleared at once — on drop and before the quit flush. */
@@ -192,7 +195,10 @@ export function createGitSync(host: GitSyncHost): GitSyncManager {
 
     let status: GithubSyncStatus
     try {
-      status = await host.syncPass(root, mode === 'flush' ? { flush: true } : undefined)
+      // The idle pull looks before it leaps (YAZ-2073 5H): a level remote leaves the root exactly
+      // as the last pass did, so that status stands, and it arms the next pull below.
+      if (mode === 'poll' && !(await host.remoteMoved(root))) status = entry.last
+      else status = await host.syncPass(root, mode === 'flush' ? { flush: true } : undefined)
     } catch (err) {
       status = { root, state: 'attention', attention: 'error', message: String(err) }
     }

@@ -41,7 +41,7 @@
  * THE `yaseendraw` BLOCK (🔒 YAZ-1834 D3) rides the same atomic write. The engine's serializer
  * drops keys it does not know, so the renderer never sends the block back; the save re-reads it
  * off the CURRENT file's head, keeps `createdAt` (and every key the backfill put there, D5), sets
- * `updatedAt` to now, and `stampBoardMeta` places it first. A board with no block is born one on
+ * `updatedAt` to now, and `stampBoardMetaScene` places it first. A board with no block is born one on
  * this save, aged by its pre-save mtime. This happens after the conflict guard and the assets, so
  * a refused save stamps nothing and a stamped scene never names bytes that are not there.
  *
@@ -54,7 +54,7 @@ import type { DrawingFileEntry, DrawingLoadRequest, DrawingLoadResponse, Drawing
 import { MAX_DRAWING_BYTES } from '@shared/types'
 import { isDrawing } from '@shared/fileKind'
 import { isWithin } from '@shared/paths'
-import { ASSETS_DIR, assetFileName, extForMime, fileIdOfAssetName, isValidFileId, mimeForAssetExt, parseDataUrl, referencedFileIds, stampBoardMeta, stripEmbeddedFiles } from '@shared/drawingAssets'
+import { ASSETS_DIR, assetFileName, extForMime, fileIdOfAssetName, isValidFileId, mimeForAssetExt, parseDataUrl, referencedFileIds, serializeBoard, stampBoardMetaScene, stripEmbeddedFiles, stripEmbeddedScene } from '@shared/drawingAssets'
 import { readBoardHead } from './boardHead'
 import { readBoundedRegularFile } from './boundedRead'
 import { atomicWrite, BridgeFailure, fsCall, requireAbsPath, requireDir, tmpSibling, writeDurable } from './fsUtils'
@@ -84,6 +84,11 @@ function target(raw: unknown): { dir: string; file: string; body: Record<string,
  * bad `json` argument is the caller's (`BAD_REQUEST`).
  */
 export function sceneElements(json: string, file: string, code: 'IO_ERROR' | 'BAD_REQUEST'): readonly unknown[] {
+  return parseScene(json, file, code).elements
+}
+
+/** `sceneElements` with the parsed scene beside them, for the save that works on the object (YAZ-2073 5G). */
+function parseScene(json: string, file: string, code: 'IO_ERROR' | 'BAD_REQUEST'): { scene: Record<string, unknown>; elements: readonly unknown[] } {
   const bad = (): never => {
     throw new BridgeFailure(code, code === 'IO_ERROR' ? 'file is not an Excalidraw scene' : "'json' is not an Excalidraw scene", { path: file })
   }
@@ -94,8 +99,8 @@ export function sceneElements(json: string, file: string, code: 'IO_ERROR' | 'BA
     return bad()
   }
   if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) return bad()
-  const elements = (parsed as Record<string, unknown>).elements
-  return Array.isArray(elements) ? elements : bad()
+  const scene = parsed as Record<string, unknown>
+  return Array.isArray(scene.elements) ? { scene, elements: scene.elements } : bad()
 }
 
 /** `assets/` as a map fileId → file name (first match wins); an absent folder is an empty store. */
@@ -168,10 +173,11 @@ export interface PendingAsset {
  * the same way: the engine could not have drawn it either. `exclude` is what the caller already
  * has in hand (the renderer's `newFiles` on a save), so nothing is decoded twice.
  *
- * Throws when `json` is not a scene object (`stripEmbeddedFiles`); both callers validated first.
+ * Works on the parsed scene (YAZ-2073 5G): both callers parsed and validated it already, and
+ * serialize the lean result once, with `serializeBoard`.
  */
-export function liftEmbedded(json: string, elements: readonly unknown[], exclude: ReadonlySet<string> = new Set()): { lean: string; lifted: PendingAsset[] } {
-  const { json: lean, embedded } = stripEmbeddedFiles(json)
+export function liftEmbedded(scene: Record<string, unknown>, elements: readonly unknown[], exclude: ReadonlySet<string> = new Set()): { lean: Record<string, unknown>; lifted: PendingAsset[] } {
+  const { lean, embedded } = stripEmbeddedScene(scene)
   const referenced = referencedFileIds(elements)
   const lifted: PendingAsset[] = []
   for (const [fileId, entry] of Object.entries(embedded)) {
@@ -237,10 +243,11 @@ export async function saveDrawing(req: DrawingSaveRequest): Promise<DrawingSaveR
   if (expectedMtime !== undefined && typeof expectedMtime !== 'number') throw new BridgeFailure('BAD_REQUEST', "'expectedMtime' must be a number", { path: file })
   if (!Array.isArray(newFiles)) throw new BridgeFailure('BAD_REQUEST', "'newFiles' must be an array", { path: file })
   // Every check before any write: a half-landed save is worse than a refused one.
-  const elements = sceneElements(json, file, 'BAD_REQUEST')
+  // The ONE parse of the scene; it is stripped and stamped as an object and serialized once (YAZ-2073 5G).
+  const { scene, elements } = parseScene(json, file, 'BAD_REQUEST')
   const pending = newFiles.map((entry) => checkAsset(entry, file))
   // A legacy scene's still-embedded bytes shrink into the store on THIS save (see `liftEmbedded`).
-  const { lean, lifted } = liftEmbedded(json, elements, new Set(pending.map((p) => p.fileId)))
+  const { lean, lifted } = liftEmbedded(scene, elements, new Set(pending.map((p) => p.fileId)))
   pending.push(...lifted)
   await requireDir(dir)
   // The file as it is now: its block and mtime in one open (🔒 YAZ-1834 D3), serving both the
@@ -249,7 +256,7 @@ export async function saveDrawing(req: DrawingSaveRequest): Promise<DrawingSaveR
   const prior = await fsCall(file, () => readBoardHead(file))
   const now = Date.now()
   const bornAt = prior?.mtime ?? now
-  const stamped = stampBoardMeta(lean, { createdAt: bornAt, updatedAt: now }, prior?.block ?? null)
+  const stamped = serializeBoard(stampBoardMetaScene(lean, { createdAt: bornAt, updatedAt: now }, prior?.block ?? null))
   if (Buffer.byteLength(stamped, 'utf8') > MAX_DRAWING_BYTES) throw new BridgeFailure('TOO_LARGE', TOO_LARGE, { path: file })
   if (expectedMtime !== undefined && prior !== null && prior.mtime !== expectedMtime) {
     // A file that is GONE is not a conflict: the tab's own copy is the only one left, and
