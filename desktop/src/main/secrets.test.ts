@@ -1,8 +1,14 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { mkdtemp, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { mkdtemp, readdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { SECRETS_FILE, SECRETS_FILE_MODE, createSecrets, type Secrets } from './secrets'
+
+// Pass-through: the owner-only test looks at the tmp file just before it takes the real name.
+vi.mock('node:fs/promises', async (importOriginal) => {
+  const m = await importOriginal<typeof import('node:fs/promises')>()
+  return { ...m, rename: vi.fn(m.rename) }
+})
 
 let dir: string
 let file: string
@@ -29,6 +35,17 @@ describe('createSecrets (🔒 YAZ-1842 D1)', () => {
     expect((await stat(file)).mode & 0o777).toBe(SECRETS_FILE_MODE)
     expect(await secrets.has('pixabayApiKey')).toBe(true)
     expect(await secrets.read('pixabayApiKey')).toBe('hunter2-key')
+  })
+
+  it('the value is never on disk wider than owner-only, not even in the tmp file (YAZ-2073 D12)', async () => {
+    const modes: number[] = []
+    const { rename: realRename } = await vi.importActual<typeof import('node:fs/promises')>('node:fs/promises')
+    vi.mocked(rename).mockImplementationOnce(async (from, to) => {
+      modes.push((await stat(from)).mode & 0o777)
+      return realRename(from, to)
+    })
+    await secrets.set('pixabayApiKey', 'hunter2-key')
+    expect(modes).toEqual([SECRETS_FILE_MODE])
   })
 
   it('set with null clears the name and leaves the others; clearing an absent name still answers', async () => {

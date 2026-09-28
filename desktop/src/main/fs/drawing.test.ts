@@ -1,5 +1,5 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { mkdir, mkdtemp, readdir, readFile, rm, stat, utimes, writeFile } from 'node:fs/promises'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { mkdir, mkdtemp, open, readdir, readFile, rm, stat, utimes, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { MAX_DRAWING_BYTES } from '@shared/types'
@@ -7,6 +7,12 @@ import { BOARD_META_KEY, ORPHAN_MAX_AGE_MS } from '@shared/drawingAssets'
 import { sweepOrphanAssets } from '../drawings/orphanSweep'
 import { loadDrawing, saveDrawing } from './drawing'
 import { blockOf, failure, withoutBlock } from './testFixture'
+
+// Pass-through: the durability test watches which files get fsynced (YAZ-2073 D12).
+vi.mock('node:fs/promises', async (importOriginal) => {
+  const m = await importOriginal<typeof import('node:fs/promises')>()
+  return { ...m, open: vi.fn(m.open) }
+})
 
 const PNG_B64 = 'aGVsbG8='
 const dataUrl = (b64 = PNG_B64) => `data:image/png;base64,${b64}`
@@ -233,6 +239,24 @@ describe('🔒 YAZ-1775 D3 — the image store on save', () => {
     // The scene on disk names the id and carries no bytes.
     const saved = JSON.parse(await readFile(res.path, 'utf8')) as { files: unknown }
     expect(saved.files).toEqual({})
+  })
+
+  it('fsyncs each new asset and the scene before the save answers (YAZ-2073 D12)', async () => {
+    const synced: string[] = []
+    const { open: realOpen } = await vi.importActual<typeof import('node:fs/promises')>('node:fs/promises')
+    vi.mocked(open).mockImplementation(async (...args) => {
+      const fh = await realOpen(...args)
+      const sync = fh.sync.bind(fh)
+      fh.sync = () => (synced.push(path.basename(String(args[0])).replace(/\.tmp-.*/, '.tmp')), sync())
+      return fh
+    })
+    try {
+      await seed('Board.excalidraw', scene())
+      await saveDrawing({ root, path: 'Board.excalidraw', json: scene([imageEl('newid')]), newFiles: [{ fileId: 'newid', mimeType: 'image/png', dataURL: dataUrl() }] })
+      expect(synced).toEqual(['newid.png', 'Board.excalidraw.tmp'])
+    } finally {
+      vi.mocked(open).mockRestore()
+    }
   })
 
   it('never rewrites an asset that is already there — content-addressed means it IS those bytes', async () => {

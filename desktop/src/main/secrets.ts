@@ -21,7 +21,7 @@
  * chained.
  */
 
-import { chmod, stat } from 'node:fs/promises'
+import { stat } from 'node:fs/promises'
 import { isRecord } from '@shared/guards'
 import { atomicWrite, fsCall } from './fs/fsUtils'
 import { createChain, readOrQuarantine } from './watchedFolder'
@@ -74,11 +74,8 @@ export function createSecrets(file: string): Secrets {
         const values = { ...(await load()) }
         if (value === null) delete values[name]
         else values[name] = value
-        const { mtime } = await fsCall(file, async () => {
-          const written = await atomicWrite(file, `${JSON.stringify({ version: VERSION, values }, null, 2)}\n`)
-          await chmod(file, SECRETS_FILE_MODE)
-          return written
-        })
+        // Owner-only from the tmp file's creation, so the value is never briefly world-readable (YAZ-2073 D12).
+        const { mtime } = await fsCall(file, () => atomicWrite(file, `${JSON.stringify({ version: VERSION, values }, null, 2)}\n`, SECRETS_FILE_MODE))
         cached = { mtimeMs: mtime, values }
       })
     },
