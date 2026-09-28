@@ -6,6 +6,8 @@
 import { execFileSync } from 'node:child_process'
 import { mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
+import { crc32, deflateSync } from 'node:zlib'
+import { createHash } from 'node:crypto'
 
 export const REPO = resolve(__dirname, '../..')
 
@@ -63,6 +65,33 @@ export const diagram = (cells = '') =>
 
 export const diagramBox = (id: string, label: string, x = 40, y = 40) =>
   `<mxCell id="${id}" value="${label}" style="rounded=0;whiteSpace=wrap;html=1;" vertex="1" parent="1"><mxGeometry x="${x}" y="${y}" width="120" height="60" as="geometry" /></mxCell>`
+
+// ---------------------------------------------------------------- images
+
+const chunk = (type: string, data: Buffer) => {
+  const body = Buffer.concat([Buffer.from(type, 'ascii'), data])
+  const out = Buffer.alloc(8 + data.length + 4)
+  out.writeUInt32BE(data.length, 0)
+  body.copy(out, 4)
+  out.writeUInt32BE(crc32(body), 8 + data.length)
+  return out
+}
+
+/** A solid-colour RGB PNG — distinct colours are distinct bytes, so distinct content ids. */
+export function png(width: number, height: number, [r, g, b]: [number, number, number]): Buffer {
+  const row = Buffer.concat([Buffer.from([0]), Buffer.alloc(width * 3).map((_, i) => [r, g, b][i % 3])])
+  const ihdr = Buffer.alloc(13)
+  ihdr.writeUInt32BE(width, 0)
+  ihdr.writeUInt32BE(height, 4)
+  ihdr.set([8, 2, 0, 0, 0], 8)
+  return Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), chunk('IHDR', ihdr), chunk('IDAT', deflateSync(Buffer.concat(Array(height).fill(row)))), chunk('IEND', Buffer.alloc(0))])
+}
+
+/** Excalidraw's own image id: the SHA-1 of the bytes (🔒 YAZ-1775 D3) — also the asset's file name. */
+export const fileIdOf = (bytes: Buffer): string => createHash('sha1').update(bytes).digest('hex')
+
+export const imageElement = (id: string, fileId: string, x = 0, y = 0, width = 160, height = 120) =>
+  base(id, { type: 'image', x, y, width, height, fileId, status: 'saved', scale: [1, 1], crop: null, backgroundColor: 'transparent' })
 
 // ---------------------------------------------------------------- reading boards back
 

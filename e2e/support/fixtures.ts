@@ -76,6 +76,9 @@ export class DrawApp {
       args: ['-r', MAIN_HOOK, APP_DIR, ...args],
       env: { ...process.env, ...env, YASEEN_DRAW_USER_DATA_DIR: sandbox.profile, E2E_SANDBOX: sandbox.dir },
       cwd: REPO,
+      // Playwright emulates a light `prefers-color-scheme` by default; the app must see the OS's
+      // (i.e. `nativeTheme.themeSource`, which the Theme setting drives).
+      colorScheme: null,
     })
     // Config `use` options only reach contexts Playwright creates; this one Electron made.
     electron.context().setDefaultTimeout(ACTION_TIMEOUT_MS)
