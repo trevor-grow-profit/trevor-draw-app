@@ -3,11 +3,11 @@ import { mkdir, mkdtemp, readdir, readFile, rm, stat, utimes, writeFile } from '
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import type { DrawingFileEntry } from '@shared/types'
-import { fakeNativeImage } from './fakeNativeImage'
+import { fakeNativeImage } from './nativeImageFixture'
 import { encodePng, plainPngSize } from './png'
 import { createThumbs } from './thumbs'
 
-vi.mock('electron', async () => ({ nativeImage: (await import('./fakeNativeImage')).fakeNativeImage }))
+vi.mock('electron', async () => ({ nativeImage: (await import('./nativeImageFixture')).fakeNativeImage }))
 
 let work: string
 let folder: string

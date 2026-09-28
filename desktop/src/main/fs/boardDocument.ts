@@ -12,7 +12,7 @@ import { readBoardHead } from './boardHead'
 import { BridgeFailure, fsCall } from './fsUtils'
 import { requireAbsPath, requireObject } from './validate'
 
-export type BoardKind = 'drawing' | 'diagram'
+type BoardKind = 'drawing' | 'diagram'
 
 /** Each kind's extension test, the words its failures use, and its read/write ceiling. */
 export const BOARDS = {

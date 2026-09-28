@@ -199,9 +199,8 @@ export function createComponentStore(initialFolder: string, deps: { now?: () => 
     depth: 1,
     tag: 'components',
     /**
-     * The index, and the two files a component IS. Anything else under `components/` — an
-     * `atomicWrite` tmp file above all, which is added and unlinked on every single save — is
-     * silence, the way `mediaStore`'s depth-0 filter names `media.json` and nothing else.
+     * The index, and the two files a component IS. Anything else under `components/` is silence,
+     * the way `mediaStore`'s depth-0 filter names `media.json` and nothing else.
      */
     relevant: (p, dir) => {
       if (p === path.join(dir, COMPONENTS_INDEX_FILE)) return true
@@ -210,8 +209,8 @@ export function createComponentStore(initialFolder: string, deps: { now?: () => 
       return slugOfComponentFile(name) !== null || slugOfComponentPreview(name) !== null
     },
     // `components/` may have come into existence DURING the watcher's own start, which the polling
-    // fallback loses (`fs/treeWatcher.ts`). Re-adding it once at `ready` is the recovery; on a path that still does not
-    // exist it does nothing, and the parent watch picks that folder up when it is finally made.
+    // fallback can lose (`fs/treeWatcher.ts`). Re-adding it once at `ready` is the recovery; on a
+    // path that still does not exist it does nothing, and the parent watch picks it up when it is made.
     alsoWatch: (dir) => [componentsOf(dir)],
     onChange: () => {
       scanCache = null // somebody else changed the folder

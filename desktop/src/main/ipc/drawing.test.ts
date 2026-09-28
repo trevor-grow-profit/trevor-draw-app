@@ -10,7 +10,7 @@ import { blockOf, withoutBlock } from '../fs/testFixture'
 import { _resetSweeps, registerDrawingIpc, sweepVaultOnce } from './drawing'
 import { registered } from './ipcFixture'
 
-vi.mock('electron', async () => ({ ipcMain: { handle: vi.fn(), on: vi.fn() }, shell: { trashItem: vi.fn(async () => undefined) }, nativeImage: (await import('../drawings/fakeNativeImage')).fakeNativeImage }))
+vi.mock('electron', async () => ({ ipcMain: { handle: vi.fn(), on: vi.fn() }, shell: { trashItem: vi.fn(async () => undefined) }, nativeImage: (await import('../drawings/nativeImageFixture')).fakeNativeImage }))
 
 const SCENE = `${JSON.stringify({ type: 'excalidraw', version: 2, elements: [], appState: {}, files: {} }, null, 2)}\n`
 

@@ -145,7 +145,7 @@ export async function buildTree(dir: string): Promise<TreeNode[]> {
 /**
  * Writes `content` and fsyncs it before closing (YAZ-2073 D12; libuv issues F_FULLFSYNC on macOS): the
  * bytes are on disk before anything — a rename, a board naming an asset — points at them, so a power
- * loss can't surface an empty or stale file under the real name. `mode` applies from creation.
+ * loss can't surface an empty or torn file under the real name. `mode` applies from creation.
  * A string lands as UTF-8; bytes (a scene's images through `drawing:save`, 🔒 YAZ-1775 D3) land verbatim —
  * `writeFile` ignores the encoding for a view, so one call serves both.
  */

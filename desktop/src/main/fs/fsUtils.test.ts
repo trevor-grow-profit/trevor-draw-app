@@ -154,8 +154,10 @@ describe('durable writes (YAZ-2073 D12)', () => {
       const log = await traceDurability()
       const file = path.join(dir, 'a.excalidraw')
       await writeFile(file, 'old')
+      // A new file's mode under this machine's umask: the tmp file is born with it too.
+      const born = ((await stat(file)).mode & 0o777).toString(8)
       const res = await atomicWrite(file, 'new ✓')
-      expect(log).toEqual(['sync a.excalidraw.tmp', 'rename mode 644'])
+      expect(log).toEqual(['sync a.excalidraw.tmp', `rename mode ${born}`])
       expect(await readFile(file, 'utf8')).toBe('new ✓')
       expect(res.size).toBe(Buffer.byteLength('new ✓'))
       expect(await readdir(dir)).toEqual(['a.excalidraw'])
@@ -199,7 +201,7 @@ describe('durable writes (YAZ-2073 D12)', () => {
       expect(await readFile(file, 'utf8')).toBe('old')
     }))
 
-  it('every tmp sibling is one the watchers stay silent about — a save`s and a landing asset`s alike (YAZ-2073 2B1)', () => {
+  it("every tmp sibling is one the watchers stay silent about — a save's and a landing asset's alike (YAZ-2073 2B1)", () => {
     for (const file of ['/v/Board.excalidraw', '/v/assets/0a1b2c.png']) {
       expect(path.dirname(tmpSibling(file))).toBe(path.dirname(file))
       expect(isAtomicTmp(path.basename(tmpSibling(file)))).toBe(true)
