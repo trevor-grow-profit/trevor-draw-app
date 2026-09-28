@@ -13,6 +13,7 @@
  *
  * A CROPPED image keeps its bytes: its crop is in the original's pixels, which a thumbnail changes.
  */
+import { isFiniteNumber } from '@shared/guards'
 
 /** The largest box, in picture pixels, one image is drawn into. */
 export interface DrawnBox {
@@ -33,7 +34,6 @@ interface LiveImage {
   cropped: boolean
 }
 
-const finite = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v)
 
 function liveImages(elements: readonly unknown[]): LiveImage[] {
   const images: LiveImage[] = []
@@ -41,8 +41,8 @@ function liveImages(elements: readonly unknown[]): LiveImage[] {
     if (typeof el !== 'object' || el === null) continue
     const { type, fileId, isDeleted, x, y, width, height, angle, crop } = el as Record<string, unknown>
     if (type !== 'image' || typeof fileId !== 'string' || fileId === '' || isDeleted === true) continue
-    if (!finite(x) || !finite(y) || !finite(width) || !finite(height) || width <= 0 || height <= 0) continue
-    images.push({ fileId, x, y, width, height, angle: finite(angle) ? angle : 0, cropped: typeof crop === 'object' && crop !== null })
+    if (!isFiniteNumber(x) || !isFiniteNumber(y) || !isFiniteNumber(width) || !isFiniteNumber(height) || width <= 0 || height <= 0) continue
+    images.push({ fileId, x, y, width, height, angle: isFiniteNumber(angle) ? angle : 0, cropped: typeof crop === 'object' && crop !== null })
   }
   return images
 }
