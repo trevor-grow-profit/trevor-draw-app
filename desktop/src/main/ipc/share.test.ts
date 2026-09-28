@@ -3,6 +3,7 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { ipcMain } from 'electron'
+import { excalidrawPackageFonts } from '@shared/excalidrawFonts'
 import { CONTRACT } from '@shared/ipc'
 import { CLOUDFLARE_API, CLOUDFLARE_TOKEN_PAGE } from '../share/cloudflare'
 import { createSecrets } from '../secrets'
@@ -30,8 +31,7 @@ describe('excalidrawFontsDir (YAZ-2073 3C)', () => {
   })
 
   it('reads the package where npm installed it in dev: the repo root first, then client/', () => {
-    const root = path.join('/repo', 'node_modules', '@excalidraw', 'excalidraw', 'dist', 'prod', 'fonts')
-    const client = path.join('/repo', 'client', 'node_modules', '@excalidraw', 'excalidraw', 'dist', 'prod', 'fonts')
+    const [root, client] = excalidrawPackageFonts(path.normalize('/repo'))
     const where = { isPackaged: false, mainDir: '/repo/desktop/out/main', appPath: '/repo/desktop' }
     expect(excalidrawFontsDir({ ...where, exists: (p) => p === root || p === client })).toBe(root)
     expect(excalidrawFontsDir({ ...where, exists: (p) => p === client })).toBe(client)

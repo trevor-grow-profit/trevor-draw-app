@@ -1,7 +1,8 @@
 /**
  * The Excalidraw package's `fonts/` tree, wherever npm hoisted it — the repo root first, then the
- * client workspace, the order the app's own build looks in (`desktop/electron.vite.config.ts`).
- * The one lookup for the tools: the draw.io pack, the fake Cloudflare and the share-viewer suite.
+ * client workspace: `shared/excalidrawFonts.ts`'s rule, restated because node runs the tools with no
+ * TypeScript step (`excalidrawFonts.test.mjs` holds the two to the same answer). The one lookup for
+ * the tools: the draw.io pack, the fake Cloudflare and the share-viewer suite.
  */
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
