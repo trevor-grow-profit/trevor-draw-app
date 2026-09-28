@@ -8,7 +8,7 @@
 import { randomUUID } from 'node:crypto'
 import { posix, win32 } from 'node:path'
 import { fileKind } from '@shared/fileKind'
-import { isWithin, sepOf } from '@shared/paths'
+import { isWithin, sepOf, trimSep } from '@shared/paths'
 import { DEFAULT_SIDEBAR_LENS, type OpenWindowOptions, type RecentRoots, type WindowBounds, type WindowEntry } from '@shared/types'
 import { CONTRACT, SPECIAL } from '@shared/ipc'
 import type { Store } from './store'
@@ -161,9 +161,6 @@ const sameBounds = (a: WindowBounds, b: WindowBounds): boolean => a.x === b.x &&
 
 export type LinkTarget = { kind: 'existing'; id: string } | { kind: 'new'; root: string; file: string }
 
-/** Trailing slash off (never off `/` itself), so `/v` and `/v/` name the same root. */
-const stripSlash = (p: string): string => (p.length > 1 && p.endsWith('/') ? p.slice(0, -1) : p)
-
 /** The folder `path` sits in, by its own separator's rules — a Windows path's parent is not posix's `.` (YAZ-2073 2D). */
 const parentDir = (path: string): string => (sepOf(path) === '\\' ? win32 : posix).dirname(path)
 
@@ -181,7 +178,7 @@ export function resolveLinkTarget(
   rootOverride?: string | null,
 ): LinkTarget {
   if (rootOverride != null && isWithin(rootOverride, path, true)) {
-    const exact = windows.find((w) => w.root !== null && stripSlash(w.root) === stripSlash(rootOverride))
+    const exact = windows.find((w) => w.root !== null && trimSep(w.root) === trimSep(rootOverride))
     return exact === undefined ? { kind: 'new', root: rootOverride, file: path } : { kind: 'existing', id: exact.id }
   }
   let best: { id: string; rootLength: number } | undefined
@@ -369,11 +366,11 @@ export function createWindowManager(store: Store, host: WindowHost): WindowManag
       store.pushRecent(path)
       // Already open (YAZ-1767 🔒 D9): raise that vault's live windows instead of opening a third
       // copy — LEAST recently focused first, so the most recently focused one ends on top (a
-      // window never focused ranks last). Roots compare like `resolveLinkTarget`: trailing slash off.
-      const wanted = stripSlash(path)
+      // window never focused ranks last). Roots compare like `resolveLinkTarget`: trailing separator off.
+      const wanted = trimSep(path)
       const alreadyOpen = store
         .get()
-        .windows.filter((w) => w.root !== null && stripSlash(w.root) === wanted)
+        .windows.filter((w) => w.root !== null && trimSep(w.root) === wanted)
         .map((w) => ({ id: w.id, win: live.get(w.id) }))
         .filter((w): w is { id: string; win: ManagedWindow } => w.win !== undefined && !w.win.isDestroyed())
       if (alreadyOpen.length > 0) {

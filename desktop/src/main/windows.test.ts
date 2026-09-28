@@ -359,6 +359,16 @@ describe('createWindowManager: openRecentBeside (YAZ-1767 D1 — the one open-re
     expect(store.get().windows).toHaveLength(1)
   })
 
+  it('D9 on Windows (YAZ-2073 2D): a stored root with a trailing `\\` is the same vault', () => {
+    store.upsertWindow({ id: 'w1', root: 'C:\\Vaults\\other\\', file: null, tabs: [], sidebarCollapsed: false, sidebarLens: 'files', focusDirs: [], focusFavorites: [], bounds: { x: 0, y: 0, width: 800, height: 600 } })
+    const { host, created } = makeHost()
+    const manager = createWindowManager(store, host)
+    manager.restoreAll()
+    expect(manager.openRecentBeside('C:\\Vaults\\other')).toBe(true)
+    expect(created).toHaveLength(1)
+    expect(created[0].win.focusCount).toBe(1)
+  })
+
   it('D9: two windows on the vault, focus history A then B → raised A then B, so B (most recently focused) ends on top', () => {
     const entry = (id: string) => ({ id, root: '/v/other', file: null, tabs: [], sidebarCollapsed: false, sidebarLens: 'files' as const, focusDirs: [], focusFavorites: [], bounds: { x: 0, y: 0, width: 800, height: 600 } })
     store.upsertWindow(entry('a'))
@@ -555,6 +565,12 @@ describe('resolveLinkTarget (pure)', () => {
     expect(resolveLinkTarget(board, windows, [])).toEqual({ kind: 'existing', id: 'w1' })
     expect(resolveLinkTarget(board, [], recents('C:\\Users\\me\\Vault'))).toEqual({ kind: 'new', root: 'C:\\Users\\me\\Vault', file: board })
     expect(resolveLinkTarget(board, [win('w2', 'C:\\Users\\me\\Vaul')], [])).toEqual({ kind: 'new', root: win32.dirname(board), file: board })
+  })
+
+  it('Windows paths: a rootOverride names the open window on that root whether or not either carries a trailing separator', () => {
+    const board = 'C:\\Users\\me\\Vault\\sub\\a.excalidraw'
+    const windows = [win('w1', 'C:\\Users\\me\\Vault\\'), win('w2', 'C:\\Users\\me\\Vault\\sub')]
+    expect(resolveLinkTarget(board, windows, [], 'C:\\Users\\me\\Vault')).toEqual({ kind: 'existing', id: 'w1' })
   })
 })
 
