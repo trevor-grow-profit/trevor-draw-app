@@ -13,11 +13,13 @@
     "drawio:pack": "node tools/packDrawio.mjs",
     "desktop:build": "npm run build -w desktop && node tools/packDesktop.mjs --mac",
     "desktop:build:win": "npm run build -w desktop && node tools/packDesktop.mjs --win",
-    "typecheck": "tsc -p client/tsconfig.json --noEmit && tsc -p shared/tsconfig.json --noEmit && tsc -p desktop/tsconfig.json --noEmit",
+    "typecheck": "tsc -p client/tsconfig.json --noEmit && tsc -p shared/tsconfig.json --noEmit && tsc -p desktop/tsconfig.json --noEmit && tsc -p e2e/tsconfig.json --noEmit",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "e2e": "npm run build && playwright test -c e2e/playwright.config.ts"
   },
   "devDependencies": {
+    "@playwright/test": "^1.63.0",
     "jsdom": "^30.0.1",
     "typescript": "^5.9.3",
     "vitest": "^3.2.7"

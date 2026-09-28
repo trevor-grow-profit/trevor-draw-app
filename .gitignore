@@ -6,3 +6,5 @@ desktop/dist-app/
 .claude/*
 share/dist/
 desktop/.cache/
+e2e/test-results/
+e2e/playwright-report/
