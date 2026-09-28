@@ -37,6 +37,15 @@ const chunk = (type, data) => {
   return Buffer.concat([len, body, crc])
 }
 
+/** A truecolour PNG from raw scanlines (each led by filter byte 0). */
+function png(width, height, raw) {
+  const ihdr = Buffer.alloc(13)
+  ihdr.writeUInt32BE(width, 0)
+  ihdr.writeUInt32BE(height, 4)
+  ihdr.set([8, 2, 0, 0, 0], 8) // 8-bit truecolour, no interlace
+  return Buffer.concat([Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]), chunk('IHDR', ihdr), chunk('IDAT', zlib.deflateSync(raw)), chunk('IEND', Buffer.alloc(0))])
+}
+
 /** An RGB PNG like a screenshot: a flat background with a dozen coloured panels, so it decodes at full size but stays small on disk. */
 export function screenshotPng(width, height, rand) {
   const stride = width * 3 + 1 // each scanline leads with filter byte 0
@@ -50,11 +59,14 @@ export function screenshotPng(width, height, rand) {
   }
   fill(0, 0, width, height, colour())
   for (let k = 0; k < 12; k++) fill(Math.floor(rand() * width), Math.floor(rand() * height), Math.floor(rand() * width * 0.5), Math.floor(rand() * height * 0.5), colour())
-  const ihdr = Buffer.alloc(13)
-  ihdr.writeUInt32BE(width, 0)
-  ihdr.writeUInt32BE(height, 4)
-  ihdr.set([8, 2, 0, 0, 0], 8) // 8-bit truecolour, no interlace
-  return Buffer.concat([Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]), chunk('IHDR', ihdr), chunk('IDAT', zlib.deflateSync(raw)), chunk('IEND', Buffer.alloc(0))])
+  return png(width, height, raw)
+}
+
+/** An RGB PNG of noise: incompressible, so its size on disk is its pixel count × 3. */
+export function noisePng(width, height, rand) {
+  const raw = Buffer.alloc((width * 3 + 1) * height)
+  for (let i = 0; i < raw.length; i++) raw[i] = i % (width * 3 + 1) === 0 ? 0 : Math.floor(rand() * 256)
+  return png(width, height, raw)
 }
 
 const COLOURS = ['#ffc9c9', '#b2f2bb', '#a5d8ff', '#ffec99', '#d0bfff', '#ffd8a8']
@@ -96,6 +108,22 @@ export function imageBoard(vault, count, seed, { width = 1440, height = 822 } = 
   }))
 }
 
+/**
+ * A LEGACY board: its images embedded as base64 dataURLs in `files`, as boards were before the
+ * assets folder (🔒 YAZ-1775 D3). 15 noise images of 900×600 make it ~32 MB, the scope's 31 MB board.
+ */
+export function legacyBoard(count, seed, { width = 900, height = 600 } = {}) {
+  const rand = rng(seed)
+  const files = {}
+  const elements = Array.from({ length: count }, (_, i) => {
+    const bytes = noisePng(width, height, rand)
+    const fileId = fileIdFor(bytes)
+    files[fileId] = { mimeType: 'image/png', id: fileId, dataURL: `data:image/png;base64,${bytes.toString('base64')}`, created: 1_790_000_000_000 }
+    return element(i, rand, { type: 'image', x: (i % 4) * 400, y: Math.floor(i / 4) * 300, width: 360, height: 240, fileId, status: 'saved', scale: [1, 1], crop: null })
+  })
+  return `${JSON.stringify({ type: 'excalidraw', version: 2, source: 'yaseen-draw-perf', elements, appState: { viewBackgroundColor: '#ffffff' }, files })}\n`
+}
+
 /** A plain-XML draw.io flowchart of `n` boxes chained by edges. */
 export function flowDiagram(n) {
   const cells = []
@@ -123,12 +151,32 @@ export function writeBoardVault(vault, folders, perFolder, seed) {
 
 /**
  * An isolated profile (`YASEEN_DRAW_USER_DATA_DIR`) whose one window is already on `vault` with
- * `file` open — light theme, fixed bounds, previews on — so a launch needs no dialog and never
+ * `file` open — light theme unless asked, fixed bounds, previews on — so a launch needs no dialog and never
  * reads the real profile (LAUNCH.md "Behaviour checks").
  */
-export function writeProfile(profile, vault, file) {
+export function writeProfile(profile, vault, file, { theme = 'light' } = {}) {
   fs.mkdirSync(profile, { recursive: true })
   const window = { id: 'perf-win', root: vault, file, tabs: [file], sidebarCollapsed: false, sidebarLens: 'files', focusDirs: [], focusFavorites: [], bounds: { x: 80, y: 60, width: 1280, height: 820 } }
-  const state = { version: 1, settings: { theme: 'light', confirmDelete: true, hoverPreview: true }, sidebarWidth: 260, recents: [{ path: vault, lastOpened: 1_790_000_000_000 }], windows: [window], folders: {} }
+  const state = { version: 1, settings: { theme, confirmDelete: true, hoverPreview: true }, sidebarWidth: 260, recents: [{ path: vault, lastOpened: 1_790_000_000_000 }], windows: [window], folders: {} }
   fs.writeFileSync(path.join(profile, 'yaseendraw.json'), JSON.stringify(state, null, 2))
+}
+
+const MARKER = '.yaseen-draw-perf'
+
+/**
+ * The `--work` root, made ours: fixtures under it are wiped and rewritten on every run, so a
+ * folder that already holds anything and was not made by this harness (a vault, a home folder) is
+ * refused. `dirFor` answers a scenario's folder inside it and nothing outside it.
+ */
+export function claimWorkDir(root) {
+  if (fs.existsSync(root) && fs.readdirSync(root).length > 0 && !fs.existsSync(path.join(root, MARKER))) throw new Error(`refusing to use ${root} as the perf work dir: it is not empty and was not made by tools/perf`)
+  fs.mkdirSync(root, { recursive: true })
+  fs.writeFileSync(path.join(root, MARKER), 'fixtures and profiles written by tools/perf — safe to delete\n')
+  return {
+    dirFor(name) {
+      const dir = path.resolve(root, name)
+      if (path.dirname(dir) !== path.resolve(root)) throw new Error(`${name} is not a folder name`)
+      return dir
+    },
+  }
 }

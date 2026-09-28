@@ -39,6 +39,6 @@ export const FRAME_SAMPLER = `window.__perf ??= {
     s.po.disconnect()
     const f = s.frames.slice(1).sort((a, b) => a - b)
     const at = (p) => f[Math.min(f.length - 1, Math.max(0, Math.ceil(p * f.length) - 1))] ?? 0
-    return { frames: f.length, p50: at(0.5), p95: at(0.95), max: f.at(-1) ?? 0, over20: f.filter((x) => x > 20).length, longTaskMax: Math.max(0, ...s.longTasks), longTaskTotal: s.longTasks.reduce((a, b) => a + b, 0) }
+    return { p50: at(0.5), p95: at(0.95), max: f.at(-1) ?? 0, longTaskMax: Math.max(0, ...s.longTasks) }
   },
 }`

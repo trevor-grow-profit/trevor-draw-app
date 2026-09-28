@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 /**
  * USAGE: npm run perf -- <scenario…|all> [--runs 5] [--app <.app> | --dev] [--work <dir>]
+ *        (`--scenario <name>` works too)
  *
  * The perf harness (YAZ-2073 1B, 🔒 D17): launches the app on generated fixtures in an isolated
  * profile, runs each scenario `--runs` times after one discarded warm-up, and prints JSON — per
@@ -8,7 +9,8 @@
  * the `perf` ceilings in budget.json (exit 1 when one is over). Local only: it opens real windows.
  *   --app   a packaged bundle (default: desktop/dist-app/mac-arm64/Yaseen Draw.app)
  *   --dev   `desktop/out` under the workspace's Electron instead (after `npm run build`, no packaging)
- *   --work  where fixtures and profiles go (default: <tmpdir>/yaseen-draw-perf); wiped per scenario
+ *   --work  where fixtures and profiles go (default: <tmpdir>/yaseen-draw-perf); refused unless
+ *           empty or made by this harness, since each scenario's folder in it is wiped
  * Scenarios: see scenarios.mjs. Compare builds on the same machine, idle, with the same --runs.
  */
 import { createRequire } from 'node:module'
@@ -17,6 +19,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import fs from 'node:fs'
 import { SCENARIOS } from './scenarios.mjs'
+import { claimWorkDir } from './lib/fixtures.mjs'
 import { summarizeRuns } from './lib/stats.mjs'
 
 const here = path.dirname(fileURLToPath(import.meta.url))
@@ -31,7 +34,7 @@ if (todo.length === 0 || unknown.length > 0) {
   process.exit(2)
 }
 const runs = Number(opt('runs', '5'))
-const work = path.resolve(opt('work', path.join(os.tmpdir(), 'yaseen-draw-perf')))
+const work = claimWorkDir(path.resolve(opt('work', path.join(os.tmpdir(), 'yaseen-draw-perf'))))
 const bundle = path.resolve(opt('app', path.join(repo, 'desktop/dist-app/mac-arm64/Yaseen Draw.app')))
 const app = argv.includes('--dev')
   ? { bin: createRequire(path.join(repo, 'desktop/package.json'))('electron'), args: [path.join(repo, 'desktop')] }
@@ -46,7 +49,7 @@ const report = { app: argv.includes('--dev') ? 'dev (desktop/out)' : bundle, mac
 let failed = false
 for (const name of todo) {
   const scenario = SCENARIOS[name]
-  const fx = scenario.setup(path.join(work, name))
+  const fx = scenario.setup(work.dirFor(name))
   const loadBefore = os.loadavg()[0]
   const results = []
   for (let i = 0; i <= runs; i++) {

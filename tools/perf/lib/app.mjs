@@ -18,7 +18,7 @@ const freePort = () =>
     })
   })
 
-/** A CDP session on one target: `send` a method, `ev` an expression (awaited, by value), `on` an event. */
+/** A CDP session on one target: `ev` an expression (awaited, by value), wait for one, send input. */
 async function attach(wsUrl) {
   const ws = new WebSocket(wsUrl)
   await new Promise((resolve, reject) => {
@@ -27,13 +27,10 @@ async function attach(wsUrl) {
   })
   let id = 0
   const pending = new Map()
-  const listeners = []
   ws.onmessage = (m) => {
     const d = JSON.parse(m.data)
-    if (pending.has(d.id)) {
-      pending.get(d.id)(d)
-      pending.delete(d.id)
-    } else if (d.method) for (const l of listeners) l(d)
+    pending.get(d.id)?.(d)
+    pending.delete(d.id)
   }
   const send = (method, params = {}) =>
     new Promise((resolve, reject) => {
@@ -59,7 +56,7 @@ async function attach(wsUrl) {
     await send('Input.dispatchKeyEvent', { type: 'rawKeyDown', key, code, windowsVirtualKeyCode: keyCode, modifiers })
     await send('Input.dispatchKeyEvent', { type: 'keyUp', key, code, windowsVirtualKeyCode: keyCode, modifiers })
   }
-  return { send, ev, waitFor, mouse, key, on: (fn) => listeners.push(fn), close: () => ws.close() }
+  return { ev, waitFor, mouse, key, close: () => ws.close() }
 }
 
 /**

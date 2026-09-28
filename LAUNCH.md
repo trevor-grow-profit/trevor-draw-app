@@ -129,12 +129,13 @@ The packaged app is checked the same way — launch
 
 ```bash
 npm run desktop:build && npm run perf:budget   # size + integrity of the packaged app vs tools/perf/budget.json
-npm run perf -- launch drawio --runs 5          # scenarios; `all` runs every one (~15 min)
+npm run perf -- launch drawio --runs 5          # scenarios (list: npm run perf); `all` runs every one (~45 min)
 npm run perf -- canvas-4k --dev                 # desktop/out under the workspace Electron, no packaging
 ```
 
-`perf` generates its fixtures (seeded, so identical every run: 1k/4k-shape boards, a 121-image
-board, a 2 000-board vault, a draw.io flowchart) and an isolated profile under `--work` (default
+`perf` generates its fixtures (seeded, so identical every run: 1k/4k-shape boards, 121- and 90-image
+boards, a 32 MB legacy board with its images inline, a 2 000-board vault, a draw.io flowchart, a
+git vault with a bare origin) and an isolated profile under `--work` (default
 `<tmpdir>/yaseen-draw-perf`), launches the app once per run on them, drops the first run as a
 warm-up and prints JSON — median, p95 and `cv` (noise) per metric — checked against the `perf`
 ceilings. It opens real windows for a few seconds each and never reads the real profile or vaults.

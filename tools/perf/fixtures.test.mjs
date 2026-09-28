@@ -2,10 +2,11 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import zlib from 'node:zlib'
+import { createHash } from 'node:crypto'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { referencedAssetIds } from '../../desktop/src/main/drawings/orphanSweep.ts'
 import { createStore } from '../../desktop/src/main/store.ts'
-import { flowDiagram, imageBoard, indexKey, rng, screenshotPng, shapesBoard, writeBoardVault, writeProfile } from './lib/fixtures.mjs'
+import { claimWorkDir, flowDiagram, imageBoard, indexKey, legacyBoard, noisePng, rng, screenshotPng, shapesBoard, writeBoardVault, writeProfile } from './lib/fixtures.mjs'
 
 let dir
 beforeEach(() => {
@@ -60,6 +61,16 @@ describe('boards', () => {
     expect([...(await referencedAssetIds(dir))].sort()).toEqual(written.sort())
   })
 
+  it("embeds a legacy board's images as dataURLs named by their content", () => {
+    const { elements, files } = JSON.parse(legacyBoard(2, 5, { width: 20, height: 10 }))
+    expect(elements.map((e) => e.fileId)).toEqual(Object.keys(files))
+    for (const [id, file] of Object.entries(files)) expect(createHash('sha1').update(Buffer.from(file.dataURL.split(',')[1], 'base64')).digest('hex')).toBe(id)
+  })
+
+  it('makes noise PNGs that do not compress, so a legacy board weighs what it claims', () => {
+    expect(noisePng(100, 100, rng(1)).length).toBeGreaterThan(100 * 100 * 3)
+  })
+
   it('writes the storm vault as folders of boards', () => {
     const files = writeBoardVault(dir, 3, 4, 1)
     expect(files).toHaveLength(12)
@@ -83,5 +94,22 @@ describe('writeProfile', () => {
     const state = createStore(path.join(dir, 'profile', 'yaseendraw.json')).get()
     expect(state.windows).toEqual([expect.objectContaining({ root: vault, file, tabs: [file] })])
     expect(state.settings).toMatchObject({ theme: 'light', hoverPreview: true })
+  })
+})
+
+describe('claimWorkDir', () => {
+  it('takes an empty or missing folder, marks it, and hands out scenario folders inside it only', () => {
+    const root = path.join(dir, 'work')
+    const work = claimWorkDir(root)
+    expect(work.dirFor('launch')).toBe(path.join(root, 'launch'))
+    expect(() => work.dirFor('../vault')).toThrow('is not a folder name')
+    expect(() => work.dirFor('a/b')).toThrow('is not a folder name')
+    fs.mkdirSync(path.join(root, 'launch'))
+    expect(() => claimWorkDir(root)).not.toThrow() // ours: it carries the marker
+  })
+
+  it('refuses a folder that already holds something it did not make', () => {
+    fs.writeFileSync(path.join(dir, 'Board.excalidraw'), '{}')
+    expect(() => claimWorkDir(dir)).toThrow('refusing to use')
   })
 })
