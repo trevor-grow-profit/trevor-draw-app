@@ -1093,8 +1093,8 @@ link's download flag is its OWN object, `perm/<id>` (`"0"` | `"1"`, missing = al
   Download .drawio only — no PNG: draw.io draws labels as HTML inside the SVG, and Safari and
   Firefox block reading such a canvas back. Same CSP, still no inline script.
 - The Worker's `/assets/drawio/` holds our `config.js` and a `fonts.css` for the editor's five font
-  families pointing at the Excalidraw fonts already under `/assets/fonts/` (both built into
-  `share/dist/assets`), and draw.io's own files, `DRAWIO_SHARE_FILES` in `drawio/assets.ts`, which
+  families pointing at the Excalidraw fonts already under `/assets/fonts/` (the two files built into
+  `share/dist/assets`, the fonts published from the app's renderer copy), and draw.io's own files, `DRAWIO_SHARE_FILES` in `drawio/assets.ts`, which
   share setup reads from the app's ONE draw.io webapp (`readViewerAssets`, 🔒 YAZ-1802 D5,
   YAZ-1973) and publishes at their pack paths: `js/viewer-static.min.js` (4.2 MB),
   `js/stencils.min.js` (7.7 MB, all 204 stencil sets — `diagram.js` loads it only for a diagram
@@ -1157,7 +1157,8 @@ off for up to ~90 s while a fresh workers.dev address comes up).
 **The viewer** (🔒 YAZ-1799 D13). React and the SAME vendored Excalidraw the app draws with, bundled
 by `tools/buildShareViewer.mjs` into `share/dist/assets/` (part of `npm run build` and `npm run
 dev`), shipped as the `share-viewer` extraResource and uploaded as the Worker's static assets —
-fonts included, so nothing is fetched from a CDN at view time. View mode only; Download .excalidraw
+with Excalidraw's fonts under `/assets/fonts/`, published from the app's own renderer copy
+(`excalidrawFontsDir` in `ipc/share.ts`, YAZ-2073 3C), so nothing is fetched from a CDN at view time. View mode only; Download .excalidraw
 and Download PNG (2×) when allowed. Every page is sent with `script-src 'self'; connect-src 'self';
 frame-ancestors 'none'`, `nosniff` and `no-referrer`, and has no inline script (the board's details
 ride a JSON data block; `EXCALIDRAW_ASSET_PATH` is set by the bundle's first module).
@@ -1324,7 +1325,8 @@ but for two config hooks, inside an iframe on its OWN origin.
   pure JS and gets bundled), so the packaged app ships no `node_modules`. The one `extraResources`
   entry is the share viewer's built assets (`share/dist/assets` → `Contents/Resources/share-viewer`,
   YAZ-1883), which main uploads at share setup; `viewerAssetsDir` in `ipc/share.ts` reads there when
-  packaged and from the repo checkout in dev.
+  packaged and from the repo checkout in dev. It carries no fonts: setup publishes the renderer's
+  copy (`excalidrawFontsDir`, YAZ-2073 3C).
 - The renderer serves from the custom `app://yaseen/` protocol, registered with `codeCache` (and
   `app://drawio/` with it: `appScheme.ts`, 🔒 YAZ-2073 D13), so V8 keeps compiled code in
   `<userData>/Code Cache` across launches — ~15 MB once draw.io has opened, Chromium's own LRU —

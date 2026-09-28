@@ -122,7 +122,7 @@ describe.skipIf(!existsSync(VIEWER))("a shared diagram's page, drawn offline by 
     }
   })
 
-  it("the diagram fonts sheet points at the Excalidraw fonts the build publishes under /assets/fonts/, never the app's own origin", () => {
+  it("the diagram fonts sheet points at the Excalidraw fonts share setup publishes under /assets/fonts/, never the app's own origin", () => {
     const fontsDir = [path.join(REPO, 'client', 'node_modules'), path.join(REPO, 'node_modules')].map((base) => path.join(base, '@excalidraw', 'excalidraw', 'dist', 'prod', 'fonts')).find(existsSync)
     const urls = [...diagramFontCss().matchAll(/url\('([^']+)'\)/g)].map((m) => m[1])
     expect(urls.length).toBeGreaterThan(0)
