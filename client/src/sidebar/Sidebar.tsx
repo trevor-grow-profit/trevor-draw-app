@@ -8,9 +8,8 @@ import { ContextMenuSurface } from '../components/ContextMenuSurface'
 import { ChevronsIcon, EyeIcon, HeartIcon, PreviewIcon, SearchIcon, SidebarPanelIcon, SortIcon } from '../components/icons'
 import type { WatchSource } from '../hooks/useWatch'
 import { basename } from '../lib/paths'
-import { storage } from '../lib/storage'
 import { EMPTY_SELECTION, orderedSelection, selectionReducer } from '../lib/selection'
-import { allDirs, ancestorDirs, favoriteRoots, findDirNode, findNode, focusRoots, treeHasFile, treeHasPath } from '../lib/treeState'
+import { allDirs, ancestorDirs, findDirNode, findNode, treeHasFile, treeHasPath } from '../lib/treeState'
 import { sortTree, type FileNode } from '@shared/treeSort'
 import { createStore } from '../lib/store'
 import { BoardInfo } from './BoardInfo'
@@ -25,10 +24,11 @@ import { datedSeed, entryPath, renamedPath, targetDirFor, type EntryKind, type M
 import { SettingsButton } from '../settings/SettingsButton'
 import { buildMenuSections, countItems } from './menuSections'
 import type { NoticeKind } from '../lib/notice'
-import { Tree, type PendingCreate, type PendingRename, type TreeFileMove, type TreeReorder, type TreeSelection } from './Tree'
+import { Tree, type PendingCreate, type PendingRename, type TreeFileMove, type TreeSelection } from './Tree'
 import { VaultSwitcher } from './VaultSwitcher'
-import { sameList } from './hooks/sameList'
 import { useExpansion } from './hooks/useExpansion'
+import { useFavoritesLens } from './hooks/useFavoritesLens'
+import { useFocusMode } from './hooks/useFocusMode'
 import { useInfoPopover } from './hooks/useInfoPopover'
 import { useMissingFileChecks } from './hooks/useMissingFileChecks'
 import { useSortOrder } from './hooks/useSortOrder'
@@ -331,22 +331,8 @@ export function Sidebar({
   const { tree, error, refresh } = useVaultTree(root, watch, onRootMissing)
   useMissingFileChecks(root, tree, activeFile, onFileMissing)
   const { expanded, dispatch, expandedSet, toggleDir } = useExpansion(root, activeFile)
-  // Focus Mode (YAZ-1605): one path LIST per lens — dirs, on both lenses; empty is no focus.
-  // Per WINDOW since YAZ-1628 (`sidebarCollapsed`'s rule), unlike the per-vault expansion above:
-  // restored from this window's identity and written back the same way, so it survives a lens
-  // switch and a restart and follows its own rename, ⌘⇧N inherits it, and another window on the
-  // same vault is never affected.
-  const [focusDirs, setFocusDirs] = useState<readonly string[]>(storage.getFocusDirs)
-  const [focusFavorites, setFocusFavorites] = useState<readonly string[]>(storage.getFocusFavorites)
-  // Favorites (YAZ-1766 D2, in the vault since 6A/D11): the vault's pinned files and folders in the
-  // user's order, read from `.yaseendraw/favorites.json` through main (absolute paths). Another
-  // window's — or another machine's, via sync — write lands here through `favorites:changed` (below).
-  const [favorites, setFavorites] = useState<readonly string[]>([])
-  const favoritesRef = useRef(favorites)
-  favoritesRef.current = favorites
-  // Favorites drag-to-reorder (D4): the dragged root row + the hovered row and edge.
-  const [reorderDragging, setReorderDragging] = useState<string | null>(null)
-  const [reorderOver, setReorderOver] = useState<{ path: string; edge: 'before' | 'after' } | null>(null)
+  const { focusDirs, setFocusDirs, focusFavorites, focusNodes, focused, focusOn, exitFocus } = useFocusMode(root, tree, lens, dispatch)
+  const { favorites, favoriteNodes, favoriteDirs, toggleFavorite, favoriteReorder } = useFavoritesLens(root, tree, focusFavorites, onNotice)
   // Multi-select (YAZ-1336, 🔒 D1): the selected PATHS — files and, since YAZ-1578, folders —
   // shared by BOTH lenses, one entry per path however many rows draw it (🔒 YAZ-1336 D3). It lives HERE
   // and nowhere else on purpose: this component is mounted `key={root}` and only while the
@@ -380,15 +366,8 @@ export function Sidebar({
   // (⚡ YAZ-862) and, since YAZ-1491, the search list's folder rows (🔒 D1) — one memo, no second
   // feed.
   const dirs = useMemo(() => (tree === null ? [] : allDirs(tree.tree)), [tree])
-  // The focused top rows (YAZ-1605), resolved off the LIVE tree in tree order — a vanished dir yields
-  // no row, and the prune below drops it. `dirs` stays the WHOLE vault: reveal must still find what is hidden.
-  const focusNodes = useMemo(() => (tree === null || focusDirs.length === 0 ? [] : focusRoots(tree.tree, focusDirs)), [tree, focusDirs])
   // The expand/collapse-all button acts on the dirs ON SCREEN: the focused subtrees, or all of them.
   const shownDirs = useMemo(() => (focusNodes.length === 0 ? dirs : allDirs(focusNodes)), [dirs, focusNodes])
-  // The Favorites tab's rows (YAZ-1766 D4/D5): its own focus list when set, else the favorites — each
-  // in STORED order, off the live tree; nesting and redundancy are kept (`favoriteRoots`, not `focusRoots`).
-  const favoriteNodes = useMemo(() => (tree === null ? [] : favoriteRoots(tree.tree, focusFavorites.length > 0 ? focusFavorites : favorites)), [tree, favorites, focusFavorites])
-  const favoriteDirs = useMemo(() => allDirs(favoriteNodes), [favoriteNodes])
   // 🔒 YAZ-1835 D1: the order is a VIEW applied here, to the Files lens only — `fs:tree`, ⌘K and the Favorites lens never see it.
   const sortedNodes = useMemo(() => sortTree(focusNodes.length > 0 ? focusNodes : (tree?.tree ?? []), sortOrder), [focusNodes, tree, sortOrder])
   // What the chevrons button unfolds on the two disk-reading lenses.
@@ -480,67 +459,6 @@ export function Sidebar({
   const foldable = bodyDirs
   const anyExpanded = bodyDirs.some((d) => expanded.includes(d))
   const allLabel = anyExpanded ? 'Collapse all' : 'Expand all'
-
-  // Focus Mode's write-back (YAZ-1605), idempotent like the expansion's (⚡ YAZ-874) — into this window's
-  // identity (YAZ-1628), not the vault bucket.
-  useEffect(() => {
-    if (sameList(storage.getFocusDirs(), focusDirs)) return
-    storage.setFocusDirs(focusDirs)
-  }, [focusDirs])
-  useEffect(() => {
-    if (sameList(storage.getFocusFavorites(), focusFavorites)) return
-    storage.setFocusFavorites(focusFavorites)
-  }, [focusFavorites])
-
-  // Favorites (6A/6C): read once per root, then re-read on every `favorites:changed` for this root —
-  // an own write's echo, another window's, or a synced file. A stale root's answer is dropped.
-  useEffect(() => {
-    let cancelled = false
-    const load = () =>
-      void api.favorites.get(root).then((next) => {
-        if (!cancelled) setFavorites((prev) => (sameList(prev, next) ? prev : next))
-      })
-    load()
-    const off = api.favorites.onChanged((c) => {
-      if (c.root === root) load()
-    })
-    return () => {
-      cancelled = true
-      off()
-    }
-  }, [root])
-  /**
-   * The ONE writer (6C): optimistic, then main writes the file; a refusal (a malformed favorites.json
-   * → INVALID_CONFIG, D12) reverts the list and toasts. Main drops dead entries on the way (D14).
-   */
-  const saveFavorites = useCallback(
-    (next: readonly string[]) => {
-      const prev = favoritesRef.current
-      setFavorites(next)
-      api.favorites.set(root, next).catch((err: unknown) => {
-        setFavorites(prev)
-        onNotice(`Can't save favorites: ${err instanceof Error ? err.message : String(err)}`, 'error')
-      })
-    },
-    [root, onNotice],
-  )
-
-  // Focus Mode (YAZ-1605): a focus target that left the vault DROPS OUT — deleted or moved out —
-  // and the last one leaving ends the focus: never an empty tree under a lit eye. The store repairs
-  // the FILE on delete; this component holds its own copy, so it prunes against the live tree
-  // itself, exactly as the selection does above.
-  useEffect(() => {
-    if (tree === null || focusDirs.length === 0) return
-    const kept = focusDirs.filter((dir) => findDirNode(tree.tree, dir) !== null)
-    if (kept.length !== focusDirs.length) setFocusDirs(kept)
-  }, [tree, focusDirs])
-  useEffect(() => {
-    if (tree === null || focusFavorites.length === 0) return
-    const kept = focusFavorites.filter((dir) => findDirNode(tree.tree, dir) !== null)
-    if (kept.length !== focusFavorites.length) setFocusFavorites(kept)
-  }, [tree, focusFavorites])
-  // Favorites are NOT pruned against the tree here (D14): a path missing on this machine may simply not
-  // have synced yet, so it draws no row (`favoriteRoots`) and main heals dead entries on the next write.
 
   // A selection is about the rows on screen (YAZ-1336), so whatever REPLACES them ends it: the
   // other lens is a different reading of the vault, and a typed query swaps the body for the flat
@@ -775,38 +693,6 @@ export function Sidebar({
   }, [clipboardRef, menu, selectedPaths, clip, clipTo, orderedSelectedPaths, pasteInto, pasteTargetDir])
 
   /**
-   * Focus Mode (YAZ-1605): narrow `inLens` — the menu's pinned lens, FILES for a search row (Docs
-   * YAZ-2050 D1, YAZ-2056 D5) — to these folders, REPLACING any focus, one or many — and OPEN each
-   * row (the synthetic-child idiom `startCreate` uses), so the tree never lands on closed chevrons.
-   */
-  const focusOn = useCallback(
-    (paths: string[], inLens: SidebarLens) => {
-      // Favorites keeps its OWN list (YAZ-1766 D5); both lenses share the one expansion (D7).
-      if (inLens === 'favorites') setFocusFavorites(paths)
-      else setFocusDirs(paths)
-      for (const path of paths) dispatch({ type: 'expandTo', root, file: `${path}/x` })
-    },
-    [root],
-  )
-  const focused = lens === 'favorites' ? focusFavorites.length > 0 : focusNodes.length > 0
-  const exitFocus = useCallback(() => (lens === 'favorites' ? setFocusFavorites([]) : setFocusDirs([])), [lens])
-
-  /**
-   * The favorite toggle (YAZ-1766 D3/D6): remove every path, or append the ones not yet pinned —
-   * insertion order, no duplicates. `isOn` arrives with the paths, so the caller states the verb.
-   * The toast confirms with its own glyph; `saveFavorites` persists.
-   */
-  const toggleFavorite = useCallback(
-    (paths: string[], isOn: boolean) => {
-      const n = paths.length > 1 ? `${paths.length} ` : ''
-      const prev = favoritesRef.current
-      saveFavorites(isOn ? prev.filter((p) => !paths.includes(p)) : [...prev, ...paths.filter((p) => !prev.includes(p))])
-      onNotice(isOn ? `Removed ${n}from favorites` : `Added ${n}to favorites`, 'favorite')
-    },
-    [onNotice, saveFavorites],
-  )
-
-  /**
    * Context menu "Open N in new tabs" (🔒 D5, YAZ-1337): the SAME background opener ⌘-click
    * already uses (I3, GRO-2235), once per selected path. The loop needs no guard of its own —
    * the workspace ignores a path that is already open and appends without stealing activation
@@ -985,39 +871,6 @@ export function Sidebar({
       drop: dropOnDir,
     }),
     [dragging, dropDir, dropOnDir],
-  )
-
-  // ---- Favorites drag-to-reorder (YAZ-1766 D4): a root row dropped above/below another rewrites the list ----
-
-  const dropReorder = useCallback(() => {
-    const from = reorderDragging
-    const over = reorderOver
-    setReorderDragging(null)
-    setReorderOver(null)
-    if (from === null || over === null || over.path === from) return
-    const prev = favoritesRef.current
-    const without = prev.filter((p) => p !== from)
-    const i = without.indexOf(over.path)
-    if (i < 0) return
-    const at = over.edge === 'before' ? i : i + 1
-    saveFavorites([...without.slice(0, at), from, ...without.slice(at)])
-  }, [reorderDragging, reorderOver, saveFavorites])
-
-  /** Off while the tab is focused: the focus list is what is shown then, not the favorites order. */
-  const reorderOff = focusFavorites.length > 0
-  const favoriteReorder = useMemo<TreeReorder>(
-    () => ({
-      dragging: reorderDragging,
-      over: reorderOver,
-      start: reorderOff ? () => undefined : setReorderDragging,
-      hover: (path, edge) => setReorderOver((prev) => (prev?.path === path && prev.edge === edge ? prev : { path, edge })),
-      drop: dropReorder,
-      end: () => {
-        setReorderDragging(null)
-        setReorderOver(null)
-      },
-    }),
-    [reorderDragging, reorderOver, reorderOff, dropReorder],
   )
 
   /** The multi-select as both trees take it (YAZ-1336): the set, plus its two gestures — toggle (shift) and set (any other click, D9). */
