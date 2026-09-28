@@ -138,6 +138,7 @@ packaged e2e run for the same reason.)
 |---|---|---|
 | R1 | The dmg mounts; drag-install; first open needs Open Anyway; `codesign -dv` says `Signature=adhoc`. | M |
 | R2 | `npm run desktop:build:win` produces the installer; install and smoke it on a Windows machine before a release. | M (CI's `windows.yml` builds the installer on a pull request; installing it is by hand) |
+| R3 | On a macOS account set to another language (e.g. Deutsch), **Open folder…** shows a German Open panel and the app menu's system items are German; the app's own UI, Chromium's strings and the sidebar's Name sort are English (Chromium ships English only — 🔒 YAZ-2073 D3). | M |
 
 ## Feature inventory coverage
 
@@ -288,6 +289,7 @@ Every line of [feature-safety-net](../thoughts/yaz-2073-scope/research/feature-s
 | F83 | Release workflow on a tag | M (`windows.yml` runs its Windows build on a pull request) | R1 R2 |
 | F84 | Privileged `app://` scheme (standard, secure, fetch) | A: `launch` | — |
 | F85 | Demo seed scripts and `packEngine` keep working | A (part): `demovaults`, `history` — four seeds; the rest unit-only | — |
+| F86 | English-only Chromium locale paks; the app's 55 `.lproj` markers kept | A (part): `tools/afterPack.test.mjs`; `npm run perf:budget` fails a bundle without Chromium's `en.lproj` or the app's non-English `.lproj` markers | R3 |
 
 ## Imported issue lists
 

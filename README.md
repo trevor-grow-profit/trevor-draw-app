@@ -56,6 +56,8 @@ Every packaged version is downloadable from the repo's [Releases page](https://g
 
 The Mac app is ad-hoc signed, not notarized, so on someone else's Mac (macOS 15) the first open is blocked with "Apple could not verify…". Once: open **System Settings › Privacy & Security**, scroll to the blocked-app notice, click **Open Anyway**, and confirm. After that it opens normally. The Windows installer is unsigned, so SmartScreen shows "Windows protected your PC" the first time: click **More info › Run anyway**, once.
 
+The app is English only, and ships only Chromium's English strings (YAZ-2073 D3). On a Mac or PC set to another language, the Open/Save panels (and a Mac's system menu items) still follow that language, but the browser-drawn bits (a form's validation bubble, the colour and date pickers) are English, and the sidebar sorts names the English way (so `å`, `ä`, `ö` sort with `a` and `o` rather than after `z`).
+
 ## Share links
 
 Right-click a board › **Share**, or **File › Share Link** (`⌘⇧L`), and turn on *Anyone with the

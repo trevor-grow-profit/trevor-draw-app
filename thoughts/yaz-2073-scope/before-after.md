@@ -17,8 +17,8 @@ sizes, drag frame p50 (display-bound at 10 ms here), storm CPU seconds and peak 
 
 | Dimension | Before | Target | After | Met |
 |---|---:|---:|---:|:--:|
-| DMG | 172.5 MB | ≤ 115 MB | **124.7 MB** (−28 %) | ✗ (3B locale trim is parked for Yasin, and it is most of the gap) |
-| Installed (.app) | 387.2 MB | ≤ 300 MB | **367.5 MB** (−5 %) | ✗ (Electron Framework is 287.4 MB and unchanged, and 3B is parked) |
+| DMG | 172.5 MB | ≤ 115 MB | **116.1 MB** (−33 %; 124.7 MB before 3B) | ✗ by 1.1 MB |
+| Installed (.app) | 387.2 MB | ≤ 300 MB | **319.9 MB** (−17 %; 367.5 MB before 3B) | ✗ (Electron Framework is still 239.8 MB of it) |
 | Launch → canvas (median · p95) | 509.5 · 517.9 ms | ≤ 450 ms | **486.4 · 512.6 ms** (−5 %) | ✗ **still > 450 ms → this triggers the Future "V8 startup snapshot" issue (D15)** |
 | draw.io open | 778.1 · 795.5 ms | ≤ 650 ms | **722 · 830.8 ms** (−7 %) | ✗ (load-sensitive) |
 | Hover preview, 121-image board: worst frame | 310 · 320 ms | ≤ 20 ms | **20 · 20.5 ms** | ✓ (at the limit: 2 frames at 100 Hz) |
@@ -41,21 +41,21 @@ sizes, drag frame p50 (display-bound at 10 ms here), storm CPU seconds and peak 
 Missed targets and the next lever:
 - **Launch 486 ms > 450 ms**: this is the D15 trigger for the Future "V8 startup snapshot" issue.
 - **draw.io open 722 ms > 650 ms**: the time is draw.io's own boot inside its frame. The next lever is to prewarm the draw.io frame after first paint.
-- **DMG 124.7 MB and .app 367.5 MB**: 3B (Chromium locale trim) is parked for Yasin because it changes `Intl` on non-English Macs. size-forensics F4 puts it at −11.4 MB DMG and −48.7 MB installed, which would give about 113 MB (target met) and about 319 MB (still over 300; the rest is Electron itself).
+- **DMG 116.1 MB and .app 319.9 MB**: 3B (Chromium locale trim, landed on Yasin's OK after the 7A run — YAZ-2087) took 8.6 MB off the DMG and 47.6 MB off the app. What is left over the targets is Electron itself (the framework is 239.8 MB); the app is English only, so on a non-English OS Chromium's strings, `navigator.language` and the default `Intl` locale are en-US (the sidebar Name sort collates as English).
 - **Image-heavy open, 316 ms long task**: 5B1 (bitmap decode under budget) is parked for Yasin as a fork patch.
 
 ## Size (`npm run perf:budget`, both packaged today)
 
 | Metric | Before v0.1.11 | After | Δ | Target |
 |---|---:|---:|---:|---:|
-| appBytes | 387.2 MB | 367.5 MB | -5 % | 300.0 MB |
-| frameworksBytes | 287.4 MB | 287.4 MB | 0 % |  |
+| appBytes | 387.2 MB | 319.9 MB | -17 % | 300.0 MB |
+| frameworksBytes | 287.4 MB | 239.8 MB | -17 % |  |
 | asarBytes | 76.0 MB | 70.6 MB | -7 % |  |
 | shareViewerBytes | 23.4 MB | 9.2 MB | -61 % |  |
-| dmgBytes | 172.5 MB | 124.7 MB | -28 % | 115.0 MB |
+| dmgBytes | 172.5 MB | 116.1 MB | -33 % | 115.0 MB |
 | lprojCount | 55 | 55 | 0 % |  |
-| chromiumLocaleBytes | 48.7 MB | 48.7 MB | 0 % |  |
-| chromiumLocaleCount | 220 | 220 | 0 % |  |
+| chromiumLocaleBytes | 48.7 MB | 1.1 MB | -98 % |  |
+| chromiumLocaleCount | 220 | 8 | -96 % |  |
 | asarNodeModulesFiles | 12 | 0 | -100 % | 0 |
 | duplicateBytes | 13.6 MB | 81 KB | -99 % | 0 |
 | rendererEagerJsBytes | 1.0 MB | 0.4 MB | -58 % |  |
@@ -64,6 +64,8 @@ Missed targets and the next lever:
 | rendererTotalBytes | 28.3 MB | 23.0 MB | -19 % |  |
 | rendererMapBytes | 0 | 0 | = |  |
 | mainBundleBytes | 0.3 MB | 0.4 MB | +25 % |  |
+
+The Chromium locale rows (and with them appBytes, frameworksBytes and dmgBytes) are the 3B package, measured after the rest: `npm run perf:budget` on 2026-09-28 against the same branch with 3B merged; before 3B they read 367.5 · 287.4 · 124.7 MB and 48.7 MB / 220. The Windows installer went 140.4 → 132.0 MB (locales 55 → 2 `.pak`).
 
 `mainBundleBytes` grew (+70.9 KB): chokidar is now bundled into main rather than shipped as asar
 `node_modules` (12 files → 0), and the IPC CONTRACT table (6A) adds to it. Its ceiling is raised

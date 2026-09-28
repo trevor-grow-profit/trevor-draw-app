@@ -115,7 +115,7 @@ export function measure({ out, app, dmg }) {
     m.shareViewerBytes = bytes(join(res, 'share-viewer'))
     m.dmgBytes = dmg ? bytes(dmg) : null
     m.lprojCount = existsSync(res) ? readdirSync(res).filter((n) => n.endsWith('.lproj')).length : null
-    // Chromium's own UI strings, one locale.pak per language (YAZ-2073 3B would trim these, never the app .lproj above — parked, YAZ-2087).
+    // Chromium's own UI strings, one locale.pak per language: afterPack drops all but the en* ones and never touches the app .lproj above (YAZ-2073 3B).
     m.chromiumLocaleBytes = existsSync(fwRes) ? readdirSync(fwRes).filter((n) => n.endsWith('.lproj')).reduce((n, d) => n + (bytes(join(fwRes, d, 'locale.pak')) ?? 0), 0) : null
     m.chromiumLocaleCount = existsSync(fwRes) ? readdirSync(fwRes).filter((n) => n.endsWith('.lproj')).length : null
     const asar = join(res, 'app.asar')
@@ -206,8 +206,11 @@ export function checkApp(app) {
   } catch (e) {
     fails.push(`codesign --verify --deep --strict failed: ${String(e.stderr ?? e).slice(0, 300)}`)
   }
+  // The afterPack locale trim (🔒 YAZ-2073 D3) keeps Chromium's English strings and every app .lproj marker.
+  if (!existsSync(join(app, 'Contents/Frameworks/Electron Framework.framework/Resources/en.lproj/locale.pak'))) fails.push('locales: Chromium’s en.lproj/locale.pak is gone')
+  if (!readdirSync(join(app, 'Contents/Resources')).some((n) => n.endsWith('.lproj') && !n.startsWith('en'))) fails.push('locales: only English .lproj markers left in Contents/Resources (Open/Save panels would stop following the OS language)')
   const idx = asarIndex(join(app, 'Contents/Resources/app.asar'))
-  const under = (dir) => [...idx.keys()].filter((k) => k.startsWith(`out/${dir}/`))
+  const under =(dir) => [...idx.keys()].filter((k) => k.startsWith(`out/${dir}/`))
   for (const p of REQUIRED_OUT) if (!idx.has(`out/${p}`)) fails.push(`asar: missing out/${p}`)
   for (const d of ['drawio/img', 'drawio/math4']) if (under(d).length === 0) fails.push(`asar: out/${d}/ is empty (shared diagrams draw blank / raw TeX)`)
   if (!under('main').some((f) => /storageWorker/.test(f))) fails.push('asar: storage worker chunk missing (Settings › Storage / Move pictures out)')

@@ -129,7 +129,7 @@ describe('duplicateBytes', () => {
   })
 })
 
-/** A packaged-looking `.app`: an Info.plist, an asar with everything `checkApp` requires, a share viewer. Unsigned. */
+/** A packaged-looking `.app`: an Info.plist, an asar with everything `checkApp` requires, a share viewer, the app's .lproj markers and Chromium's English strings. Unsigned. */
 function fakeApp(plist) {
   const app = path.join(dir, 'Fake.app')
   put('Fake.app/Contents/Info.plist', JSON.stringify(plist))
@@ -137,6 +137,8 @@ function fakeApp(plist) {
   const files = Object.fromEntries([...REQUIRED_OUT, 'drawio/img/a.png', 'drawio/math4/b.js', 'main/storageWorker-D.js', ...EXCALIDRAW_FONT_FAMILIES.map((f) => `renderer/excalidraw-assets/fonts/${f}/a.woff2`)].map((p) => [`out/${p}`, 'x']))
   asar('Fake.app/Contents/Resources/app.asar', files)
   for (const p of ['viewer.js', 'drawio/config.js', 'drawio/fonts.css']) put(`Fake.app/Contents/Resources/share-viewer/${p}`)
+  for (const l of ['en', 'de']) fs.mkdirSync(path.join(app, `Contents/Resources/${l}.lproj`))
+  put('Fake.app/Contents/Frameworks/Electron Framework.framework/Resources/en.lproj/locale.pak')
   return app
 }
 const docType = (ext) => ({ CFBundleTypeExtensions: [ext], CFBundleTypeRole: 'Editor', LSHandlerRank: 'Owner' })
@@ -157,6 +159,15 @@ describe.skipIf(process.platform !== 'darwin')('checkApp', () => {
     const app = fakeApp(PLIST)
     put('Fake.app/Contents/Resources/share-viewer/fonts/Virgil/a.woff2')
     expect(checkApp(app)).toContain('share-viewer: ships its own fonts/ (share setup publishes the app’s one copy, YAZ-2073 3C)')
+  })
+
+  it('fails a locale trim that took the English strings or the app .lproj markers with it (YAZ-2073 D3)', () => {
+    const app = fakeApp(PLIST)
+    fs.rmSync(path.join(app, 'Contents/Resources/de.lproj'), { recursive: true })
+    fs.rmSync(path.join(app, 'Contents/Frameworks/Electron Framework.framework/Resources/en.lproj'), { recursive: true })
+    const fails = checkApp(app)
+    expect(fails).toContain('locales: Chromium’s en.lproj/locale.pak is gone')
+    expect(fails).toContain('locales: only English .lproj markers left in Contents/Resources (Open/Save panels would stop following the OS language)')
   })
 })
 

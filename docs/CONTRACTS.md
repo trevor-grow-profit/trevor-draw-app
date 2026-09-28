@@ -1394,9 +1394,16 @@ but for two config hooks, inside an iframe on its OWN origin.
 - Windows: unsigned x64 NSIS installer. `.github/workflows/windows.yml` builds it on every pull
   request that touches `desktop/`, `shared/`, `share/`, the pack tools or the root package files
   (build only — nothing is installed, signed or uploaded), so a break shows before a `v*` tag.
-- Chromium's own locale paks ship whole. Trimming them (🔒 YAZ-2073 D3) is parked on YAZ-2087
-  (branch `yaz-2073-parked-3b-locale-trim`): without them a non-English Mac's `navigator.language`
-  and default `Intl` locale turn en-US, which changes the sidebar's Name sort and number formats.
+- The app is English only, so Chromium's own locale paks ship in English only (🔒 YAZ-2073 D3,
+  YAZ-2087): `desktop/build/adhocSign.cjs` (`afterPack`, before the seal) keeps the framework's
+  `en*.lproj` folders on the Mac (8 of 220, 1.1 of 48.7 MB) and `locales/en-*.pak` on Windows
+  (2 of 55). The app's own 55 `Contents/Resources/*.lproj` markers stay, so AppKit's Open/Save
+  panels and system menu items still follow the OS language (`electronLanguages` would drop those
+  too). Known consequence on a non-English OS: Chromium-drawn strings (validation bubbles, the
+  file/date/colour pickers) are English, and `navigator.language` and the default `Intl` locale are
+  en-US — the sidebar's Name sort (`shared/treeSort.ts` `byName`) uses English collation, and
+  whatever the engine formats with the default locale (numbers) reads English. Dates were already
+  pinned to en (`client/src/lib/format.ts`, `relativeTime.ts`).
 - `files: ["out/**"]` is the whole app payload: the main bundle carries its dependencies (chokidar is
   pure JS and gets bundled), so the packaged app ships no `node_modules`. That holds because
   `desktop/package.json` has no `dependencies` (electron-builder packs those; chokidar is a
@@ -1431,7 +1438,7 @@ but for two config hooks, inside an iframe on its OWN origin.
   anywhere in the war is ever pruned (`stencils/`, `shapes/`, `templates/`, `img/`,
   `js/libavoid-js/`).
 - Size, as `npm run perf:budget` measures it (MB = 10⁶ bytes): the YAZ-2073 build's `.app` is
-  367.5 MB and its dmg 124.7 MB, from v0.1.11's 387.2 MB / 172.5 MB. The ceilings are in
+  319.9 MB and its dmg 116.1 MB, from v0.1.11's 387.2 MB / 172.5 MB. The ceilings are in
   `tools/perf/budget.json`, under the ratchet (🔒 YAZ-2073 D17): a change that shrinks a metric
   lowers its ceiling in the same PR, and raising one needs Yasin's OK.
 - `.github/workflows/release.yml` builds both on a `v*` tag (node 22, `CSC_IDENTITY_AUTO_DISCOVERY:
