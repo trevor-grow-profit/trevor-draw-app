@@ -89,6 +89,20 @@ test.describe('the quit sequence after the renderers flush (YAZ-2073 2A)', () =>
   })
 })
 
+for (const signal of ['SIGTERM', 'SIGINT'] as const) {
+  test(`${signal} right after an edit takes the ⌘Q path: the edit lands, then the app exits (YAZ-2073 2G)`, async ({ sandbox, launch }) => {
+    const vault = sandbox.vault('V', { 'Board.excalidraw': scene([rect('a')]) })
+    const board = `${vault}/Board.excalidraw`
+    sandbox.writeProfile({ windows: [{ root: vault, file: board }] })
+    const app = await launch()
+    const page = await app.window()
+    await canvasReady(page)
+    await drawRect(page)
+    await app.terminate(signal) // no wait: the 500 ms autosave debounce has not fired yet
+    expect(liveElements(board)).toHaveLength(2)
+  })
+}
+
 test('an outside change to a clean board reloads it in place', async ({ sandbox, launch }) => {
   const vault = sandbox.vault('V', { 'Board.excalidraw': scene([rect('a')]) })
   const board = `${vault}/Board.excalidraw`
