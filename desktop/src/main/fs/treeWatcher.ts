@@ -1,6 +1,6 @@
 import { execFile } from 'node:child_process'
 import { EventEmitter } from 'node:events'
-import { existsSync, watch as fsWatch, type FSWatcher, type Stats } from 'node:fs'
+import { existsSync, watch as fsWatch, type FSWatcher, type Stats, type WatchListener } from 'node:fs'
 import { lstat, readdir, realpath } from 'node:fs/promises'
 import path from 'node:path'
 import { isWithin } from '@shared/paths'
@@ -70,6 +70,27 @@ function nearestExisting(p: string): string {
   let at = p
   while (!existsSync(at) && path.dirname(at) !== at) at = path.dirname(at)
   return at
+}
+
+/**
+ * `fs.watch`, returned once it hears (YAZ-2073 5F1). On macOS `fs.watch` returns before libuv's
+ * FSEvents thread has started the stream that serves it — 0–20 ms later when idle, 100 ms and more
+ * with `fseventsd` busy — and a change in that gap is never reported, so a `ready` announced in it
+ * would be a lie. Closing an FSEvents watch blocks until that thread has rebuilt the stream (libuv's
+ * `uv__fsevents_close` waits for it), so a throwaway watch of the same folder, opened and closed
+ * here, returns only once the real one is live: about 1 ms, the length of the rebuild. Windows'
+ * watch is live before `fs.watch` returns.
+ */
+function liveWatch(p: string, opts: { recursive?: boolean }, listener: WatchListener<string>): FSWatcher {
+  const w = fsWatch(p, opts, listener)
+  if (process.platform !== 'darwin') return w
+  try {
+    fsWatch(p).close()
+  } catch (err) {
+    w.close() // the folder went between the two calls
+    throw err
+  }
+  return w
 }
 
 /**
@@ -171,7 +192,7 @@ class Engine extends EventEmitter implements TreeWatcher {
 
   private watchDir(): void {
     const base = path.basename(this.dir)
-    this.native = fsWatch(this.dir, { recursive: true }, (_type, name) => {
+    this.native = liveWatch(this.dir, { recursive: true }, (_type, name) => {
       if (this.closed) return
       // `null` = the OS dropped the detail (an overflowed buffer): look at everything again.
       if (name === null) return this.queue(this.dir)
@@ -189,7 +210,7 @@ class Engine extends EventEmitter implements TreeWatcher {
    */
   private awaitDir(): void {
     const anchor = nearestExisting(path.dirname(this.dir))
-    const w = fsWatch(anchor, () => {
+    const w = liveWatch(anchor, {}, () => {
       if (this.closed) return
       try {
         if (existsSync(this.dir)) this.arrived(w)

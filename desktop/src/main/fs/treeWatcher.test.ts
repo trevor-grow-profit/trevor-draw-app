@@ -1,4 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { spawn } from 'node:child_process'
+import { once } from 'node:events'
 import { mkdir, mkdtemp, rename, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
@@ -37,6 +39,16 @@ async function tempDir(): Promise<string> {
   dirs.push(d)
   return d
 }
+
+/**
+ * A script for `node -e … <dir>`: watches 4 000 folders in `<dir>`, says so on stdout, then rebuilds
+ * its FSEvents stream over and over, so `fseventsd` is always busy registering 4 000 paths.
+ */
+const CROWDED_FSEVENTSD = `
+const fs = require('node:fs'), path = require('node:path'), dir = process.argv[1]
+for (let i = 0; i < 4000; i++) { fs.mkdirSync(path.join(dir, String(i))); fs.watch(path.join(dir, String(i)), () => {}) }
+process.stdout.write('crowded')
+setInterval(() => fs.watch(dir).close(), 0)`
 
 /** Starts a watch on `dir` and records `type rel` lines; `ready` resolves once it is live. */
 function record(dir: string, opts: Parameters<typeof watchTree>[1] = {}) {
@@ -100,6 +112,32 @@ describe('treeWatcher', { timeout: 20_000 }, () => {
     await sleep(400)
     await rename(tmp, path.join(dir, 'big.excalidraw'))
     expect(await r.quiet()).toEqual(['add big.excalidraw'])
+  })
+
+  it('a watch reopened the moment the last one closed hears the first write after `ready` (YAZ-2073 5F1)', async () => {
+    const dir = await tempDir()
+    // `fs.watch` returns before macOS starts the stream that hears it. A busy `fseventsd` (a sync
+    // client, a build, a full test run) makes that start late; `CROWDED_FSEVENTSD` makes it
+    // tens of ms late every time, well past the few ms `ready` takes.
+    const crowd = spawn(process.execPath, ['-e', CROWDED_FSEVENTSD, await tempDir()], { stdio: ['ignore', 'pipe', 'inherit'] })
+    const missed: number[] = []
+    try {
+      await once(crowd.stdout, 'data')
+      for (let i = 0; i < 5; i++) {
+        const r = record(dir)
+        await r.ready()
+        const file = path.join(dir, `f${i}.json`)
+        await writeFile(file, '{}')
+        await until(() => r.lines.length > 0, 1000).catch(() => missed.push(i))
+        // Closed with the delete still in flight, and the next watch opened at once: the reopen `setFolder` does.
+        await rm(file)
+        await r.watcher.close()
+      }
+    } finally {
+      crowd.kill()
+      await once(crowd, 'exit')
+    }
+    expect(missed).toEqual([])
   })
 
   it('close() ends every event, pending ones included', async () => {
