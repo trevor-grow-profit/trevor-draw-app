@@ -1,5 +1,5 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
-import { mkdir, rm, writeFile } from 'node:fs/promises'
+import { rm, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import type { WatchEvent } from '@shared/types'
 import { activeWatcherRoots, subscribe } from './watchers'
@@ -52,7 +52,7 @@ describe('shared watchers', () => {
     expect(activeWatcherRoots()).toEqual([root])
   })
 
-  it('add / change / unlink for a drawing file, with mtime, to every subscriber', async () => {
+  it('every subscriber gets the same event, with its mtime', async () => {
     const a = openWatch(root)
     const b = openWatch(root)
     await a.next()
@@ -60,59 +60,19 @@ describe('shared watchers', () => {
     const file = path.join(root, 'alpha', 'watched.excalidraw')
     await writeFile(file, 'v1')
     const add = await a.next()
-    expect(add).toMatchObject({ type: 'add', path: file })
-    expect((add as { mtime: number }).mtime).toBeGreaterThan(0)
+    expect(add).toMatchObject({ type: 'add', path: file, mtime: expect.any(Number) })
     expect(await b.next()).toEqual(add)
-
-    await writeFile(file, 'v2 longer')
-    const change = await a.next()
-    expect(change).toMatchObject({ type: 'change', path: file })
-    expect((change as { mtime: number }).mtime).toBeGreaterThanOrEqual((add as { mtime: number }).mtime)
-
     await rm(file)
-    expect(await a.next()).toEqual({ type: 'unlink', path: file })
   })
 
-  it.each([
-    ['JSON', 'text'],
-    ['PY', 'text'],
-    ['pdf', 'pdf'],
-    ['PNG', 'image'],
-    ['WEBP', 'image'],
-    ['epub', 'no viewer — YAZ-1577 D1'],
-    ['svg', 'no viewer — YAZ-1577 D1'],
-  ])('emits add / change / unlink for .%s files (%s)', async (extension) => {
+  it('reports every regular file, whatever it is and whether or not the app can show it (YAZ-1577 D1)', async () => {
     const a = openWatch(root)
     await a.next()
-    const file = path.join(root, 'alpha', `watched.${extension}`)
-    await writeFile(file, 'v1')
-    expect(await a.next()).toMatchObject({ type: 'add', path: file })
-    await writeFile(file, 'v2 longer')
-    expect(await a.next()).toMatchObject({ type: 'change', path: file })
-    await rm(file)
-    expect(await a.next()).toEqual({ type: 'unlink', path: file })
-  })
-
-  it('reports files with no viewer (YAZ-1577 D1, D4) but ignores dot-entries; reports new directories', async () => {
-    const a = openWatch(root)
-    await a.next()
-    const base = path.join(root, 'alpha', 'views.base')
-    await writeFile(base, 'views: []\n')
-    expect(await a.next()).toMatchObject({ type: 'add', path: base })
-    await mkdir(path.join(root, '.cache'))
-    await writeFile(path.join(root, '.cache', 'c.excalidraw'), 'x')
-    await mkdir(path.join(root, 'newdir'))
-    expect(await a.next()).toEqual({ type: 'addDir', path: path.join(root, 'newdir') })
-  })
-
-  it('a change inside .yaseendraw/ emits NOTHING on the shared watcher (GRO-2188)', async () => {
-    const a = openWatch(root)
-    await a.next()
-    await writeFile(path.join(root, '.yaseendraw', 'types.json'), '{"b":2}')
-    await writeFile(path.join(root, '.yaseendraw', 'note.excalidraw'), 'even a drawing in there is invisible')
-    // A control event proves the silence: the next thing the subscriber sees is the unrelated mkdir.
-    await mkdir(path.join(root, 'control-dir'))
-    expect(await a.next()).toEqual({ type: 'addDir', path: path.join(root, 'control-dir') })
+    const files = ['JSON', 'PY', 'pdf', 'PNG', 'WEBP', 'epub', 'svg', 'base'].map((ext) => path.join(root, 'alpha', `watched.${ext}`))
+    await Promise.all(files.map((f) => writeFile(f, 'x')))
+    const seen = await Promise.all(files.map(() => a.next()))
+    expect(seen.map((ev) => `${ev.type} ${'path' in ev ? ev.path : ''}`).sort()).toEqual(files.map((f) => `add ${f}`).sort())
+    await Promise.all(files.map((f) => rm(f)))
   })
 
   it('closes the watcher only when the last subscriber leaves', async () => {

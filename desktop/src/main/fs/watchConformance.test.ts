@@ -6,7 +6,7 @@ import type { WatchEvent } from '@shared/types'
 import { createWatchedFolder } from '../watchedFolder'
 import { atomicWrite } from './fsUtils'
 import { activeWatcherRoots, subscribe } from './watchers'
-import { makeFixture, until } from './testFixture'
+import { makeFixture, settled, sleep, until } from './testFixture'
 
 /**
  * THE WATCHER CONFORMANCE SUITE (YAZ-2073 5F, 🔒 D9): what every consumer of a watcher relies on,
@@ -15,13 +15,9 @@ import { makeFixture, until } from './testFixture'
  * open editor reloads (or raises the conflict bar) on `change` of its own path with the file's
  * mtime, git sync debounces on any event, and the config / library stores re-read on a relevant
  * path. Every case records until the watcher has been quiet for `QUIET_MS`, then compares.
- *
- * Written first and passed against chokidar 4 as the app ran it in production (fs.watch per
- * folder and file, `awaitWriteFinish` 200/50), then kept green across the switch to
- * `treeWatcher.ts`.
  */
 
-/** Longer than any engine's own settling (chokidar's `awaitWriteFinish` is 200 ms), so a late duplicate would be caught. */
+/** Longer than any settling underneath (the polling fallback's `awaitWriteFinish` is 200 ms), so a late duplicate would be caught. */
 const QUIET_MS = 600
 /** Real disk and real timers under a full parallel test run: generous, and a hang still fails. */
 const CASE_TIMEOUT_MS = 20_000
@@ -31,11 +27,11 @@ let root: string
 let cleanup: () => Promise<void>
 let outside: string
 /**
- * FSEvents can hand a watcher the last few milliseconds of history from BEFORE it started (chokidar
- * then reports those files as `change`d), so every case starts on a vault that has been still for a
- * moment: after the fixture is made, and after each case's own clean-up.
+ * FSEvents can hand a watcher the last few milliseconds of history from BEFORE it started, so every
+ * case starts on a vault that has been still for a moment: after the fixture is made, and after each
+ * case's own clean-up.
  */
-const still = () => new Promise((r) => setTimeout(r, 400))
+const still = () => sleep(400)
 beforeAll(async () => {
   ;({ root, cleanup } = await makeFixture())
   outside = await mkdtemp(path.join(tmpdir(), 'yaseendraw-outside-'))
@@ -60,15 +56,7 @@ async function watching(): Promise<{ events: WatchEvent[]; settled: () => Promis
   offs.push(subscribe(root, (ev) => (ev.type === 'ready' ? (ready = true) : events.push(ev))))
   await until(() => ready, PATIENCE_MS)
   /** Resolves once no event has arrived for `QUIET_MS`. */
-  const settled = async () => {
-    let seen = -1
-    while (seen !== events.length) {
-      seen = events.length
-      await new Promise((r) => setTimeout(r, QUIET_MS))
-    }
-    return events
-  }
-  return { events, settled }
+  return { events, settled: () => settled(() => events.length, QUIET_MS).then(() => events) }
 }
 
 const at = (...parts: string[]) => path.join(root, ...parts)
@@ -77,7 +65,7 @@ const mtimeOf = async (p: string) => (await stat(p)).mtimeMs
 const shape = (events: readonly WatchEvent[]) => events.map((e) => `${e.type} ${'path' in e ? path.relative(root, e.path) : ''}`).sort()
 
 describe('watcher conformance: the vault watcher', { timeout: CASE_TIMEOUT_MS }, () => {
-  it('an atomic save over an existing board is exactly ONE `change`, carrying the file`s final mtime; the tmp file is silent', async () => {
+  it("an atomic save over an existing board is exactly ONE `change`, carrying the file's final mtime; the tmp file is silent", async () => {
     const file = at('alpha', 'a.excalidraw')
     const w = await watching()
     const { mtime } = await atomicWrite(file, '{"saved":1}')
@@ -112,7 +100,7 @@ describe('watcher conformance: the vault watcher', { timeout: CASE_TIMEOUT_MS },
     const w = await watching()
     for (let i = 0; i < 5; i++) {
       await writeFile(file, `save ${i}`)
-      await new Promise((r) => setTimeout(r, 10))
+      await sleep(10)
     }
     const events = await w.settled()
     expect(events).toEqual([{ type: 'change', path: file, mtime: await mtimeOf(file) }])
@@ -123,7 +111,7 @@ describe('watcher conformance: the vault watcher', { timeout: CASE_TIMEOUT_MS },
     const w = await watching()
     for (let i = 0; i < 8; i++) {
       await appendFile(file, `chunk ${i}\n`)
-      await new Promise((r) => setTimeout(r, 30))
+      await sleep(30)
     }
     const events = await w.settled()
     expect(events).toEqual([{ type: 'add', path: file, mtime: await mtimeOf(file) }])
@@ -240,18 +228,10 @@ describe('watcher conformance: a watched folder (config and library stores)', { 
     const batches: string[][] = []
     const watched = createWatchedFolder({ dir, depth, tag: 'conformance', relevant: (p, d) => path.dirname(p) === d && p.endsWith('.json'), onChange: (paths) => batches.push([...paths].sort()) })
     folders.push(watched)
-    const settled = async () => {
-      let seen = -1
-      while (seen !== batches.length) {
-        seen = batches.length
-        await new Promise((r) => setTimeout(r, QUIET_MS))
-      }
-      return batches
-    }
-    return { watched, batches, settled }
+    return { watched, batches, settled: () => settled(() => batches.length, QUIET_MS).then(() => batches) }
   }
-  /** chokidar has no `ready` for a folder watch; give any engine time to attach. */
-  const attached = () => new Promise((r) => setTimeout(r, 300))
+  /** A watched folder exposes no `ready`; give the engine time to attach. */
+  const attached = () => sleep(300)
 
   it('an atomic save of a relevant file is ONE notification naming it; its tmp file is silent', async () => {
     const dir = await mkdtemp(path.join(tmpdir(), 'yaseendraw-folder-'))
@@ -270,7 +250,7 @@ describe('watcher conformance: a watched folder (config and library stores)', { 
     const { mtime } = await atomicWrite(file, '[1]')
     f.watched.noteOwnWrite(file, mtime)
     expect(await f.settled()).toEqual([])
-    await new Promise((r) => setTimeout(r, 20))
+    await sleep(20)
     await atomicWrite(file, '[1,2]')
     expect(await f.settled()).toEqual([[file]])
     await rm(dir, { recursive: true, force: true })
@@ -296,7 +276,7 @@ describe('watcher conformance: a watched folder (config and library stores)', { 
     const own = path.join(dir, 'media.json')
     f.watched.noteOwnWrite(own, (await atomicWrite(own, '{}')).mtime)
     await f.settled()
-    await new Promise((r) => setTimeout(r, 20))
+    await sleep(20)
     await atomicWrite(own, '{"b":2}')
     expect((await f.settled()).flat()).toContain(own)
     await rm(parent, { recursive: true, force: true })
