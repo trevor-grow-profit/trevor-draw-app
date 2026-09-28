@@ -461,7 +461,7 @@ export function App() {
    * In-app delete landed (GRO-2272). Reaches EVERY window, originator included.
    *
    * ORDER IS NOT NEGOTIABLE: retire the editor, THEN remap the workspace. Removing a tab
-   * unmounts its editor, and `DrawingEditor`'s unmount cleanup flushes the live scene to disk
+   * unmounts its editor, and `useBoardDocument`'s unmount cleanup flushes the live document to disk
    * — which would recreate the file that was just trashed. Retiring first makes that flush a
    * no-op. Reverse these two lines and the delete silently fails a second later.
    *

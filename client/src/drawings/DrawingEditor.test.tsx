@@ -5,8 +5,9 @@
  * `@excalidraw/excalidraw` beyond a version number, a `serialize()` thunk and two imperative
  * calls, and a test that can drive all of this without the package is that claim, proven. The
  * stub exposes the surface's three outward moves — emit a snapshot, hand over the API, fail —
- * so every rule below (baseline, debounce, conflict, reload, flush, retire) is exercised through
- * the real `Autosave` and the real host.
+ * so every drawing-side rule below (baseline, debounce, reload, the image bytes, the chips) runs
+ * through the real `Autosave` and the real host. The rules both boards share — conflict, flush,
+ * retire — are pinned once, in `documents/useBoardDocument.test.tsx`.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act } from 'react'

@@ -4,10 +4,10 @@
  *
  * 🔒 ONE FILE OWNS THE CANVAS. This is the only component that mounts `<Excalidraw>`, the only
  * one that knows how a scene serializes, and the only one that knows what "changed" means to the
- * engine. `DrawingEditor` — the autosave, the dirty state, the conflict bar, the chips — imports
- * this module's TYPES and this component and nothing else, so replacing the engine rewrites this
- * file and touches no chrome. `DrawingEditor.test.tsx` mocks this one module and pins that
- * boundary rather than trusting it.
+ * engine. `DrawingEditor` and the `useBoardDocument` chrome it rides on — the autosave, the dirty
+ * state, the conflict bar, the chips — import this module's TYPES and this component and nothing
+ * else, so replacing the engine rewrites this file and touches no chrome. `DrawingEditor.test.tsx`
+ * mocks this one module and pins that boundary rather than trusting it.
  *
  * LAZY: the engine arrives through `engine.ts`'s `loadExcalidraw()` — one dynamic import per
  * renderer, with the offline font pin and the export-source pin already applied — and the
