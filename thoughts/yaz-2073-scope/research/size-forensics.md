@@ -1,11 +1,11 @@
 # size-forensics — byte-level audit of what WE ship (app.asar + share-viewer + DMG)
 
-Angle owner: size-forensics. Packaged v0.1.11 arm64 (`desktop/dist-app/mac-arm64/Yaseen Draw.app`). Repo untouched; all work in `$SCRATCH/size-forensics/`.
+Angle owner: size-forensics. Packaged v0.1.11 arm64 (`desktop/dist-app/mac-arm64/Yaseen Draw.app`). Repo untouched; all work in a scratch folder.
 
 ## 1. What I measured (commands + numbers)
 
-- `npx @electron/asar extract Resources/app.asar $SCRATCH/size-forensics/asar` → 3,051 files, 75.12 MB of file bytes (asar file 75.97 MB; +1.5 MB is electron-builder's integrity header).
-- `cp -R Resources/share-viewer $SCRATCH/size-forensics/sv` → 430 files, 23 MB.
+- `npx @electron/asar extract Resources/app.asar asar` → 3,051 files, 75.12 MB of file bytes (asar file 75.97 MB; +1.5 MB is electron-builder's integrity header).
+- `cp -R Resources/share-viewer sv` → 430 files, 23 MB.
 - `shasum` over both trees → duplicate groups; `node cmp.js` → raw vs brotli-9 per category; `esbuild --minify --charset=utf8` per renderer chunk (Vite's own minifier + charset) → minified size.
 - DMG: `hdiutil convert <real 0.1.11 dmg> -format ULMO|UDBZ`; `hdiutil create -srcfolder … -format UDZO|ULFO|ULMO|UDBZ` on the baseline and on two simulated optimized .app copies (A, B below). Mount-tested the ULMO image (`hdiutil attach` 7 s, contents intact).
 

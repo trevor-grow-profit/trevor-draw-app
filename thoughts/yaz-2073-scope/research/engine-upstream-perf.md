@@ -1,6 +1,8 @@
 # engine-upstream-perf: upstream Excalidraw performance fixes in the fork, and the cherry-pick plan
 
-Scratch dir: `$SCRATCH/engine-upstream-perf/`. The scratch clone is `fork/` and the result branch is **`perf/upstream-cherry-picks`**. `patches/0001..0005-*.patch` is the same branch as `git format-patch` output. The original fork (`~/Documents/GitHub/yaseen-excalidraw` @ e72242f8) was not touched: its status is clean and HEAD is unchanged.
+The work ran in a scratch clone of the fork, on a result branch **`perf/upstream-cherry-picks`** (patches 0001–0005 below were its `git format-patch` output); the fork itself was not touched.
+
+**Outcome (YAZ-2095, 5A):** 0001, 0002 and 0005 (#12180, #12183 and the test fixup) are commits on the fork's `yaz-2073-perf` branch, repacked into the app. 0003 (#12050) and its fixup 0004 were **declined**: about 0% dark-mode drag gain in Electron and a visible handle colour change. #12063 was declined too. See `../decisions.md` (D18).
 
 ## 1. What I measured
 
@@ -126,7 +128,7 @@ This is exactly branch `perf/upstream-cherry-picks` on top of e72242f8. It touch
 4. Fork fixup 328baed7: keeps the dark-mode look identical (§3).
 5. Fork test fixup 63473eb5: the upstream test asserted the label at x=30. The fork's `API.createElement` anchors centred text so that it starts at x=-10. The drag itself is correct (+20).
 
-To apply to the real fork, run `git am $SCRATCH/engine-upstream-perf/patches/*.patch` on a branch off e72242f8, then `node tools/packEngine.mjs` in the draw-app repo.
+Applied as proposed except steps 3–4 (#12050), which were declined; see the outcome at the top.
 
 **Leave out: #12063.** It is not a performance fix and it changes rendering by design (§5).
 

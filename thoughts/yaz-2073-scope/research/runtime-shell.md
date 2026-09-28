@@ -16,8 +16,8 @@ Scope: the shell/runtime decision (Electron vs Tauri / Electrobun / Wails / Neut
 | Compressed share (gzip -6) | Frameworks **113 MB**, payload **51 MB** | `tar | gzip | wc -c` |
 | DMG as shipped | **164.5 MB** (UDZO/zlib) | `hdiutil imageinfo` |
 | Same DMG, re-encoded as ULMO (lzma) | **132.5 MB (−32 MB, −19.5%)** | `hdiutil convert -format ULMO` |
-| App with non-`en` framework locales pruned | **325 MB installed (−46 MB)**; ULMO DMG 128.4 MB (only −4 MB, because lzma already dedups the paks) | copy in `$SCRATCH/runtime-shell/stage`, then `hdiutil create` |
-| Does the pruned copy launch? | **Yes.** 4 processes up, userData + `yaseendraw.json` written, empty stderr | ran it with `YASEEN_DRAW_USER_DATA_DIR=$SCRATCH/runtime-shell/ud`, killed after 6 s |
+| App with non-`en` framework locales pruned | **325 MB installed (−46 MB)**; ULMO DMG 128.4 MB (only −4 MB, because lzma already dedups the paks) | a scratch copy, then `hdiutil create` |
+| Does the pruned copy launch? | **Yes.** 4 processes up, userData + `yaseendraw.json` written, empty stderr | ran it with a throwaway `YASEEN_DRAW_USER_DATA_DIR`, killed after 6 s |
 | Live memory (Yasin's running v0.1.11, 2 windows) | **5 processes, 616 MB RSS.** Main process alone: **182 MB** | `ps -axo rss,comm` |
 | Main-process code | **9,377 LOC** non-test TS (main + preload + channels), **13,094 LOC** of tests, **93** IPC channels | `wc -l` on `desktop/src` |
 | Calibration: installed apps on this Mac | VS Code 856 MB, Claude 880 MB, Obsidian 482 MB, Linear 471 MB, Notion 291 MB, Slack 321 MB (all Electron). Non-Electron: **ExcalidrawZ 104 MB** (SwiftUI + WKWebView; 32 MB binary + 44 MB Excalidraw web assets), Ghostty 62 MB, Telegram 249 MB | `du -sh /Applications/*` |

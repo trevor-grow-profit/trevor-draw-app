@@ -1,6 +1,6 @@
 # feature-safety-net — YAZ-2073 regression gate (angle: NO feature loss, NO stability loss)
 
-Artifacts (all in `$SCRATCH/feature-safety-net/`): `measureBudget.mjs` (proposed `tools/perf/measureBudget.mjs`, 290 lines, zero deps, run + negative-tested), `budget.json` (proposed `tools/perf/budget.json`, baselines filled from v0.1.11), `baseline.json` (raw measurement), `test.log`, `testfiles.txt` (per-file test counts/durations).
+Artifacts: `measureBudget.mjs` (proposed `tools/perf/measureBudget.mjs`, 290 lines, zero deps, run + negative-tested), `budget.json` (proposed `tools/perf/budget.json`, baselines filled from v0.1.11), `baseline.json` (raw measurement), `test.log`, `testfiles.txt` (per-file test counts/durations).
 
 ## 1. What I measured
 
@@ -150,7 +150,7 @@ Where hand-verified scenario lists live: **only in Linear pinned comments, not i
 ## 4. Proposed regression gate
 
 ### (a) Budget + measurement — `tools/perf/budget.json` + `tools/perf/measureBudget.mjs`
-- Files ready in `$SCRATCH/feature-safety-net/`. Two modes: full (packaged `.app` + dmg + asar index + Info.plist + codesign + share-viewer) and `--out-only` (CI: `desktop/out` after `npm run build`). `--cold-start N` = opt-in, launches the packaged binary N+1 times on a throwaway `YASEEN_DRAW_USER_DATA_DIR` with `--remote-debugging-port`, polls CDP until `#root` has content (Welcome) / `.excalidraw canvas` exists (seeded board), drops run 0, reports medians.
+- Two modes: full (packaged `.app` + dmg + asar index + Info.plist + codesign + share-viewer) and `--out-only` (CI: `desktop/out` after `npm run build`). `--cold-start N` = opt-in, launches the packaged binary N+1 times on a throwaway `YASEEN_DRAW_USER_DATA_DIR` with `--remote-debugging-port`, polls CDP until `#root` has content (Welcome) / `.excalidraw canvas` exists (seeded board), drops run 0, reports medians.
 - Ratchet rule: each optimization PR lowers the ceiling it earned in `budget.json`; raising any ceiling needs Yasin's OK in the PR body. Ceilings today = baseline × 1.01.
 - Wiring (small diffs):
 
