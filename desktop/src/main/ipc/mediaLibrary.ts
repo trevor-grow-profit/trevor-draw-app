@@ -2,7 +2,7 @@ import type { MediaFavoritesRequest, MediaItem, MediaRecentRequest } from '@shar
 import { normalizeMediaItem } from '@shared/mediaLibrary'
 import { CONTRACT } from '@shared/ipc'
 import { BridgeFailure } from '../fs/fsUtils'
-import { requireObject, str } from '../fs/validate'
+import { requireRequest, str } from '../fs/validate'
 import { followLibraryFolder } from '../library/folder'
 import { createMediaStore, type MediaStore } from '../library/mediaStore'
 import type { Store } from '../store'
@@ -26,7 +26,7 @@ function requireItem(v: unknown): MediaItem {
 }
 
 function requireFavoritesRequest(v: unknown): MediaFavoritesRequest {
-  const r = requireObject(v, 'missing request')
+  const r = requireRequest(v)
   switch (r.op) {
     case 'list':
       return { op: 'list' }
@@ -40,7 +40,7 @@ function requireFavoritesRequest(v: unknown): MediaFavoritesRequest {
 }
 
 function requireRecentRequest(v: unknown): MediaRecentRequest {
-  const r = requireObject(v, 'missing request')
+  const r = requireRequest(v)
   switch (r.op) {
     case 'list':
       return { op: 'list' }

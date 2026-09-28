@@ -3,7 +3,7 @@ import { mkdir, mkdtemp, open, readdir, readFile, rename, rm, stat, symlink, wri
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { isAtomicTmp } from '@shared/fileKind'
-import { atomicWrite, BridgeFailure, buildTree, isSkipped, requireAbsPath, requireDrawingFile, tmpSibling, toBridgeFailure, writeDurable } from './fsUtils'
+import { atomicWrite, BridgeFailure, buildTree, isSkipped, requireDrawingFile, tmpSibling, toBridgeFailure, writeDurable } from './fsUtils'
 
 // Pass-through spies: the durability tests watch the handle's `sync` and the rename that follows it.
 vi.mock('node:fs/promises', async (importOriginal) => {
@@ -32,22 +32,6 @@ async function traceDurability(): Promise<string[]> {
 }
 
 /** The rules every fs handler is built on; until now each was covered only incidentally. */
-
-describe('requireAbsPath', () => {
-  it('normalises an absolute path', () => {
-    expect(requireAbsPath('/v/sub/../a.excalidraw', 'path')).toBe('/v/a.excalidraw')
-  })
-
-  it.each([
-    [undefined, 'BAD_REQUEST'],
-    ['', 'BAD_REQUEST'],
-    ['relative.excalidraw', 'NOT_ABSOLUTE'],
-    [42, 'NOT_ABSOLUTE'],
-    ['/v/with\0nul', 'NOT_ABSOLUTE'],
-  ])('refuses %s', (value, code) => {
-    expect(() => requireAbsPath(value, 'path')).toThrowError(expect.objectContaining({ code }))
-  })
-})
 
 describe('requireDrawingFile', () => {
   it('accepts a drawing, whatever the case of its extension', () => {

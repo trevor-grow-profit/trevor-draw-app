@@ -134,16 +134,16 @@ describe('registerShareIpc refuses malformed requests before sharing sees them',
   })
 
   it.each([
-    [CONTRACT.share.accounts.channel, [undefined, {}, { token: '' }, { token: 3 }]],
-    [CONTRACT.share.setup.channel, [undefined, { token: '' }, { token: 't', accountId: 3 }]],
-    [CONTRACT.share.get.channel, [{ root: '/v' }, { path: 'a.excalidraw' }, { root: '', path: 'a' }]],
-    [CONTRACT.share.list.channel, [{}, { root: 1 }, { root: '/v', check: 'no' }]],
-    [CONTRACT.share.publish.channel, [{ root: '/v', path: 'a' }, { root: '/v', path: 'a', content: 'x', id: 7 }]],
-    [CONTRACT.share.setPermission.channel, [{ root: '/v', path: 'a' }, { root: '/v', path: 'a', allowDownload: 'yes' }]],
-    [CONTRACT.share.stop.channel, [{ root: '/v' }, null]],
-    [CONTRACT.share.setDomain.channel, [{}, { hostname: 5 }]],
-    [CONTRACT.share.disconnect.channel, [{}, { root: 5, deleteEverything: true }, { root: null }, { root: null, deleteEverything: 'yes' }]],
-  ])('%s refuses %j with BAD_REQUEST', async (channel, requests) => {
-    for (const r of requests) expect(await registered(channel)({ sender }, r)).toEqual(bad)
+    [CONTRACT.share.accounts.channel, [[], [''], [3], [{ token: 't' }]]],
+    [CONTRACT.share.setup.channel, [[], [''], ['t', 3]]],
+    [CONTRACT.share.get.channel, [[{ root: '/v' }], [{ path: 'a.excalidraw' }], [{ root: '', path: 'a' }]]],
+    [CONTRACT.share.list.channel, [[], [1], ['/v', 'no'], [{ root: '/v' }]]],
+    [CONTRACT.share.publish.channel, [[{ root: '/v', path: 'a' }], [{ root: '/v', path: 'a', content: 'x', id: 7 }]]],
+    [CONTRACT.share.setPermission.channel, [[{ root: '/v', path: 'a' }], [{ root: '/v', path: 'a', allowDownload: 'yes' }]]],
+    [CONTRACT.share.stop.channel, [[{ root: '/v' }], [null]]],
+    [CONTRACT.share.setDomain.channel, [[], [5], [{ hostname: null }]]],
+    [CONTRACT.share.disconnect.channel, [[], [5, true], [null], [null, 'yes'], [{ root: null, deleteEverything: true }]]],
+  ])('%s refuses %j with BAD_REQUEST', async (channel, calls) => {
+    for (const args of calls) expect(await registered(channel)({ sender }, ...args)).toEqual(bad)
   })
 })

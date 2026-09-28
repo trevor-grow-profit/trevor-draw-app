@@ -17,7 +17,7 @@
  * wording is main's (`explainCloudflareFailure` and friends), shown as it comes.
  */
 import { useEffect, useState } from 'react'
-import { SHARE_SETUP_LABELS, SHARE_SETUP_STEPS, type ShareListEntry, type ShareSetupProgress, type ShareSetupStep } from '@shared/types'
+import { SHARE_SETUP_LABELS, SHARE_SETUP_STEPS, type ShareAccount, type ShareListEntry, type ShareSetupProgress, type ShareSetupStep } from '@shared/types'
 import { api } from '../api'
 import { basename, stripExt } from '../lib/paths'
 import { useVaultName } from '../lib/useVaultName'
@@ -66,7 +66,7 @@ function SetupSharing({ sharing }: SettingsCtx) {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   /** Several accounts behind the key: the picker (D12), and which one is picked. */
-  const [accounts, setAccounts] = useState<{ id: string; name: string }[] | null>(null)
+  const [accounts, setAccounts] = useState<ShareAccount[] | null>(null)
   const [picked, setPicked] = useState<string | null>(null)
   const [steps, setSteps] = useState<Steps | null>(null)
 

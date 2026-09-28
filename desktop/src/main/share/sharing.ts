@@ -14,7 +14,7 @@
  * (`setup.ts`); sharing, updating and stopping talk to the user's own Worker with the upload
  * password (`boards.ts`). `config.ts` is what both share.
  */
-import type { ShareEntry, ShareListEntry, ShareSetupProgress, ShareStatus } from '@shared/types'
+import type { ShareAccount, ShareEntry, ShareListEntry, ShareSetupProgress, ShareStatus } from '@shared/types'
 import { createBoards } from './boards'
 import { createContext, type SharingDeps } from './config'
 import { createSetup } from './setup'
@@ -24,7 +24,7 @@ export type { SharingConfig, SharingDeps } from './config'
 export interface Sharing {
   status(): Promise<ShareStatus>
   /** Check a key and list the accounts it can see (the picker shows when there is more than one). */
-  accounts(token: string): Promise<{ id: string; name: string }[]>
+  accounts(token: string): Promise<ShareAccount[]>
   setup(token: string, progress: (p: ShareSetupProgress) => void, accountId?: string): Promise<ShareStatus>
   get(root: string, path: string): Promise<ShareEntry | null>
   /** `check: false` skips the Worker's live check (no network) — the sidebar badges' call. */

@@ -1,8 +1,8 @@
 import { shell } from 'electron'
 import { stat } from 'node:fs/promises'
 import type { RevealResponse } from '@shared/types'
-import { fsCall, requireAbsPath } from './fsUtils'
-import { requireObject } from './validate'
+import { fsCall } from './fsUtils'
+import { requireAbsPath, requireObject } from './validate'
 
 /**
  * Open in VS Code (YAZ-963) — `reveal.ts`'s mirror, deliberately the same shape.

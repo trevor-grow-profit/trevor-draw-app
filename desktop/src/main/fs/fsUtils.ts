@@ -26,21 +26,6 @@ export class BridgeFailure extends Error {
   }
 }
 
-function isSafeAbsPath(p: unknown): p is string {
-  return typeof p === 'string' && path.isAbsolute(p) && !p.includes('\0')
-}
-
-/** Validates + normalises a path argument, throwing BAD_REQUEST / NOT_ABSOLUTE when missing/relative. */
-export function requireAbsPath(p: unknown, param: string): string {
-  if (p === undefined || p === '') {
-    throw new BridgeFailure('BAD_REQUEST', `missing '${param}'`)
-  }
-  if (!isSafeAbsPath(p)) {
-    throw new BridgeFailure('NOT_ABSOLUTE', `'${param}' must be an absolute path`, { path: String(p) })
-  }
-  return path.resolve(p)
-}
-
 /** Throws unless `p` is an Excalidraw drawing — the kind the Import / Export Drawing dialogs take (🔒 YAZ-1802 D2). */
 export function requireDrawingFile(p: string): void {
   if (!isDrawing(p)) throw new BridgeFailure('UNSUPPORTED_EXTENSION', 'only .excalidraw files are editable', { path: p })

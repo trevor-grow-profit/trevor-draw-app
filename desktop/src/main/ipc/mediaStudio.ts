@@ -17,7 +17,7 @@ import { mkdir } from 'node:fs/promises'
 import { isMediaBytesProvider, isMediaSearchSource, PIXABAY_SECRET, type MediaBytesRequest, type MediaSearchRequest } from '@shared/types'
 import { CONTRACT } from '@shared/ipc'
 import { BridgeFailure } from '../fs/fsUtils'
-import { requireObject, str, strOrNull } from '../fs/validate'
+import { requireRequest, str, strOrNull } from '../fs/validate'
 import { createMediaCache, type MediaCache } from '../media/cache'
 import { MEDIA_CACHE_DIR } from '../media/cachePolicy'
 import { createMediaProviders, type MediaProviders } from '../media/providers'
@@ -25,14 +25,14 @@ import type { Secrets } from '../secrets'
 import { handle } from './envelope'
 
 function requireSearchRequest(v: unknown): MediaSearchRequest {
-  const r = requireObject(v, 'missing request')
+  const r = requireRequest(v)
   if (typeof r.q !== 'string') throw new BridgeFailure('BAD_REQUEST', "'q' must be a string")
   if (!isMediaSearchSource(r.source)) throw new BridgeFailure('BAD_REQUEST', "'source' must be all, iconify or pixabay")
   return { q: r.q, source: r.source, cursor: r.cursor === undefined ? null : strOrNull(r.cursor, 'cursor') }
 }
 
 function requireBytesRequest(v: unknown): MediaBytesRequest {
-  const r = requireObject(v, 'missing request')
+  const r = requireRequest(v)
   // `shape` is deliberately not one of these: a shape is drawn by the renderer from its own
   // catalog and has no bytes to fetch (🔒 YAZ-1775 D4).
   if (!isMediaBytesProvider(r.provider)) throw new BridgeFailure('BAD_REQUEST', "'provider' must be pixabay or iconify")

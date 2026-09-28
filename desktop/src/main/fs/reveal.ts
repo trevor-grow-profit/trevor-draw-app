@@ -1,8 +1,8 @@
 import { shell } from 'electron'
 import { stat } from 'node:fs/promises'
 import type { RevealResponse } from '@shared/types'
-import { fsCall, requireAbsPath } from './fsUtils'
-import { requireObject } from './validate'
+import { fsCall } from './fsUtils'
+import { requireAbsPath, requireObject } from './validate'
 
 /**
  * Reveal in Finder (GRO-2274 — LOCKED: VS Code parity for this issue).

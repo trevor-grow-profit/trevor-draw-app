@@ -1,7 +1,8 @@
 import { ipcMain, type IpcMainEvent } from 'electron'
 import type { WatchEvent } from '@shared/types'
 import { SPECIAL } from '@shared/ipc'
-import { requireAbsPath, requireDir, toBridgeFailure } from '../fs/fsUtils'
+import { requireDir, toBridgeFailure } from '../fs/fsUtils'
+import { requireAbsPath } from '../fs/validate'
 import { subscribe } from '../fs/watchers'
 
 /** Live subscriptions per renderer (`webContents.id`) → subscription id → unsubscribe. */

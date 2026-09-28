@@ -3,7 +3,7 @@ import { join, relative, resolve, sep } from 'node:path'
 import { shell } from 'electron'
 import { CONTRACT } from '@shared/ipc'
 import { BridgeFailure } from '../fs/fsUtils'
-import { bool, optBool, optStr, requireObject, str, strOrNull } from '../fs/validate'
+import { bool, optBool, optStr, requireRequest, str, strOrNull } from '../fs/validate'
 import type { Secrets } from '../secrets'
 import { DRAWIO_SHARE_DIRS, DRAWIO_SHARE_FILES } from '../drawio/assets'
 import { CLOUDFLARE_API, CLOUDFLARE_TOKEN_PAGE, type AssetFile } from '../share/cloudflare'
@@ -21,7 +21,7 @@ import { handle, handleWithEvent } from './envelope'
  *
  * The demo switches are read by `shareEndpoints` and only in an unpackaged (dev) build.
  */
-const req = (v: unknown): Record<string, unknown> => requireObject(v, 'missing request')
+const req = (v: unknown): Record<string, unknown> => requireRequest(v)
 
 /**
  * Where the viewer's built assets live (`tools/buildShareViewer.mjs` → `share/dist/assets/`, part of
@@ -101,42 +101,41 @@ export function registerShareIpc(userData: string, secrets: Secrets, where: { vi
   shareFsHooks.deleted = (roots, path) => sharing.forget(roots, path)
 
   handle(CONTRACT.share.status, () => sharing.status())
-  handle(CONTRACT.share.accounts, async (body: unknown) => sharing.accounts(str(req(body).token, 'token')))
-  handleWithEvent(CONTRACT.share.setup, (e, body: unknown) => {
-    const r = req(body)
-    const accountId = optStr(r.accountId, 'accountId')
-    return sharing.setup(str(r.token, 'token'), (p) => e.sender.isDestroyed() || e.sender.send(CONTRACT.share.onSetupProgress.channel, p), accountId)
+  handle(CONTRACT.share.accounts, async (token: unknown) => sharing.accounts(str(token, 'token')))
+  handleWithEvent(CONTRACT.share.setup, (e, token: unknown, accountId: unknown) => {
+    const t = str(token, 'token')
+    const account = optStr(accountId, 'accountId')
+    return sharing.setup(t, (p) => e.sender.isDestroyed() || e.sender.send(CONTRACT.share.onSetupProgress.channel, p), account)
   })
   handle(CONTRACT.share.openCloudflare, async () => void (await shell.openExternal(tokenPage)))
   handle(CONTRACT.share.get, async (body: unknown) => {
-    const r = req(body)
+    const r = requireRequest(body)
     return sharing.get(str(r.root, 'root'), str(r.path, 'path'))
   })
-  handle(CONTRACT.share.list, async (body: unknown) => {
-    const r = req(body)
-    const check = optBool(r.check, 'check')
-    return sharing.list(str(r.root, 'root'), { check: check !== false })
+  handle(CONTRACT.share.list, async (root: unknown, check: unknown) => {
+    const r = str(root, 'root')
+    return sharing.list(r, { check: optBool(check, 'check') !== false })
   })
   handle(CONTRACT.share.publish, async (body: unknown) => {
-    const r = req(body)
+    const r = requireRequest(body)
     const id = optStr(r.id, 'id')
     return sharing.publish(str(r.root, 'root'), str(r.path, 'path'), str(r.content, 'content'), id)
   })
   handle(CONTRACT.share.setPermission, async (body: unknown) => {
-    const r = req(body)
+    const r = requireRequest(body)
     const allowDownload = bool(r.allowDownload, 'allowDownload')
     return sharing.setPermission(str(r.root, 'root'), str(r.path, 'path'), allowDownload)
   })
   handle(CONTRACT.share.stop, async (body: unknown) => {
-    const r = req(body)
+    const r = requireRequest(body)
     return sharing.stop(str(r.root, 'root'), str(r.path, 'path'))
   })
-  handle(CONTRACT.share.setDomain, async (body: unknown) => {
-    const h = strOrNull(req(body).hostname, 'hostname')
+  handle(CONTRACT.share.setDomain, async (hostname: unknown) => {
+    const h = strOrNull(hostname, 'hostname')
     return sharing.setDomain(h === null || h.trim() === '' ? null : h)
   })
-  handle(CONTRACT.share.disconnect, async (body: unknown) => {
-    const r = req(body)
-    return sharing.disconnect(strOrNull(r.root, 'root'), bool(r.deleteEverything, 'deleteEverything'))
+  handle(CONTRACT.share.disconnect, async (root: unknown, deleteEverything: unknown) => {
+    const r = strOrNull(root, 'root')
+    return sharing.disconnect(r, bool(deleteEverything, 'deleteEverything'))
   })
 }

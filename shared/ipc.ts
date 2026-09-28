@@ -7,7 +7,7 @@
  * time and a missing or mistyped door fails to compile. `watch` and `window.onFlush` are the two
  * hand-written specials (`SPECIAL`). Long form: docs/CONTRACTS.md › Bridge API.
  */
-import type { AppState, BoardVersion, BoardVersionScene, BridgeError, ComponentItem, ComponentReadResponse, ComponentRenameRequest, ComponentSaveRequest, ComponentSlugRequest, CreateDirResponse, CreateFileRequest, CreateFileResponse, DeleteRequest, DeleteResponse, DiagramLoadRequest, DiagramLoadResponse, DiagramSaveRequest, DiagramSaveResponse, DrawingLoadRequest, DrawingLoadResponse, DrawingSaveRequest, DrawingSaveResponse, FileClipRequest, FileClipState, FileDeletedEvent, FileRenamedEvent, FolderPatch, GithubSyncStatus, MediaFavoritesRequest, MediaImportRequest, MediaImportResponse, MediaPreviewRequest, MediaPreviewResponse, MediaRecentRequest, MediaSearchRequest, MediaSearchResponse, OpenDrawingResponse, OpenWindowOptions, PasteRequest, PasteResponse, PickFolderResponse, RenameFileRequest, RenameFileResponse, RevealRequest, RevealResponse, SaveDrawingRequest, SaveDrawingResponse, SaveImageRequest, SecretHasRequest, SecretSetRequest, SettingsState, ShareBoardRequest, ShareEntry, ShareListEntry, SharePermissionRequest, SharePublishRequest, ShareSetupProgress, ShareStatus, ShrinkResult, StoredMediaItem, TreeResponse, VaultStorageStats, WatchEvent, WindowIdentity } from './types'
+import type { AppState, BoardVersion, BoardVersionScene, BridgeError, ComponentItem, ComponentReadResponse, ComponentRenameRequest, ComponentSaveRequest, ComponentSlugRequest, CreateDirResponse, CreateFileRequest, CreateFileResponse, DeleteRequest, DeleteResponse, DiagramLoadRequest, DiagramLoadResponse, DiagramSaveRequest, DiagramSaveResponse, DrawingLoadRequest, DrawingLoadResponse, DrawingSaveRequest, DrawingSaveResponse, FileClipRequest, FileClipState, FileDeletedEvent, FileRenamedEvent, FolderPatch, GithubSyncStatus, MediaFavoritesRequest, MediaImportRequest, MediaImportResponse, MediaPreviewRequest, MediaPreviewResponse, MediaRecentRequest, MediaSearchRequest, MediaSearchResponse, OpenDrawingResponse, OpenWindowOptions, PasteRequest, PasteResponse, PickFolderResponse, RenameFileRequest, RenameFileResponse, RevealRequest, RevealResponse, SaveDrawingRequest, SaveDrawingResponse, SaveImageRequest, SecretHasRequest, SecretSetRequest, SettingsState, ShareAccount, ShareBoardRequest, ShareEntry, ShareListEntry, SharePermissionRequest, SharePublishRequest, ShareSetupProgress, ShareStatus, ShrinkResult, StoredMediaItem, TreeResponse, VaultStorageStats, WatchEvent, WindowIdentity } from './types'
 
 /** A request main answers. The type parameters are phantom: only `kind` and `channel` exist at runtime. */
 export interface Invoke<A extends unknown[], R> {
@@ -212,24 +212,24 @@ export const CONTRACT = {
   share: {
     status: invoke<[], ShareStatus>('share:status'),
     /** The Cloudflare accounts a pasted key sees — more than one means a picker. */
-    accounts: invoke<[req: { token: string }], { id: string; name: string }[]>('share:accounts'),
+    accounts: invoke<[token: string], ShareAccount[]>('share:accounts'),
     /** Provision everything from one pasted token; progress arrives on `onSetupProgress`. */
-    setup: invoke<[req: { token: string; accountId?: string }], ShareStatus>('share:setup'),
+    setup: invoke<[token: string, accountId?: string], ShareStatus>('share:setup'),
     onSetupProgress: push<ShareSetupProgress>('share:setup-progress'),
     /** Cloudflare's "create API token" page (the fake one in the demo), in the browser. */
     openCloudflare: invoke<[], void>('share:open-cloudflare'),
     get: invoke<[req: ShareBoardRequest], ShareEntry | null>('share:get'),
     /** `check: false` skips the live check (no network): the sidebar badges' call. */
-    list: invoke<[req: { root: string; check?: boolean }], ShareListEntry[]>('share:list'),
+    list: invoke<[root: string, check?: boolean], ShareListEntry[]>('share:list'),
     /** First share (new id), or the automatic re-upload after a save (same id, permission untouched). */
     publish: invoke<[req: SharePublishRequest], ShareEntry>('share:publish'),
     /** "View and download" / "view only" on the SAME link — no re-upload. */
     setPermission: invoke<[req: SharePermissionRequest], ShareEntry>('share:set-permission'),
     /** Delete the object (the link dies at once) and forget the record. */
     stop: invoke<[req: ShareBoardRequest], void>('share:stop'),
-    setDomain: invoke<[req: { hostname: string | null }], ShareStatus>('share:set-domain'),
+    setDomain: invoke<[hostname: string | null], ShareStatus>('share:set-domain'),
     /** Forget the token and password; `deleteEverything` first wipes every object, the Worker and the bucket. */
-    disconnect: invoke<[req: { root: string | null; deleteEverything: boolean }], ShareStatus>('share:disconnect'),
+    disconnect: invoke<[root: string | null, deleteEverything: boolean], ShareStatus>('share:disconnect'),
     /** Any status or shares.json change, in every window. */
     onChanged: push('share:changed'),
   },

@@ -1,7 +1,6 @@
 import type { GithubSyncStatus } from '@shared/types'
 import { CONTRACT } from '@shared/ipc'
-import { requireAbsPath } from '../fs/fsUtils'
-import { bool } from '../fs/validate'
+import { bool, requireAbsPath } from '../fs/validate'
 import { subscribe } from '../fs/watchers'
 import { detectRepo } from '../git/detect'
 import { resolveGit } from '../git/exec'

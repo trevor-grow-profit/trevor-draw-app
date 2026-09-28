@@ -1,7 +1,8 @@
 import { mkdir, readFile } from 'node:fs/promises'
 import path from 'node:path'
 import { VAULT_CONFIG_DIR, type VaultConfigChange } from '@shared/types'
-import { atomicWrite, BridgeFailure, fsCall, requireAbsPath, toBridgeFailure } from './fs/fsUtils'
+import { atomicWrite, BridgeFailure, fsCall, toBridgeFailure } from './fs/fsUtils'
+import { requireAbsPath } from './fs/validate'
 import { createWatchedFolder, type WatchedFolder } from './watchedFolder'
 
 /**

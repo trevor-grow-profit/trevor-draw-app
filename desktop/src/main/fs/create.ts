@@ -3,8 +3,8 @@ import type { CreateDirResponse, CreateFileRequest, CreateFileResponse } from '@
 import { isDiagram, isDrawing } from '@shared/fileKind'
 import { stampBoardMeta } from '@shared/drawingAssets'
 import { diagramDocumentError, diagramRoot, stampDiagramMeta } from '@shared/diagramFile'
-import { BridgeFailure, fsCall, requireAbsPath } from './fsUtils'
-import { requireObject } from './validate'
+import { BridgeFailure, fsCall } from './fsUtils'
+import { requireAbsPath, requireObject } from './validate'
 
 /**
  * Creation calls for the sidebar's "New folder" / "New drawing" (GRO-2022). Existence races

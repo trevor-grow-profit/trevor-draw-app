@@ -1,6 +1,7 @@
 import type { TreeResponse } from '@shared/types'
 import { ASSETS_DIR } from '@shared/drawingAssets'
-import { buildTree, fsCall, requireAbsPath, requireDir } from './fsUtils'
+import { buildTree, fsCall, requireDir } from './fsUtils'
+import { requireAbsPath } from './validate'
 
 /**
  * `window.yaseenDraw.tree(root)`: recursive vault tree of `root` (see `buildTree`).

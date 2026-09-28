@@ -26,6 +26,12 @@ export const MAX_SHARE_BYTES = 100 * 1000 * 1000
 export const CLOUDFLARE_TOKEN_SECRET = 'cloudflareApiToken'
 export const SHARE_UPLOAD_PASSWORD_SECRET = 'shareUploadPassword'
 
+/** One Cloudflare account a pasted key can see: the setup's account picker lists these. */
+export interface ShareAccount {
+  id: string
+  name: string
+}
+
 /** What Settings › Sharing shows at the top. Holds no secret. */
 export interface ShareStatus {
   state: 'off' | 'ready'

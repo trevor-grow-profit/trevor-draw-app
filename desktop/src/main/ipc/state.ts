@@ -1,8 +1,8 @@
 import { isSortOrder, type FolderPatch } from '@shared/types'
 import { CONTRACT } from '@shared/ipc'
-import { BridgeFailure, requireAbsPath } from '../fs/fsUtils'
-import { requireObject, strOrNull } from '../fs/validate'
-import { isStringArray } from '@shared/guards'
+import { BridgeFailure } from '../fs/fsUtils'
+import { requireAbsPath, requireObject, strArray, strOrNull } from '../fs/validate'
+import { isFiniteNumber } from '@shared/guards'
 import { isSettings, type Store } from '../store'
 import { broadcastAll } from './broadcast'
 import { handle } from './envelope'
@@ -11,10 +11,7 @@ import { handle } from './envelope'
 function requireFolderPatch(body: unknown): FolderPatch {
   const raw = requireObject(body, 'patch must be an object')
   const patch: FolderPatch = {}
-  if (raw.expanded !== undefined) {
-    if (!isStringArray(raw.expanded)) throw new BridgeFailure('BAD_REQUEST', "'expanded' must be a string array")
-    patch.expanded = raw.expanded
-  }
+  if (raw.expanded !== undefined) patch.expanded = strArray(raw.expanded, 'expanded')
   if (raw.lastFile !== undefined) patch.lastFile = strOrNull(raw.lastFile, 'lastFile')
   if (raw.sortOrder !== undefined) {
     if (!isSortOrder(raw.sortOrder)) throw new BridgeFailure('BAD_REQUEST', "'sortOrder' must be name, updated or created")
@@ -33,7 +30,7 @@ export function registerStateIpc(store: Store): void {
     store.setSettings(settings)
   })
   handle(CONTRACT.state.setSidebarWidth, async (width: unknown) => {
-    if (typeof width !== 'number' || !Number.isFinite(width)) throw new BridgeFailure('BAD_REQUEST', "'width' must be a finite number")
+    if (!isFiniteNumber(width)) throw new BridgeFailure('BAD_REQUEST', "'width' must be a finite number")
     store.setSidebarWidth(width)
   })
   handle(CONTRACT.state.pushRecent, async (path: unknown) => {

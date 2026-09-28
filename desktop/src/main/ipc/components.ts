@@ -14,20 +14,12 @@
 import { shell } from 'electron'
 import type { ComponentRenameRequest, ComponentSaveRequest, ComponentSlugRequest } from '@shared/types'
 import { CONTRACT } from '@shared/ipc'
-import { requireObject, str } from '../fs/validate'
+import { requireRequest, str } from '../fs/validate'
 import { followLibraryFolder } from '../library/folder'
 import { createComponentStore, type ComponentStore } from '../library/componentStore'
 import type { Store } from '../store'
 import { broadcastAll } from './broadcast'
 import { handle } from './envelope'
-
-/**
- * The SHAPE guards only — "is this field a non-empty string" — because the request crosses IPC
- * from a sandboxed renderer and arrives as `unknown`. What the value MEANS (a real slug, a usable
- * name, a PNG dataURL) is the store's, which is the only layer that can answer it; the messages
- * agree on purpose, so a caller cannot tell which layer refused.
- */
-const requireRequest = (v: unknown): Record<string, unknown> => requireObject(v, 'missing request')
 
 function requireSlugRequest(v: unknown): ComponentSlugRequest {
   return { slug: str(requireRequest(v).slug, 'slug') }
