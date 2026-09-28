@@ -24,8 +24,8 @@ npm run dev
 npm run desktop:build
 ```
 
-- Builds `desktop/out` (electron-vite) and then packages with electron-builder: `desktop/dist-app/mac-arm64/Yaseen Draw.app` (~351 MB, ~47 MB of it the bundled draw.io webapp, pruned to what the app loads — YAZ-1973) and `desktop/dist-app/Yaseen Draw-0.1.0-arm64.dmg` (~125 MB, lzma — `tools/packDesktop.mjs` converts electron-builder's zlib image, mounts it and checks the app's seal; YAZ-2073 3A) — arm64 only, and the version in the dmg name is the ROOT `package.json` version that `tools/packDesktop.mjs` stamps in. The filenames contain spaces, so quote every path.
-- The renderer ships minified; its hidden sourcemaps land in the gitignored `desktop/.maps/<version>/`, never in the app (🔒 YAZ-2073 D14) — keep that folder for a release whose stack traces you may need to read. A stack frame such as `app://yaseen/assets/index-CUvbLYUM.js:23:53960` maps back with `source-map-js` (installed with Vite; it counts columns from 0, a stack from 1):
+- Builds `desktop/out` (electron-vite) and then packages with electron-builder: `desktop/dist-app/mac-arm64/Yaseen Draw.app` and `desktop/dist-app/Yaseen Draw-<version>-arm64.dmg` (lzma — `tools/packDesktop.mjs` converts electron-builder's zlib image, mounts it and checks the app's seal; YAZ-2073 3A) — arm64 only, and `<version>` is the ROOT `package.json` version that `tools/packDesktop.mjs` stamps in. The YAZ-2073 build is 367.5 MB installed (46.4 MB of it the bundled draw.io webapp, pruned to what the app loads — YAZ-1973) and a 124.7 MB dmg, from v0.1.11's 387.2 MB / 172.5 MB (MB = 10⁶ bytes, as `npm run perf:budget` counts). The filenames contain spaces, so quote every path.
+- The renderer ships minified; its hidden sourcemaps land in the gitignored `desktop/.maps/<version>/`, never in the app (🔒 YAZ-2073 D14) — keep that folder for a release whose stack traces you may need to read, and copy it away before building the same version again: every build replaces its version's folder. A stack frame such as `app://yaseen/assets/index-CUvbLYUM.js:23:53960` maps back with `source-map-js` (installed with Vite; it counts columns from 0, a stack from 1):
 
 ```bash
 node -e "const {SourceMapConsumer}=require('source-map-js'); const m=new SourceMapConsumer(require('./desktop/.maps/0.1.11/assets/index-CUvbLYUM.js.map')); console.log(m.originalPositionFor({ line: 23, column: 53959 }))"
@@ -71,23 +71,27 @@ npm run e2e       # build, then the Playwright suite (e2e/) against desktop/out
   never read. Windows are transparent while it runs (`E2E_SHOW=1` shows them), but each launch still
   takes keyboard focus, so do not type elsewhere during a run. Trash, Finder, default-app and browser
   hand-offs are recorded, not performed (`e2e/support/mainHook.cjs`); the image-paste test and the
-  two copy-path tests borrow the system clipboard and put its text or image back. About 110 tests,
-  a few minutes at the default 3 workers (`E2E_WORKERS=n`); `npm run e2e -- <file or -g pattern>`
-  runs a subset, and a failing test's sandbox is kept under `$TMPDIR/yaseen-draw-e2e/`.
+  three copy-path tests borrow the system clipboard one at a time and put its text or image back.
+  129 tests, a few minutes at the default 3 workers (`E2E_WORKERS=n`); `npm run e2e -- <file or -g
+  pattern>` runs a subset, a failing test's sandbox is kept under `$TMPDIR/yaseen-draw-e2e/`
+  (`E2E_KEEP=1` keeps the passing ones' too). On a heavily loaded Mac (4+ workers beside other
+  work) the external-change reload tests in `autosave` and `boardDocument` have timed out and then
+  passed alone: rerun a failure by itself before calling it a bug.
 - `E2E_PACKAGED=1 npx playwright test -c e2e/playwright.config.ts` runs the same suite against the
   packaged bundle (`npm run desktop:build` first). A bundle ignores `-r`, so the OS stubs are
   installed right after launch — by then the bundle has registered itself as the `yaseendraw://`
   handler, exactly as launching it by hand does (the installed app takes it back on its next launch).
-- The hand pass is [`docs/REGRESSION.md`](docs/REGRESSION.md): stable scenario IDs, ★ core. It
-  covers what the suite cannot see (the packaged app, Finder and LaunchServices, how things look, a
-  real browser on a share link, Windows).
+- The hand pass is [`docs/REGRESSION.md`](docs/REGRESSION.md): stable scenario IDs, ★ core, and
+  the list of what the suite cannot see.
 - If `npm` isn't in the shell's PATH (agent shells often lack it), use its install location directly — e.g. `/opt/homebrew/bin/npm` (ARM mac), `/usr/local/bin/npm` (Intel mac), or the Volta/nvm/fnm install under `$HOME`.
 
 ### Behaviour checks: the dev app in an isolated profile
 
-CI is typecheck + unit tests + build. Behaviour is verified by `npm run e2e` (above; ⚡ YAZ-2073 D17
-amended 🔒 OD1 on YAZ-1805, which forbade any UI driver) and by LAUNCHING the app and using it —
-the `docs/REGRESSION.md` list.
+CI (`.github/workflows/ci.yml`, every pull request) is typecheck + unit tests + build + the size
+and integrity gate on that build (`perf:budget:ci`); `windows.yml` also packages the Windows
+installer on a pull request that touches the shell, shared code, the share viewer or the pack tools.
+Behaviour is verified by `npm run e2e` (above; ⚡ YAZ-2073 D17 amended 🔒 OD1 on YAZ-1805, which
+forbade any UI driver) and by LAUNCHING the app and using it — the `docs/REGRESSION.md` list.
 
 The recipe, which never touches the real app state:
 
@@ -119,7 +123,9 @@ dataURLs, corrupt and empty files, a 40-image board, a ~10 MB PNG, unicode and n
 orphans) and, at `<dir> (origin).git` unless `--origin` says otherwise, a bare origin for the sync
 chip. `--vault` is REQUIRED and has no default, because the script WIPES what it is given; a path
 that already exists is refused unless you add `--force`. It writes no profile: open the vault with
-⌘O.
+⌘O. Every seed script shares `tools/lib/seedKit.mjs`'s strict parser: an unknown flag or a missing
+`--vault <dir>` ("--vault <dir> is required") prints the usage and exits 2, and `--help` prints it
+and exits 0.
 
 Two computers merging one vault (YAZ-1897): `node tools/seedMergeDemoVault.mjs --vault <dir>
 --profile <profile-dir>` builds the vault, a bare origin beside it and "Sam's" clone, and leaves
@@ -153,12 +159,14 @@ The packaged app is checked the same way — launch
 npm run desktop:build && npm run perf:budget   # size + integrity of the packaged app vs tools/perf/budget.json
 npm run perf -- launch drawio --runs 5          # scenarios (list: npm run perf); `all` runs every one (~45 min)
 npm run perf -- canvas-4k --dev                 # desktop/out under the workspace Electron, no packaging
+npm run perf:pixels -- --dev --out <a>          # an engine bump's pixels; then --out <b> --compare <a> on the new build
 ```
 
 `perf` generates its fixtures (seeded, so identical every run: 1k/4k-shape boards, 121- and 90-image
 boards, a 32 MB legacy board with its images inline, a 2 000-board vault, a draw.io flowchart, a
 git vault with a bare origin) and an isolated profile under `--work` (default
-`<tmpdir>/yaseen-draw-perf`), launches the app once per run on them, drops the first run as a
+`<tmpdir>/yaseen-draw-perf`; a non-empty folder `tools/perf` did not make is refused, since it is
+rewritten), launches the app once per run on them, drops the first run as a
 warm-up and prints JSON — median, p95 and `cv` (noise) per metric — checked against the `perf`
 ceilings. It opens real windows for a few seconds each and never reads the real profile or vaults.
 Numbers only compare on the same machine: note `loadAvg` in the output and rerun when it is high.
@@ -167,6 +175,6 @@ Numbers only compare on the same machine: note `loadAvg` in the output and rerun
 ## Gotchas
 
 - Never draw in real vault files during testing — copy the vault to a scratch dir first.
-- The vault is on NFS: saves can take 0.3–4 s and the watcher may double-fire. Echo suppression is by mtime (`Autosave.settled()`). This applies to the packaged app exactly as to dev — same main-process fs, same libuv.
+- The vault is on NFS: saves can take 0.3–4 s, and on a network volume the watcher runs its chokidar polling fallback, which may double-fire. Echo suppression is by mtime (`Autosave.settled()`). This applies to the packaged app exactly as to dev — same main-process fs, same libuv.
 - The main process has no path jail (owner's choice): any absolute path the user can read or write, the app can too.
 - Linear project: https://linear.app/growprofit/issue/YAZ-1775 — the port's decision record.

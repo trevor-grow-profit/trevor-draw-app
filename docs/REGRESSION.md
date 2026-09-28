@@ -18,8 +18,7 @@ Add a scenario when a bug escapes both layers; mark it ★ only if it guards a s
 **The coverage tag** (last column everywhere): `A: spec` = an e2e spec (file name without
 `.spec.ts`) exercises the behaviour; `A (part): spec — rest` = it covers some of it and the rest is
 by hand; `M` = hand only. Only the e2e suite counts as A here — unit tests are listed in the
-feature-safety-net inventory, not in this file. A `test.fail` marks a behaviour the suite knows is
-broken today; it counts as part, never as A.
+[feature-safety-net](../thoughts/yaz-2073-scope/research/feature-safety-net.md) inventory, not in this file.
 
 **Setup.** Run the PACKAGED app (`npm run desktop:build`, then
 `desktop/dist-app/mac-arm64/Yaseen Draw.app/Contents/MacOS/Yaseen Draw`) with
@@ -34,7 +33,7 @@ Paste into the PR body and tick each line:
 
 - [ ] `npm test` ✓
 - [ ] `npm run typecheck` ✓
-- [ ] `npm run perf:budget` ✓ — numbers pasted; ceiling lowered when a number dropped (once the script exists)
+- [ ] `npm run perf:budget` ✓ — numbers pasted; ceiling lowered when a number dropped
 - [ ] `npm run e2e` ✓ — test count + wall time pasted
 - [ ] REGRESSION ★ + touched sections ✓ — IDs cited, e.g. `★ + D, W passed on 0.1.12 build`
 
@@ -81,7 +80,7 @@ Paste into the PR body and tick each line:
 |---|---|---|
 | W1 | ⌘⇧N duplicates the window. | A: `windows` (menu, not the key) |
 | W2 | Open in ▸ New window. | A: `windows` |
-| W3 | One board in two windows: a save reloads the clean one; the dirty one shows the bar. | A (part): `windows`, `autosave` — the bar is raised by an outside write; from the second window by hand |
+| W3 | One board in two windows: a save reloads the clean one; the dirty one shows the bar. | A (part): `windows`, `autosave`, `boardDocument` — the bar is raised by an outside write; from the second window by hand |
 | W4 | ⌘O switcher: filter, ⏎ opens beside, ⇧⏎ in place, the held-⇧ "Open here" cue, the ⓘ full path on hover. | A (part): `vaults` — the ⓘ and the held-⇧ cue by hand |
 | W5 | Every vault-menu item, including Reveal in Finder and Open in VS Code. | A (part): `vaults` — Set / Reset display name, Remove; Open in this window, Copy name / path, Reveal, VS Code by hand |
 | W6 | Open Folder… opens beside, never replaces a vault. | A: `vaults` |
@@ -138,11 +137,11 @@ packaged e2e run for the same reason.)
 | ID | Scenario | E2E (A) / hand only (M) |
 |---|---|---|
 | R1 | The dmg mounts; drag-install; first open needs Open Anyway; `codesign -dv` says `Signature=adhoc`. | M |
-| R2 | `npm run desktop:build:win` produces the installer; install and smoke it on a Windows machine before a release. | M |
+| R2 | `npm run desktop:build:win` produces the installer; install and smoke it on a Windows machine before a release. | M (CI's `windows.yml` builds the installer on a pull request; installing it is by hand) |
 
 ## Feature inventory coverage
 
-Every line of feature-safety-net §2 (the YAZ-2073 inventory), in its 12 groups. **F-IDs are stable**;
+Every line of [feature-safety-net](../thoughts/yaz-2073-scope/research/feature-safety-net.md) §2 (the YAZ-2073 inventory), in its 12 groups. **F-IDs are stable**;
 "By hand" names the H-list rows above (or an imported row below) that walk the rest.
 
 ### Documents & disk
@@ -156,10 +155,10 @@ Every line of feature-safety-net §2 (the YAZ-2073 inventory), in its 12 groups.
 | F5 | One kind classifier (case-insensitive; `x.drawio.svg` has no kind) | A: `boards`, `demovaults` | — |
 | F6 | Board metadata block (dates as the first key) | A: `autosave`, `boards` | — |
 | F7 | Non-board files listed, opened in the OS default app | A: `boards` (hand-off recorded) | D9 |
-| F8 | Outside edit: reload when clean, Reload / Keep mine when dirty | A: `autosave`, `drawio`, `windows` | ★C11 |
+| F8 | Outside edit: reload when clean, Reload / Keep mine when dirty | A: `autosave`, `drawio`, `windows`, `boardDocument` | ★C11 |
 | F9 | Fit-to-content on open (10–100 %) | A: `launch` | — |
 | F10 | Saved / Synced chips | A: `drawio`, `sync`, `settings` | — |
-| F11 | Flush-on-close / flush-on-quit handshake (5 s cap) | A: `autosave`, `drawio`, `windows` | ★C12 |
+| F11 | Flush-on-close / flush-on-quit handshake (5 s cap) | A: `autosave`, `drawio`, `windows`, `boardDocument` | ★C12 |
 
 ### Excalidraw canvas
 
@@ -262,7 +261,7 @@ Every line of feature-safety-net §2 (the YAZ-2073 inventory), in its 12 groups.
 | ID | Feature | Coverage | By hand |
 |---|---|---|---|
 | F68 | Setup from one pasted token, account, subdomain, progress steps | A: `share` (fake Cloudflare) | K1 |
-| F69 | Share dialog (Not shared / Anyone; View only), ⌘⇧L + right-click | A (part): `share` — right-click; ⌘⇧L untested | — |
+| F69 | Share dialog (Not shared / Anyone; View only), ⌘⇧L + right-click | A (part): `share` — right-click and the menu item; the ⌘⇧L key by hand | — |
 | F70 | Always-live re-upload (10 s settle); rename / delete follow | A (part): `share` — rename / delete follow by hand | K4 K6 |
 | F71 | Custom domain, Forget key, Delete all | M | K7 |
 | F72 | Worker routes (PUT / DELETE, `/b` `/scene` `/raw`, CSP) | A: `share` (the same `worker.js` behind the fake) | K3 |
@@ -285,10 +284,10 @@ Every line of feature-safety-net §2 (the YAZ-2073 inventory), in its 12 groups.
 | ID | Feature | Coverage | By hand |
 |---|---|---|---|
 | F81 | macOS arm64 dmg, ad-hoc deep seal | M | R1 |
-| F82 | Windows x64 NSIS, unsigned | M | R2 |
-| F83 | Release workflow on a tag | M | R1 R2 |
+| F82 | Windows x64 NSIS, unsigned | M (built by CI's `windows.yml` on a pull request) | R2 |
+| F83 | Release workflow on a tag | M (`windows.yml` runs its Windows build on a pull request) | R1 R2 |
 | F84 | Privileged `app://` scheme (standard, secure, fetch) | A: `launch` | — |
-| F85 | Demo seed scripts and `packEngine` keep working | A (part): `demovaults` — three seeds; the rest unit-only | — |
+| F85 | Demo seed scripts and `packEngine` keep working | A (part): `demovaults`, `history` — four seeds; the rest unit-only | — |
 
 ## Imported issue lists
 
@@ -303,14 +302,14 @@ The "Scenarios proven in the demo" line has no IDs; numbered here in its order.
 |---|---|---|
 | 1775-1 | Orphan sweep: the old orphan goes to Trash, the fresh one stays. | A: `images` |
 | 1775-2 | An outside edit on disk reloads a clean tab. | A: `autosave` |
-| 1775-3 | Paste → one asset, small JSON, still there after relaunch. | A: `images` |
+| 1775-3 | Paste → one asset, small JSON, still there after relaunch. | A: `images` (the relaunch on a dropped picture) |
 | 1775-4 | The same image twice → one asset. | A: `images` |
 | 1775-5 | A legacy board with embedded images shrinks on its first save. | A: `images` |
 | 1775-6 | A missing asset → placeholder, no crash. | A: `images`, `demovaults` |
 | 1775-7 | Corrupt and empty files → a readable error. | A: `autosave` |
 | 1775-8 | The 40-image and 10 MB boards open. | A: `demovaults` |
 | 1775-9 | Unicode and nested paths: rename and move. | A (part): `boards` — nested move by hand (D11) |
-| 1775-10 | Two windows on one board: reload when clean, the bar when dirty. | A (part): `windows`, `autosave` (W3) |
+| 1775-10 | Two windows on one board: reload when clean, the bar when dirty. | A (part): `windows`, `autosave`, `boardDocument` (W3) |
 | 1775-11 | The Grid pref applies across boards and windows and survives relaunch. | A (part): `settings` — relaunch by hand (T1) |
 | 1775-12 | R / O / W / T show the horizontal toolbar with key hints beside the sidebar. | A (part): `canvas` — R only; the toolbar's look by hand |
 | 1775-13 | The Favorites tab. | A: `sidebar` |
@@ -352,12 +351,12 @@ The 4A / 4B pass lists are not in the export — see the issue. Below is the dec
 | 1802-C1 | Create, name, and a refused rename or taken name. | A: `boards` |
 | 1802-C2 | Compressed, multi-page, empty, corrupt and not-mxfile diagrams. | A (part): `drawio`, `demovaults` — empty and not-mxfile by hand |
 | 1802-C3 | `.DRAWIO` and `x.drawio.svg` classify correctly. | A: `boards`, `demovaults` |
-| 1802-C4 | Outside edit to a clean vs a dirty diagram. | A (part): `drawio` — clean only |
-| 1802-C5 | One diagram in two windows. | M |
+| 1802-C4 | Outside edit to a clean vs a dirty diagram. | A: `drawio`, `boardDocument` |
+| 1802-C5 | One diagram in two windows. | A: `boardDocument` |
 | 1802-C6 | An edit survives ⌘Q straight after it. | A: `drawio` |
 | 1802-C7 | Sync keeps both copies of a diagram. | A: `demovaults` |
 | 1802-C8 | Offline, and remote images blocked. | A: `drawio`, `demovaults` |
-| 1802-C9 | Embedded images show. | A: `demovaults` |
+| 1802-C9 | Embedded images show. | A (part): `demovaults` — it opens without an error; that the picture shows by hand |
 | 1802-C10 | A 2000-cell diagram stays fast. | A (part): `demovaults` — it opens; speed by hand |
 | 1802-C11 | Unicode paths. | M |
 | 1802-C12 | Theme and the dark-colour setting apply live. | A: `settings` |
@@ -406,7 +405,7 @@ S10 is left out: the issue marks it impossible (the app quits with its last wind
 | 1941-S10 | After an in-place switch the sidebar shows its normal default lens. | A: `vaults` |
 | 1941-S11 | Open in this window on a vault open elsewhere → two windows show it. | M |
 | 1941-S12 | A gone vault's row greys "Folder not found"; the panel stays; reopened it is gone. | A (part): `vaults` — the grey row; the reopen by hand |
-| 1941-S13 | Remove drops the row at once; the panel stays; the folder stays on disk. | A: `vaults` |
+| 1941-S13 | Remove drops the row at once; the panel stays; the folder stays on disk. | A (part): `vaults` — the state file; the row, the panel and the folder by hand |
 | 1941-S14 | Open Recent and the other window's panel drop it; Open folder… brings it back on top. | A (part): `vaults` — the state file; the rest by hand |
 | 1941-S15 | Esc closes the menu first, then the panel. | M |
 | 1941-S16 | A click outside closes only the menu. | M |

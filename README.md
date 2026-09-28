@@ -16,7 +16,7 @@ and the canvas is Yasin's own Excalidraw fork.
 
 ## Requirements
 
-Node.js 22 or newer (`package.json` `engines`, and what CI runs), npm, macOS (the packaged app targets macOS arm64; the dev build runs wherever Electron does).
+Node.js 22.2 or newer (`package.json` `engines`, and what CI runs), npm, macOS (the packaged app targets macOS arm64; the dev build runs wherever Electron does).
 
 ## Run
 
