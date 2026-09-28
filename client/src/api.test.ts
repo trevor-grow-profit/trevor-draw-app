@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import type { YaseenDrawApi } from '@shared/types'
+import type { YaseenDrawApi } from '@shared/ipc'
 import { api, BridgeRequestError } from './api'
 
 /** A minimal `window.yaseenDraw` stub: only the methods the client `api` delegates to. */

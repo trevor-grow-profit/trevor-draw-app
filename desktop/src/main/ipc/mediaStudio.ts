@@ -15,7 +15,7 @@
 import { join } from 'node:path'
 import { mkdir } from 'node:fs/promises'
 import { isMediaBytesProvider, isMediaSearchSource, PIXABAY_SECRET, type MediaBytesRequest, type MediaSearchRequest } from '@shared/types'
-import { CH } from '../../channels'
+import { CONTRACT } from '@shared/ipc'
 import { BridgeFailure } from '../fs/fsUtils'
 import { requireObject, str, strOrNull } from '../fs/validate'
 import { createMediaCache, type MediaCache } from '../media/cache'
@@ -56,9 +56,9 @@ export function registerMediaStudioIpc(userData: string, secrets: Secrets, fetch
       (err: unknown) => console.warn('[media-cache] could not prepare', folder, err),
     )
 
-  handle(CH.mediaSearch, async (req: unknown) => providers.search(requireSearchRequest(req)))
-  handle(CH.mediaPreview, async (req: unknown) => providers.preview(requireBytesRequest(req)))
-  handle(CH.mediaImport, async (req: unknown) => providers.import(requireBytesRequest(req)))
+  handle(CONTRACT.media.search, async (req: unknown) => providers.search(requireSearchRequest(req)))
+  handle(CONTRACT.media.preview, async (req: unknown) => providers.preview(requireBytesRequest(req)))
+  handle(CONTRACT.media.import, async (req: unknown) => providers.import(requireBytesRequest(req)))
 
   return folder
 }

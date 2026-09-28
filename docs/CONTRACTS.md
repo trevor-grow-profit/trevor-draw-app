@@ -139,8 +139,12 @@ Two kinds of BOARD, one extension each (🔒 YAZ-1802 D1 / D2).
 ## Bridge API
 
 The renderer is sandboxed (`contextIsolation: true`, `nodeIntegration: false`, `sandbox: true`).
-Its ONLY door to the machine is `window.yaseenDraw`, defined by `desktop/src/preload/index.ts`
-over the channels in `desktop/src/channels.ts`, typed by `YaseenDrawApi` in `shared/types/`.
+Its ONLY door to the machine is `window.yaseenDraw`, declared once as data: `CONTRACT` in
+`shared/ipc.ts` names every channel, its kind (an invoke main answers, or a push main sends) and
+its types (YAZ-2073 🔒 D16). The preload builds the bridge from it, main registers each handler
+against its entry (so a missing or mistyped door fails `npm run typecheck`, and
+`main/ipc/index.test.ts` pins one handler per invoke), and `YaseenDrawApi` is derived from it;
+`watch` and `window.onFlush` are the two hand-written specials.
 Every `ipcMain.handle` answers with an `Envelope<T>`: `{ ok: true, value }` or
 `{ ok: false, error }` carrying a structured `BridgeError` (`code`, `message`, optional `path` /
 `mtime`), which the preload rethrows. Electron flattens a thrown Error to its message, which is

@@ -1,5 +1,5 @@
 import type { AppState, GithubSyncStatus } from '@shared/types'
-import { CH } from '../../channels'
+import { CONTRACT } from '@shared/ipc'
 import { requireAbsPath } from '../fs/fsUtils'
 import { bool } from '../fs/validate'
 import { subscribe } from '../fs/watchers'
@@ -54,15 +54,15 @@ export function registerGithubIpc(store: Store): GitSyncManager {
     subscribeVault: subscribe,
     subscribeConfig,
     // Every live window hears about every vault; renderers filter by `status.root` (the `state:changed` posture).
-    onStatus: (status) => broadcastAll(CH.githubStatusChanged, status),
+    onStatus: (status) => broadcastAll(CONTRACT.github.onStatus, status),
     syncPass,
     remoteMoved,
     inspect,
   })
 
-  handle(CH.githubStatus, async (root: unknown) => manager.status(requireAbsPath(root, 'root')))
-  handle(CH.githubSyncNow, async (root: unknown) => manager.syncNow(requireAbsPath(root, 'root')))
-  handle(CH.githubSetEnabled, async (root: unknown, enabled: unknown) => {
+  handle(CONTRACT.github.status, async (root: unknown) => manager.status(requireAbsPath(root, 'root')))
+  handle(CONTRACT.github.syncNow, async (root: unknown) => manager.syncNow(requireAbsPath(root, 'root')))
+  handle(CONTRACT.github.setEnabled, async (root: unknown, enabled: unknown) => {
     const dir = requireAbsPath(root, 'root')
     // Off-by-default fails closed everywhere else too (`manager.ts` reads `{ enabled: true }` exactly);
     // here the boolean is a hard requirement, because this call WRITES the switch.
@@ -70,9 +70,9 @@ export function registerGithubIpc(store: Store): GitSyncManager {
   })
 
   // Version history (YAZ-1897 D4): every argument is validated in `history.ts`, like `drawing:load`'s.
-  handle(CH.githubHistory, async (root: unknown, path: unknown) => boardHistory(root, path))
-  handle(CH.githubVersion, async (root: unknown, path: unknown, ref: unknown) => boardVersion(root, path, ref))
-  handle(CH.githubRestore, async (root: unknown, path: unknown, ref: unknown) => restoreBoardVersion(root, path, ref))
+  handle(CONTRACT.github.history, async (root: unknown, path: unknown) => boardHistory(root, path))
+  handle(CONTRACT.github.version, async (root: unknown, path: unknown, ref: unknown) => boardVersion(root, path, ref))
+  handle(CONTRACT.github.restore, async (root: unknown, path: unknown, ref: unknown) => restoreBoardVersion(root, path, ref))
 
   store.onChange((state) => manager.setOpenRoots(rootsOf(state)))
   manager.setOpenRoots(rootsOf(store.get()))

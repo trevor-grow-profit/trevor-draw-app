@@ -1,6 +1,6 @@
 import { ipcMain, type IpcMainEvent } from 'electron'
 import type { WatchEvent } from '@shared/types'
-import { CH } from '../../channels'
+import { SPECIAL } from '@shared/ipc'
 import { requireAbsPath, requireDir, toBridgeFailure } from '../fs/fsUtils'
 import { subscribe } from '../fs/watchers'
 
@@ -18,8 +18,8 @@ const pending = new Map<number, Set<string>>()
  * no matter how many windows or subscriptions; a window going away drops all of its subscriptions.
  */
 export function registerWatchIpc(): void {
-  ipcMain.on(CH.watchSubscribe, (e, msg: unknown) => onSubscribe(e, msg))
-  ipcMain.on(CH.watchUnsubscribe, (e, id: unknown) => onUnsubscribe(e, id))
+  ipcMain.on(SPECIAL.watchSubscribe, (e, msg: unknown) => onSubscribe(e, msg))
+  ipcMain.on(SPECIAL.watchUnsubscribe, (e, id: unknown) => onUnsubscribe(e, id))
 }
 
 async function onSubscribe(e: IpcMainEvent, msg: unknown): Promise<void> {
@@ -29,7 +29,7 @@ async function onSubscribe(e: IpcMainEvent, msg: unknown): Promise<void> {
   const { sender } = e
   // A watcher event can land between the window closing and its `destroyed` hook running.
   const send = (ev: WatchEvent) => {
-    if (!sender.isDestroyed()) sender.send(CH.watchEvent, { id, ev })
+    if (!sender.isDestroyed()) sender.send(SPECIAL.watchEvent, { id, ev })
   }
   let checking = pending.get(sender.id)
   if (checking === undefined) pending.set(sender.id, (checking = new Set()))

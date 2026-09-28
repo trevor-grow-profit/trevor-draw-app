@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { BrowserWindow, dialog, ipcMain } from 'electron'
-import { CH, type Envelope } from '../../channels'
+import { CONTRACT, type Envelope } from '@shared/ipc'
 import { registerDialogIpc } from './dialog'
 
 vi.mock('electron', () => ({
@@ -33,12 +33,12 @@ beforeEach(() => {
   registerDialogIpc()
 })
 
-const pick = () => registered(CH.dialogPickFolder)({ sender })
-const open = () => registered(CH.dialogOpenFile)({ sender })
+const pick = () => registered(CONTRACT.pickFolder.channel)({ sender })
+const open = () => registered(CONTRACT.dialog.openDrawing.channel)({ sender })
 
 describe('dialog:pick-folder', () => {
   it('registers exactly the four dialog channels', () => {
-    expect(vi.mocked(ipcMain.handle).mock.calls.map(([ch]) => ch)).toEqual([CH.dialogPickFolder, CH.dialogOpenFile, CH.dialogSaveFile, CH.dialogSaveImage])
+    expect(vi.mocked(ipcMain.handle).mock.calls.map(([ch]) => ch)).toEqual([CONTRACT.pickFolder.channel, CONTRACT.dialog.openDrawing.channel, CONTRACT.dialog.saveDrawing.channel, CONTRACT.dialog.saveImage.channel])
   })
 
   it('opens an openDirectory dialog parented to the calling window and answers { path }', async () => {
@@ -224,7 +224,7 @@ describe('dialog:save-file', () => {
     for (const d of made) await rm(d, { recursive: true, force: true })
   })
 
-  const save = (body: unknown) => registered(CH.dialogSaveFile)({ sender }, body)
+  const save = (body: unknown) => registered(CONTRACT.dialog.saveDrawing.channel)({ sender }, body)
   const SCENE = '{"type":"excalidraw","version":2,"elements":[],"files":{}}\n'
 
   it('opens a save sheet on the board\u2019s own name and writes the bytes atomically', async () => {
@@ -307,7 +307,7 @@ describe('dialog:save-image', () => {
     for (const d of made) await rm(d, { recursive: true, force: true })
   })
 
-  const save = (body: unknown) => registered(CH.dialogSaveImage)({ sender }, body)
+  const save = (body: unknown) => registered(CONTRACT.dialog.saveImage.channel)({ sender }, body)
   const PNG_BYTES = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
   const SVG_TEXT = '<svg xmlns="http://www.w3.org/2000/svg"/>'
   const PICTURES = { defaultName: 'Flow.png', png: `data:image/png;base64,${PNG_BYTES.toString('base64')}`, svg: `data:image/svg+xml;base64,${Buffer.from(SVG_TEXT).toString('base64')}` }

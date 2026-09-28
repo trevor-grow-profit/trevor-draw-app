@@ -1,21 +1,26 @@
 import { contextBridge, ipcRenderer } from 'electron'
-import type { AppState, ShareSetupProgress, FileClipState, FileDeletedEvent, FileRenamedEvent, GithubSyncStatus, WatchEvent, YaseenDrawApi } from '@shared/types'
-import { CH, type Envelope } from '../channels'
+import type { WatchEvent } from '@shared/types'
+import { CONTRACT, type Envelope, isLeaf, SPECIAL, type YaseenDrawApi } from '@shared/ipc'
 
 /** invoke + unwrap: resolves the value or rejects with the plain `BridgeError` object. */
-async function call<T>(channel: string, ...args: unknown[]): Promise<T> {
-  const env = (await ipcRenderer.invoke(channel, ...args)) as Envelope<T>
-  if (env.ok) return env.value
-  throw env.error
+const invoker =
+  (channel: string) =>
+  async (...args: unknown[]): Promise<unknown> => {
+    const env = (await ipcRenderer.invoke(channel, ...args)) as Envelope<unknown>
+    if (env.ok) return env.value
+    throw env.error
+  }
+
+/** One push channel as a subscribe function: `on(listener)` returns the unsubscribe. */
+const subscriber = (channel: string) => (listener: (payload: unknown) => void) => {
+  const handler = (_e: unknown, payload: unknown) => listener(payload)
+  ipcRenderer.on(channel, handler)
+  return () => void ipcRenderer.removeListener(channel, handler)
 }
 
-/** One main→renderer push channel as a subscribe function: `on(listener)` returns the unsubscribe. */
-function on<T>(channel: string): (listener: (payload: T) => void) => () => void {
-  return (listener) => {
-    const handler = (_e: unknown, payload: T) => listener(payload)
-    ipcRenderer.on(channel, handler)
-    return () => ipcRenderer.removeListener(channel, handler)
-  }
+/** The table's shape with each leaf turned into its function (YAZ-2073 🔒 D16): only its channels exist. */
+export function buildBridge(table: object): Record<string, unknown> {
+  return Object.fromEntries(Object.entries(table).map(([key, v]) => [key, isLeaf(v) ? (v.kind === 'invoke' ? invoker(v.channel) : subscriber(v.channel)) : buildBridge(v as object)]))
 }
 
 /**
@@ -24,171 +29,35 @@ function on<T>(channel: string): (listener: (payload: T) => void) => () => void 
  * Welcome window — acks at once); a rejection still acks, main's 5s cap is the only other out.
  */
 const flushListeners = new Set<() => Promise<void> | void>()
-ipcRenderer.on(CH.appFlush, () => {
-  void Promise.allSettled([...flushListeners].map(async (listener) => listener())).then(() => ipcRenderer.send(CH.appFlushed))
+ipcRenderer.on(SPECIAL.appFlush, () => {
+  void Promise.allSettled([...flushListeners].map(async (listener) => listener())).then(() => ipcRenderer.send(SPECIAL.appFlushed))
 })
 
-const api: YaseenDrawApi = {
-  tree: (root) => call(CH.fsTree, root),
-  createDir: (path) => call(CH.fsCreateDir, path),
-  createFile: (req) => call(CH.fsCreateFile, req),
-  // The drawing DOCUMENT's two doors (🔒 YAZ-1810): the only way a `.excalidraw` tab reads and writes.
-  drawing: {
-    load: (req) => call(CH.drawingLoad, req),
-    save: (req) => call(CH.drawingSave, req),
-    libraryFolder: () => call(CH.drawingLibraryFolder),
-  },
-  // The draw.io DIAGRAM document's two doors (🔒 YAZ-1802 D6): the only way a `.drawio` tab reads and writes.
-  diagram: {
-    load: (req) => call(CH.diagramLoad, req),
-    save: (req) => call(CH.diagramSave, req),
-  },
-  pickFolder: () => call(CH.dialogPickFolder),
-  // The import picker (YAZ-1833): a native open-file dialog that answers the picked file's bytes.
-  dialog: { openDrawing: () => call(CH.dialogOpenFile), saveDrawing: (req) => call(CH.dialogSaveFile, req), saveImage: (req) => call(CH.dialogSaveImage, req) },
-  watch: (root, listener) => {
+const generated = buildBridge(CONTRACT)
+const api = {
+  ...generated,
+  watch: (root: string, listener: (ev: WatchEvent) => void) => {
     const id = crypto.randomUUID()
     const onEvent = (_e: unknown, msg: { id: string; ev: WatchEvent }) => {
       if (msg.id === id) listener(msg.ev)
     }
-    ipcRenderer.on(CH.watchEvent, onEvent)
-    ipcRenderer.send(CH.watchSubscribe, { id, root })
+    ipcRenderer.on(SPECIAL.watchEvent, onEvent)
+    ipcRenderer.send(SPECIAL.watchSubscribe, { id, root })
     return () => {
-      ipcRenderer.removeListener(CH.watchEvent, onEvent)
-      ipcRenderer.send(CH.watchUnsubscribe, id)
+      ipcRenderer.removeListener(SPECIAL.watchEvent, onEvent)
+      ipcRenderer.send(SPECIAL.watchUnsubscribe, id)
     }
   },
-  state: {
-    get: () => call(CH.stateGet),
-    setSettings: (settings) => call(CH.stateSetSettings, settings),
-    setSidebarWidth: (width) => call(CH.stateSetSidebarWidth, width),
-    pushRecent: (path) => call(CH.statePushRecent, path),
-    removeRecent: (path) => call(CH.stateRemoveRecent, path),
-    setFolder: (root, patch) => call(CH.stateSetFolder, root, patch),
-    onChange: on<AppState>(CH.stateChanged),
-  },
   window: {
-    identity: () => call(CH.windowIdentity),
-    setIdentity: (patch) => call(CH.windowSetIdentity, patch),
-    open: (opts) => call(CH.windowOpen, opts),
-    // The vault switcher's door (YAZ-1767 D1): true = the vault is in front (raised or newly opened), false = dead folder, pruned.
-    openRecent: (path) => call(CH.windowOpenRecent, path),
-    closeSelf: () => call(CH.windowCloseSelf),
-    onFlush: (listener) => {
+    ...(generated.window as object),
+    onFlush: (listener: () => Promise<void> | void) => {
       flushListeners.add(listener)
-      return () => {
-        flushListeners.delete(listener)
-      }
+      return () => void flushListeners.delete(listener)
     },
   },
-  // Menu gestures (GRO-2161; tabs GRO-2232): main sends these to the focused window only.
-  menu: {
-    onOpenFolder: on<void>(CH.menuOpenFolder),
-    onOpenRoot: on<string>(CH.menuOpenRoot),
-    onSearch: on<void>(CH.menuSearch),
-    onSwitchVault: on<void>(CH.menuSwitchVault),
-    onSettings: on<void>(CH.menuSettings),
-    onToggleSidebar: on<void>(CH.menuToggleSidebar),
-    onCloseTab: on<void>(CH.menuCloseTab),
-    onNextTab: on<void>(CH.menuNextTab),
-    onPrevTab: on<void>(CH.menuPrevTab),
-    // 🔒 YAZ-1775 D10: File › Export Image… and View › Canvas Background ▸, which main enables only while
-    // the focused window's active tab is a board they work for (Export Image… on a diagram too).
-    onExportImage: on<void>(CH.menuExportImage),
-    onCanvasBackground: on<string>(CH.menuCanvasBackground),
-    onExportDrawing: on<void>(CH.menuExportDrawing),
-    onShareLink: on<void>(CH.menuShareLink),
-  },
-  // Deep links (E1, GRO-2171): main routes a yaseendraw:// URL to the best window.
-  link: {
-    onOpenFile: on<string>(CH.linkOpenFile),
-    onNotice: on<string>(CH.linkNotice),
-  },
-  // In-app rename (Links E1, GRO-2194): the invoke plus the renamed push every window gets.
-  // In-app delete (GRO-2272) rides the same shape: one invoke, one push to every window.
-  // Cut/Copy/Paste (YAZ-1674): two invokes against main's ONE app-wide clipboard, plus the
-  // `clip:changed` push every window gets so its menu can label "Paste N items".
-  file: {
-    rename: (req) => call(CH.fsRename, req),
-    onRenamed: on<FileRenamedEvent>(CH.fileRenamed),
-    delete: (req) => call(CH.fsDelete, req),
-    onDeleted: on<FileDeletedEvent>(CH.fileDeleted),
-    clip: (req) => call(CH.fsClip, req),
-    paste: (req) => call(CH.fsPaste, req),
-    clipState: () => call(CH.fsClipState),
-    onClipChanged: on<FileClipState>(CH.clipChanged),
-  },
-  // OS-level actions: reveal in the system file manager (GRO-2274), open in VS Code (YAZ-963), open in the default app (YAZ-1577).
-  shell: {
-    reveal: (req) => call(CH.shellReveal, req),
-    openVsCode: (req) => call(CH.shellOpenVsCode, req),
-    openDefault: (req) => call(CH.shellOpenDefault, req),
-  },
-  // The Favorites list over `.yaseendraw/favorites.json` (YAZ-1766 6A).
-  favorites: {
-    get: (root) => call(CH.favoritesGet, root),
-    set: (root, paths) => call(CH.favoritesSet, root, paths),
-    onChanged: on<{ root: string }>(CH.favoritesChanged),
-  },
-  // The cross-vault media library over `<library>/media.json` (🔒 YAZ-1775 D4 / D5, YAZ-1817): pointers only, every window hears every change.
-  media: {
-    favorites: (req) => call(CH.mediaFavorites, req),
-    recent: (req) => call(CH.mediaRecent, req),
-    onChanged: on<void>(CH.mediaChanged),
-    // The provider doors (🔒 YAZ-1775 D4, YAZ-1818): main holds the key, does the fetching and caches.
-    search: (req) => call(CH.mediaSearch, req),
-    preview: (req) => call(CH.mediaPreview, req),
-    import: (req) => call(CH.mediaImport, req),
-  },
-  // The cross-vault saved-component library over `<library>/components/` (🔒 YAZ-1775 D5, YAZ-1819).
-  components: {
-    list: () => call(CH.componentsList),
-    save: (req) => call(CH.componentsSave, req),
-    read: (req) => call(CH.componentsRead, req),
-    rename: (req) => call(CH.componentsRename, req),
-    delete: (req) => call(CH.componentsDelete, req),
-    preview: (req) => call(CH.componentsPreview, req),
-    onChanged: on<void>(CH.componentsChanged),
-  },
-  // The secrets door (🔒 YAZ-1775 D4): write and ask, never read — there is no channel that answers a value.
-  secrets: {
-    set: (req) => call(CH.secretsSet, req),
-    has: (req) => call(CH.secretsHas, req),
-  },
-  // Per-vault GitHub sync over `.yaseendraw/github.json` (YAZ-1081); every window gets every status.
-  github: {
-    status: (root) => call(CH.githubStatus, root),
-    syncNow: (root) => call(CH.githubSyncNow, root),
-    setEnabled: (root, enabled) => call(CH.githubSetEnabled, root, enabled),
-    onStatus: on<GithubSyncStatus>(CH.githubStatusChanged),
-    history: (root, path) => call(CH.githubHistory, root, path),
-    version: (root, path, ref) => call(CH.githubVersion, root, path, ref),
-    restore: (root, path, ref) => call(CH.githubRestore, root, path, ref),
-  },
-  // Settings › Storage (YAZ-1801): read-only sizes, and the one rewrite (legacy pictures → assets/).
-  storage: {
-    stats: (root) => call(CH.storageStats, root),
-    shrink: (root, skip) => call(CH.storageShrink, root, skip),
-  },
-  // Share link (YAZ-1799): main owns Cloudflare, the token and the upload password.
-  share: {
-    status: () => call(CH.shareStatus),
-    accounts: (req) => call(CH.shareAccounts, req),
-    setup: (req) => call(CH.shareSetup, req),
-    onSetupProgress: on<ShareSetupProgress>(CH.shareSetupProgress),
-    openCloudflare: () => call(CH.shareOpenCloudflare),
-    get: (req) => call(CH.shareGet, req),
-    list: (req) => call(CH.shareList, req),
-    publish: (req) => call(CH.sharePublish, req),
-    setPermission: (req) => call(CH.shareSetPermission, req),
-    stop: (req) => call(CH.shareStop, req),
-    setDomain: (req) => call(CH.shareSetDomain, req),
-    disconnect: (req) => call(CH.shareDisconnect, req),
-    onChanged: on<void>(CH.shareChanged),
-  },
-}
+} as YaseenDrawApi
 
 contextBridge.exposeInMainWorld('yaseenDraw', api)
 
-/** Exported for the completeness test only (the preload is otherwise side-effect driven). */
+/** Exported for the preload's own test (the preload is otherwise side-effect driven). */
 export { api as bridge }

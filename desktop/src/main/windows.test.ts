@@ -3,7 +3,7 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path, { win32 } from 'node:path'
 import type { RecentRoots, WindowBounds, WindowEntry } from '@shared/types'
-import { CH } from '../channels'
+import { CONTRACT, SPECIAL } from '@shared/ipc'
 import { createStore, type Store } from './store'
 import {
   BOUNDS_DEBOUNCE_MS,
@@ -102,7 +102,7 @@ class FakeWindow {
     for (const l of this.listeners.get('closed') ?? []) l()
   }
   flushCount(): number {
-    return this.webContents.send.mock.calls.filter(([ch]) => ch === CH.appFlush).length
+    return this.webContents.send.mock.calls.filter(([ch]) => ch === SPECIAL.appFlush).length
   }
 }
 
@@ -577,21 +577,21 @@ describe('createWindowManager: routeToFile (E1)', () => {
     manager.routeToFile('/v/sub/a.excalidraw')
     expect(w1.isMinimized()).toBe(false)
     expect(w1.focusCount).toBe(1)
-    expect(w1.webContents.send).toHaveBeenCalledWith(CH.linkOpenFile, '/v/sub/a.excalidraw')
+    expect(w1.webContents.send).toHaveBeenCalledWith(CONTRACT.link.onOpenFile.channel, '/v/sub/a.excalidraw')
     expect(created).toHaveLength(2) // no new window
   })
 
   it('an upper-case extension routes too', () => {
     const { manager, w1 } = seedRouting()
     manager.routeToFile('/v/A.EXCALIDRAW')
-    expect(w1.webContents.send).toHaveBeenCalledWith(CH.linkOpenFile, '/v/A.EXCALIDRAW')
+    expect(w1.webContents.send).toHaveBeenCalledWith(CONTRACT.link.onOpenFile.channel, '/v/A.EXCALIDRAW')
   })
 
   it('🔒 YAZ-1802 D14: a draw.io diagram routes like a drawing, in any case', () => {
     const { manager, w1 } = seedRouting()
     manager.routeToFile('/v/Flow.drawio')
     manager.routeToFile('/v/UP.DRAWIO')
-    expect(sentOn(w1, CH.linkOpenFile)).toEqual([[CH.linkOpenFile, '/v/Flow.drawio'], [CH.linkOpenFile, '/v/UP.DRAWIO']])
+    expect(sentOn(w1, CONTRACT.link.onOpenFile.channel)).toEqual([[CONTRACT.link.onOpenFile.channel, '/v/Flow.drawio'], [CONTRACT.link.onOpenFile.channel, '/v/UP.DRAWIO']])
   })
 
   it('no containing window: a new window on the most recent recents folder containing the file, persisted', () => {
@@ -616,7 +616,7 @@ describe('createWindowManager: routeToFile (E1)', () => {
   it('a rootOverride routes into the open window on exactly that root', () => {
     const { manager, created, w1 } = seedRouting()
     manager.routeToFile('/v/sub/a.excalidraw', '/v')
-    expect(w1.webContents.send).toHaveBeenCalledWith(CH.linkOpenFile, '/v/sub/a.excalidraw')
+    expect(w1.webContents.send).toHaveBeenCalledWith(CONTRACT.link.onOpenFile.channel, '/v/sub/a.excalidraw')
     expect(created).toHaveLength(2)
   })
 
@@ -636,24 +636,24 @@ describe('createWindowManager: routeToFile (E1)', () => {
     manager.routeToFile('/v/archive.zip')
     expect(created).toHaveLength(2)
     expect(w1.focusCount).toBe(1)
-    const notices = sentOn(w1, CH.linkNotice)
-    expect(notices).toEqual([[CH.linkNotice, "Can't open /v/archive.zip: unsupported file type"]])
-    expect(sentOn(w1, CH.linkOpenFile)).toHaveLength(0)
+    const notices = sentOn(w1, CONTRACT.link.onNotice.channel)
+    expect(notices).toEqual([[CONTRACT.link.onNotice.channel, "Can't open /v/archive.zip: unsupported file type"]])
+    expect(sentOn(w1, CONTRACT.link.onOpenFile.channel)).toHaveLength(0)
   })
 
   it('🔒 YAZ-1802 D3: a picture that holds a diagram is not one — it gets the same notice', () => {
     const { manager, w1 } = seedRouting()
     manager.routeToFile('/v/image.drawio.svg')
-    expect(sentOn(w1, CH.linkNotice)).toEqual([[CH.linkNotice, "Can't open /v/image.drawio.svg: unsupported file type"]])
-    expect(sentOn(w1, CH.linkOpenFile)).toHaveLength(0)
+    expect(sentOn(w1, CONTRACT.link.onNotice.channel)).toEqual([[CONTRACT.link.onNotice.channel, "Can't open /v/image.drawio.svg: unsupported file type"]])
+    expect(sentOn(w1, CONTRACT.link.onOpenFile.channel)).toHaveLength(0)
   })
 
   it('a missing file (host.exists false) gets the same notice: no window, no dialog', () => {
     const { manager, created, w1 } = seedRouting(() => false)
     manager.routeToFile('/v/gone.excalidraw')
     expect(created).toHaveLength(2)
-    expect(sentOn(w1, CH.linkNotice)).toHaveLength(1)
-    expect(sentOn(w1, CH.linkOpenFile)).toHaveLength(0)
+    expect(sentOn(w1, CONTRACT.link.onNotice.channel)).toHaveLength(1)
+    expect(sentOn(w1, CONTRACT.link.onOpenFile.channel)).toHaveLength(0)
   })
 
   it('a directory with a supported-looking suffix is refused passively by the regular-file probe', () => {
@@ -661,8 +661,8 @@ describe('createWindowManager: routeToFile (E1)', () => {
     const { manager, created, w1 } = seedRouting((candidate) => candidate !== directory)
     manager.routeToFile(directory)
     expect(created).toHaveLength(2)
-    expect(sentOn(w1, CH.linkNotice)).toEqual([[CH.linkNotice, `Can't open ${directory}: file not found`]])
-    expect(sentOn(w1, CH.linkOpenFile)).toHaveLength(0)
+    expect(sentOn(w1, CONTRACT.link.onNotice.channel)).toEqual([[CONTRACT.link.onNotice.channel, `Can't open ${directory}: file not found`]])
+    expect(sentOn(w1, CONTRACT.link.onOpenFile.channel)).toHaveLength(0)
   })
 
   it('linkNotice (the parse-failure path) restores + focuses a live window and delivers the message', () => {
@@ -671,6 +671,6 @@ describe('createWindowManager: routeToFile (E1)', () => {
     manager.linkNotice("Can't open link")
     expect(w1.isMinimized()).toBe(false)
     expect(w1.focusCount).toBe(1)
-    expect(w1.webContents.send).toHaveBeenCalledWith(CH.linkNotice, "Can't open link")
+    expect(w1.webContents.send).toHaveBeenCalledWith(CONTRACT.link.onNotice.channel, "Can't open link")
   })
 })

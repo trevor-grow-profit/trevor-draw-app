@@ -1,7 +1,7 @@
 import path from 'node:path'
 import { BrowserWindow, dialog, type IpcMainInvokeEvent } from 'electron'
 import { MAX_DRAWING_BYTES, type OpenDrawingResponse, type PickFolderResponse, type SaveDrawingRequest, type SaveDrawingResponse, type SaveImageRequest } from '@shared/types'
-import { CH } from '../../channels'
+import { CONTRACT } from '@shared/ipc'
 import { readBoundedRegularFile } from '../fs/boundedRead'
 import { atomicWrite, BridgeFailure, fsCall, requireDrawingFile } from '../fs/fsUtils'
 import { requireObject, str } from '../fs/validate'
@@ -149,8 +149,8 @@ export async function saveImageFile(e: IpcMainInvokeEvent, inFlight: Set<Browser
 
 export function registerDialogIpc(): void {
   const inFlight = new Set<BrowserWindow | null>()
-  handleWithEvent(CH.dialogPickFolder, (e) => pickFolder(e, inFlight))
-  handleWithEvent(CH.dialogOpenFile, (e) => openDrawingFile(e, inFlight))
-  handleWithEvent(CH.dialogSaveFile, (e, body: unknown) => saveDrawingFile(e, inFlight, body))
-  handleWithEvent(CH.dialogSaveImage, (e, body: unknown) => saveImageFile(e, inFlight, body))
+  handleWithEvent(CONTRACT.pickFolder, (e) => pickFolder(e, inFlight))
+  handleWithEvent(CONTRACT.dialog.openDrawing, (e) => openDrawingFile(e, inFlight))
+  handleWithEvent(CONTRACT.dialog.saveDrawing, (e, body: unknown) => saveDrawingFile(e, inFlight, body))
+  handleWithEvent(CONTRACT.dialog.saveImage, (e, body: unknown) => saveImageFile(e, inFlight, body))
 }

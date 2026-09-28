@@ -13,7 +13,7 @@
  */
 import { shell } from 'electron'
 import type { AppState, ComponentRenameRequest, ComponentSaveRequest, ComponentSlugRequest } from '@shared/types'
-import { CH } from '../../channels'
+import { CONTRACT } from '@shared/ipc'
 import { requireObject, str } from '../fs/validate'
 import { resolveLibraryFolder } from '../library/folder'
 import { createComponentStore, type ComponentStore } from '../library/componentStore'
@@ -48,19 +48,19 @@ export function registerComponentsIpc(store: Store, userData: string, trash: (p:
   const folderFor = (state: AppState): string => resolveLibraryFolder(state.settings.libraryFolder, userData)
   let folder = folderFor(store.get())
   const components = createComponentStore(folder, { trash })
-  components.onChanged(() => broadcastAll(CH.componentsChanged))
+  components.onChanged(() => broadcastAll(CONTRACT.components.onChanged))
   store.onChange((state) => {
     const next = folderFor(state)
     if (next === folder) return
     folder = next
     components.setFolder(next)
-    broadcastAll(CH.componentsChanged)
+    broadcastAll(CONTRACT.components.onChanged)
   })
-  handle(CH.componentsList, async () => components.list())
-  handle(CH.componentsSave, async (req: unknown) => components.save(requireSaveRequest(req)))
-  handle(CH.componentsRead, async (req: unknown) => ({ fragmentJson: await components.read(requireSlugRequest(req)) }))
-  handle(CH.componentsRename, async (req: unknown) => components.rename(requireRenameRequest(req)))
-  handle(CH.componentsDelete, async (req: unknown) => components.delete(requireSlugRequest(req)))
-  handle(CH.componentsPreview, async (req: unknown) => components.preview(requireSlugRequest(req)))
+  handle(CONTRACT.components.list, async () => components.list())
+  handle(CONTRACT.components.save, async (req: unknown) => components.save(requireSaveRequest(req)))
+  handle(CONTRACT.components.read, async (req: unknown) => ({ fragmentJson: await components.read(requireSlugRequest(req)) }))
+  handle(CONTRACT.components.rename, async (req: unknown) => components.rename(requireRenameRequest(req)))
+  handle(CONTRACT.components.delete, async (req: unknown) => components.delete(requireSlugRequest(req)))
+  handle(CONTRACT.components.preview, async (req: unknown) => components.preview(requireSlugRequest(req)))
   return components
 }

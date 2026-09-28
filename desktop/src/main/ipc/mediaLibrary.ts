@@ -1,6 +1,6 @@
 import type { AppState, MediaFavoritesRequest, MediaItem, MediaRecentRequest } from '@shared/types'
 import { normalizeMediaItem } from '@shared/mediaLibrary'
-import { CH } from '../../channels'
+import { CONTRACT } from '@shared/ipc'
 import { BridgeFailure } from '../fs/fsUtils'
 import { requireObject, str } from '../fs/validate'
 import { resolveLibraryFolder } from '../library/folder'
@@ -56,15 +56,15 @@ export function registerMediaLibraryIpc(store: Store, userData: string): MediaSt
   const folderFor = (state: AppState): string => resolveLibraryFolder(state.settings.libraryFolder, userData)
   let folder = folderFor(store.get())
   const media = createMediaStore(folder)
-  media.onChanged(() => broadcastAll(CH.mediaChanged))
+  media.onChanged(() => broadcastAll(CONTRACT.media.onChanged))
   store.onChange((state) => {
     const next = folderFor(state)
     if (next === folder) return
     folder = next
     media.setFolder(next)
-    broadcastAll(CH.mediaChanged)
+    broadcastAll(CONTRACT.media.onChanged)
   })
-  handle(CH.mediaFavorites, async (req: unknown) => media.favorites(requireFavoritesRequest(req)))
-  handle(CH.mediaRecent, async (req: unknown) => media.recent(requireRecentRequest(req)))
+  handle(CONTRACT.media.favorites, async (req: unknown) => media.favorites(requireFavoritesRequest(req)))
+  handle(CONTRACT.media.recent, async (req: unknown) => media.recent(requireRecentRequest(req)))
   return media
 }

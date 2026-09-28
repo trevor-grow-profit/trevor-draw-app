@@ -1,6 +1,6 @@
 import { ipcMain, type IpcMainInvokeEvent } from 'electron'
 import { isSidebarLens, type SidebarLens, type WindowEntry, type WindowIdentity } from '@shared/types'
-import { CH } from '../../channels'
+import { CONTRACT, SPECIAL } from '@shared/ipc'
 import { BridgeFailure, requireAbsPath } from '../fs/fsUtils'
 import { absPaths, optBool, requireObject, strOrNull } from '../fs/validate'
 import { normalizeTabs, type Store } from '../store'
@@ -40,12 +40,12 @@ export function registerWindowIpc(store: Store, windows: WindowManagerIpc): void
     return entry
   }
 
-  handleWithEvent(CH.windowIdentity, async (e): Promise<WindowIdentity> => {
+  handleWithEvent(CONTRACT.window.identity, async (e): Promise<WindowIdentity> => {
     const { id, root, file, tabs, sidebarCollapsed, sidebarLens, focusDirs, focusFavorites } = entryFor(e)
     return { id, root, file, tabs: [...tabs], sidebarCollapsed, sidebarLens, focusDirs: [...focusDirs], focusFavorites: [...focusFavorites] }
   })
 
-  handleWithEvent(CH.windowSetIdentity, async (e, raw: unknown) => {
+  handleWithEvent(CONTRACT.window.setIdentity, async (e, raw: unknown) => {
     const patch = requireObject(raw, 'patch must be an object')
     const root = optionalPath(patch, 'root')
     const file = optionalPath(patch, 'file')
@@ -74,13 +74,13 @@ export function registerWindowIpc(store: Store, windows: WindowManagerIpc): void
   // `window:close-self` (GRO-2232): the REAL close on the caller's own window, so the
   // close/flush handshake in windows.ts runs — never a destroy. Resolved via the window lookup
   // only (no state lookup): a window mid-close can still ask.
-  handleWithEvent(CH.windowCloseSelf, async (e) => {
+  handleWithEvent(CONTRACT.window.closeSelf, async (e) => {
     const id = windows.idFor(e.sender)
     if (id === undefined) throw new BridgeFailure('BAD_REQUEST', 'sender is not a registered window')
     windows.closeWindow(id)
   })
 
-  handle(CH.windowOpen, async (raw: unknown) => {
+  handle(CONTRACT.window.open, async (raw: unknown) => {
     const opts = requireObject(raw, 'options must be an object')
     windows.openWindow({ root: optionalPath(opts, 'root') ?? null, file: optionalPath(opts, 'file') ?? null })
   })
@@ -89,8 +89,8 @@ export function registerWindowIpc(store: Store, windows: WindowManagerIpc): void
   // manager's verdict out: true = the vault is in front (its windows raised, D9, or a new one
   // opened; MRU bumped), false = the folder is gone and was pruned from the MRU instead. Any
   // window may ask; the caller is not consulted.
-  handle(CH.windowOpenRecent, async (path: unknown): Promise<boolean> => windows.openRecentBeside(requireAbsPath(path, 'path')))
+  handle(CONTRACT.window.openRecent, async (path: unknown): Promise<boolean> => windows.openRecentBeside(requireAbsPath(path, 'path')))
 
   // The renderer's ack in the flush handshake (fire-and-forget send, so no envelope).
-  ipcMain.on(CH.appFlushed, (e) => windows.handleFlushed(e.sender))
+  ipcMain.on(SPECIAL.appFlushed, (e) => windows.handleFlushed(e.sender))
 }

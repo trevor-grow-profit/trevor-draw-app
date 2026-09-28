@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import type { MenuItemConstructorOptions } from 'electron'
 import type { FileKind, RecentRoots, WindowEntry } from '@shared/types'
-import { CH } from '../channels'
+import { CONTRACT } from '@shared/ipc'
 import { createStore, type Store } from './store'
 import { HELP_URL, buildContextMenuTemplate, buildMenuTemplate, createMenuHandlers, pickMenuTargetWindow, subscribeMenuRebuild, subscribeMenuRebuildOnActiveFile, CANVAS_BACKGROUND_PICKS, type ContextMenuActions, type MenuHandlers, type MenuHost } from './menu'
 
@@ -443,14 +443,14 @@ describe('createMenuHandlers', () => {
     const wc = { id: 7, send: vi.fn() }
     const { handlers } = makeHandlers(wc)
     handlers.openFolder()
-    expect(wc.send).toHaveBeenCalledWith(CH.menuOpenFolder)
+    expect(wc.send).toHaveBeenCalledWith(CONTRACT.menu.onOpenFolder.channel)
   })
 
   it('settings tells the focused renderer to open its settings dialog (YAZ-1679)', () => {
     const wc = { id: 7, send: vi.fn() }
     const { handlers } = makeHandlers(wc)
     handlers.settings()
-    expect(wc.send).toHaveBeenCalledExactlyOnceWith(CH.menuSettings)
+    expect(wc.send).toHaveBeenCalledExactlyOnceWith(CONTRACT.menu.onSettings.channel)
 
     const { handlers: unfocused } = makeHandlers(undefined)
     expect(() => unfocused.settings()).not.toThrow()
@@ -460,7 +460,7 @@ describe('createMenuHandlers', () => {
     const wc = { id: 7, send: vi.fn() }
     const { handlers } = makeHandlers(wc)
     handlers.search()
-    expect(wc.send).toHaveBeenCalledWith(CH.menuSearch)
+    expect(wc.send).toHaveBeenCalledWith(CONTRACT.menu.onSearch.channel)
 
     const { handlers: unfocused } = makeHandlers(undefined)
     expect(() => unfocused.search()).not.toThrow()
@@ -470,7 +470,7 @@ describe('createMenuHandlers', () => {
     const wc = { id: 7, send: vi.fn() }
     const { handlers } = makeHandlers(wc)
     handlers.switchVault()
-    expect(wc.send).toHaveBeenCalledExactlyOnceWith(CH.menuSwitchVault)
+    expect(wc.send).toHaveBeenCalledExactlyOnceWith(CONTRACT.menu.onSwitchVault.channel)
 
     const { handlers: unfocused } = makeHandlers(undefined)
     expect(() => unfocused.switchVault()).not.toThrow()
@@ -494,7 +494,7 @@ describe('createMenuHandlers', () => {
     const wc = { id: 7, send: vi.fn() }
     const { handlers, windows } = makeHandlers(wc)
     handlers.openRecent('/vaults/work')
-    expect(wc.send).toHaveBeenCalledExactlyOnceWith(CH.menuOpenRoot, '/vaults/work')
+    expect(wc.send).toHaveBeenCalledExactlyOnceWith(CONTRACT.menu.onOpenRoot.channel, '/vaults/work')
     expect(windows.openRecentBeside).not.toHaveBeenCalled()
   })
 
@@ -502,11 +502,11 @@ describe('createMenuHandlers', () => {
     const wc = { id: 7, send: vi.fn() }
     const { handlers } = makeHandlers(wc)
     handlers.closeTab()
-    expect(wc.send).toHaveBeenLastCalledWith(CH.menuCloseTab)
+    expect(wc.send).toHaveBeenLastCalledWith(CONTRACT.menu.onCloseTab.channel)
     handlers.nextTab()
-    expect(wc.send).toHaveBeenLastCalledWith(CH.menuNextTab)
+    expect(wc.send).toHaveBeenLastCalledWith(CONTRACT.menu.onNextTab.channel)
     handlers.prevTab()
-    expect(wc.send).toHaveBeenLastCalledWith(CH.menuPrevTab)
+    expect(wc.send).toHaveBeenLastCalledWith(CONTRACT.menu.onPrevTab.channel)
     expect(wc.send).toHaveBeenCalledTimes(3)
 
     const { handlers: unfocused } = makeHandlers(undefined)
@@ -521,7 +521,7 @@ describe('createMenuHandlers', () => {
     const wc = { id: 7, send: vi.fn() }
     const { handlers } = makeHandlers(wc)
     handlers.toggleSidebar()
-    expect(wc.send).toHaveBeenCalledExactlyOnceWith(CH.menuToggleSidebar)
+    expect(wc.send).toHaveBeenCalledExactlyOnceWith(CONTRACT.menu.onToggleSidebar.channel)
 
     const { handlers: unfocused } = makeHandlers(undefined)
     expect(() => unfocused.toggleSidebar()).not.toThrow()
@@ -554,14 +554,14 @@ describe('createMenuHandlers — the three canvas gestures (🔒 YAZ-1775 D10, �
     const wc = { id: 7, send: vi.fn() }
     const { handlers } = makeHandlers(wc)
     handlers.exportImage()
-    expect(wc.send).toHaveBeenCalledExactlyOnceWith(CH.menuExportImage)
+    expect(wc.send).toHaveBeenCalledExactlyOnceWith(CONTRACT.menu.onExportImage.channel)
     wc.send.mockClear()
     // Same gating and the same delivery as the image export — one channel apart.
     handlers.exportDrawing()
-    expect(wc.send).toHaveBeenCalledExactlyOnceWith(CH.menuExportDrawing)
+    expect(wc.send).toHaveBeenCalledExactlyOnceWith(CONTRACT.menu.onExportDrawing.channel)
     wc.send.mockClear()
     handlers.canvasBackground('#fffce8')
-    expect(wc.send).toHaveBeenCalledExactlyOnceWith(CH.menuCanvasBackground, '#fffce8')
+    expect(wc.send).toHaveBeenCalledExactlyOnceWith(CONTRACT.menu.onCanvasBackground.channel, '#fffce8')
   })
 
   it('with no window at all they are silent no-ops', () => {

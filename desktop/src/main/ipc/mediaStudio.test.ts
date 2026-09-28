@@ -10,7 +10,7 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { ipcMain } from 'electron'
 import { PIXABAY_SECRET } from '@shared/types'
-import { CH, type Envelope } from '../../channels'
+import { CONTRACT, type Envelope } from '@shared/ipc'
 import { CACHE_TTL_MS } from '../media/cachePolicy'
 import type { Secrets } from '../secrets'
 import { registerMediaStudioIpc } from './mediaStudio'
@@ -61,7 +61,7 @@ afterEach(async () => {
 describe('registration', () => {
   it('registers exactly the three studio channels', () => {
     registerMediaStudioIpc(userData, fakeSecrets(null), vi.fn() as unknown as typeof globalThis.fetch)
-    for (const channel of [CH.mediaSearch, CH.mediaPreview, CH.mediaImport]) expect(() => registered(channel)).not.toThrow()
+    for (const channel of [CONTRACT.media.search.channel, CONTRACT.media.preview.channel, CONTRACT.media.import.channel]) expect(() => registered(channel)).not.toThrow()
   })
 
   it('makes the cache folder and sweeps yesterday out of it, detached', async () => {
@@ -86,7 +86,7 @@ describe('the guards', () => {
 
   it('refuses a search with no request, a bad source or a non-string cursor', async () => {
     registerMediaStudioIpc(userData, fakeSecrets(null), noFetch as unknown as typeof globalThis.fetch)
-    const search = registered(CH.mediaSearch)
+    const search = registered(CONTRACT.media.search.channel)
     await expect(search(null)).resolves.toEqual(bad('BAD_REQUEST'))
     await expect(search(null, { q: 'money bag' })).resolves.toEqual(bad('BAD_REQUEST'))
     await expect(search(null, { q: 'money bag', source: 'web' })).resolves.toEqual(bad('BAD_REQUEST'))
@@ -96,7 +96,7 @@ describe('the guards', () => {
 
   it('refuses preview and import for a provider that serves no bytes — `shape` is drawn, not fetched', async () => {
     registerMediaStudioIpc(userData, fakeSecrets(null), noFetch as unknown as typeof globalThis.fetch)
-    for (const channel of [CH.mediaPreview, CH.mediaImport]) {
+    for (const channel of [CONTRACT.media.preview.channel, CONTRACT.media.import.channel]) {
       const call = registered(channel)
       await expect(call(null, { provider: 'shape', id: 'rectangle' })).resolves.toEqual(bad('BAD_REQUEST'))
       await expect(call(null, { provider: 'iconify', id: '' })).resolves.toEqual(bad('BAD_REQUEST'))
@@ -111,7 +111,7 @@ describe('what reaches the renderer', () => {
     const secrets = fakeSecrets(null)
     const fetchMock = vi.fn(async () => new Response(JSON.stringify({ icons: ['noto:money-bag'], collections: { noto: { name: 'Noto' } }, total: 1 }), { headers: { 'Content-Type': 'application/json' } }))
     registerMediaStudioIpc(userData, secrets, fetchMock as unknown as typeof globalThis.fetch)
-    const answer = (await registered(CH.mediaSearch)(null, { q: 'money bag', source: 'all' })) as Envelope<{ items: unknown[]; pixabayAvailable: boolean }>
+    const answer = (await registered(CONTRACT.media.search.channel)(null, { q: 'money bag', source: 'all' })) as Envelope<{ items: unknown[]; pixabayAvailable: boolean }>
     expect(answer.ok).toBe(true)
     expect(answer.ok && answer.value.pixabayAvailable).toBe(false)
     expect(answer.ok && answer.value.items).toHaveLength(1)
@@ -123,14 +123,14 @@ describe('what reaches the renderer', () => {
       throw new TypeError('fetch failed')
     })
     registerMediaStudioIpc(userData, fakeSecrets(null), fetchMock as unknown as typeof globalThis.fetch)
-    await expect(registered(CH.mediaSearch)(null, { q: 'money bag', source: 'iconify' })).resolves.toEqual(bad('OFFLINE'))
-    await expect(registered(CH.mediaPreview)(null, { provider: 'iconify', id: 'noto:money-bag' })).resolves.toEqual(bad('OFFLINE'))
+    await expect(registered(CONTRACT.media.search.channel)(null, { q: 'money bag', source: 'iconify' })).resolves.toEqual(bad('OFFLINE'))
+    await expect(registered(CONTRACT.media.preview.channel)(null, { provider: 'iconify', id: 'noto:money-bag' })).resolves.toEqual(bad('OFFLINE'))
   })
 
   it('answers an import with the bytes as a dataURL and the provider item', async () => {
     const fetchMock = vi.fn(async () => new Response('<svg/>', { headers: { 'Content-Type': 'image/svg+xml' } }))
     registerMediaStudioIpc(userData, fakeSecrets(null), fetchMock as unknown as typeof globalThis.fetch)
-    const answer = (await registered(CH.mediaImport)(null, { provider: 'iconify', id: 'noto:money-bag' })) as Envelope<{ mimeType: string; dataURL: string; item: { itemKey: string } }>
+    const answer = (await registered(CONTRACT.media.import.channel)(null, { provider: 'iconify', id: 'noto:money-bag' })) as Envelope<{ mimeType: string; dataURL: string; item: { itemKey: string } }>
     expect(answer.ok).toBe(true)
     expect(answer.ok && answer.value.mimeType).toBe('image/svg+xml')
     expect(answer.ok && answer.value.dataURL.startsWith('data:image/svg+xml;base64,')).toBe(true)

@@ -1,4 +1,4 @@
-import { CH } from '../../channels'
+import { CONTRACT } from '@shared/ipc'
 import { requireAbsPath, requireDir } from '../fs/fsUtils'
 import { absPaths } from '../fs/validate'
 import { runOffThread } from '../storageJob'
@@ -16,12 +16,12 @@ import { handle } from './envelope'
  * absolute paths, nothing else. A path in it that names no board simply matches nothing.
  */
 export function registerStorageIpc(): void {
-  handle(CH.storageStats, async (root: unknown) => {
+  handle(CONTRACT.storage.stats, async (root: unknown) => {
     const dir = requireAbsPath(root, 'root')
     await requireDir(dir)
     return runOffThread(storageWorker, { kind: 'stats', root: dir })
   })
-  handle(CH.storageShrink, async (root: unknown, skip: unknown) => {
+  handle(CONTRACT.storage.shrink, async (root: unknown, skip: unknown) => {
     const dir = requireAbsPath(root, 'root')
     await requireDir(dir)
     return runOffThread(storageWorker, { kind: 'shrink', root: dir, skip: absPaths(skip, 'skip') })

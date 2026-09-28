@@ -1,5 +1,5 @@
 import { join } from 'node:path'
-import { CH } from '../../channels'
+import { CONTRACT } from '@shared/ipc'
 import { BridgeFailure } from '../fs/fsUtils'
 import { requireObject, str } from '../fs/validate'
 import { createSecrets, SECRETS_FILE, type Secrets } from '../secrets'
@@ -21,7 +21,7 @@ export const RENDERER_WRITABLE_SECRETS: readonly string[] = [PIXABAY_SECRET]
 
 export function registerSecretsIpc(userData: string): Secrets {
   const secrets = createSecrets(join(userData, SECRETS_FILE))
-  handle(CH.secretsSet, async (req: unknown) => {
+  handle(CONTRACT.secrets.set, async (req: unknown) => {
     const r = requireObject(req, 'missing request')
     const name = str(r.name, 'name')
     if (!RENDERER_WRITABLE_SECRETS.includes(name)) throw new BridgeFailure('BAD_REQUEST', `'${name}' is not a secret this window may set`)
@@ -29,7 +29,7 @@ export function registerSecretsIpc(userData: string): Secrets {
     if (r.value !== null && (typeof r.value !== 'string' || r.value === '')) throw new BridgeFailure('BAD_REQUEST', "'value' must be a non-empty string or null")
     await secrets.set(name, r.value)
   })
-  handle(CH.secretsHas, async (req: unknown) => {
+  handle(CONTRACT.secrets.has, async (req: unknown) => {
     return secrets.has(str(requireObject(req, 'missing request').name, 'name'))
   })
   return secrets

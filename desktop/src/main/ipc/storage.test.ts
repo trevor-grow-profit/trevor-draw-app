@@ -3,7 +3,7 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { ipcMain } from 'electron'
-import { CH, type Envelope } from '../../channels'
+import { CONTRACT, type Envelope } from '@shared/ipc'
 import { registerStorageIpc } from './storage'
 
 vi.mock('electron', () => ({ ipcMain: { handle: vi.fn(), on: vi.fn() } }))
@@ -27,23 +27,23 @@ afterEach(() => rm(root, { recursive: true, force: true }))
 describe('storage IPC (YAZ-1801)', () => {
   it('stats answers for a plain folder, with git null', async () => {
     await writeFile(path.join(root, 'a.excalidraw'), '{"elements":[],"files":{}}')
-    const res = await registered(CH.storageStats)(undefined, root)
+    const res = await registered(CONTRACT.storage.stats.channel)(undefined, root)
     expect(res).toMatchObject({ ok: true, value: { root, boards: { count: 1 }, git: null } })
   })
 
   it('refuses a relative root and a skip list that is not absolute paths — nothing is walked', async () => {
-    await expect(registered(CH.storageStats)(undefined, 'relative/dir')).resolves.toEqual(bad('NOT_ABSOLUTE'))
-    await expect(registered(CH.storageShrink)(undefined, root, 'not-an-array')).resolves.toEqual(bad('BAD_REQUEST'))
-    await expect(registered(CH.storageShrink)(undefined, root, ['relative.excalidraw'])).resolves.toEqual(bad('NOT_ABSOLUTE'))
+    await expect(registered(CONTRACT.storage.stats.channel)(undefined, 'relative/dir')).resolves.toEqual(bad('NOT_ABSOLUTE'))
+    await expect(registered(CONTRACT.storage.shrink.channel)(undefined, root, 'not-an-array')).resolves.toEqual(bad('BAD_REQUEST'))
+    await expect(registered(CONTRACT.storage.shrink.channel)(undefined, root, ['relative.excalidraw'])).resolves.toEqual(bad('NOT_ABSOLUTE'))
   })
 
   it('a vault that is gone answers NOT_FOUND from main, before any worker starts — for both doors', async () => {
     const gone = path.join(root, 'moved-away')
-    await expect(registered(CH.storageStats)(undefined, gone)).resolves.toEqual(bad('NOT_FOUND'))
-    await expect(registered(CH.storageShrink)(undefined, gone, [])).resolves.toEqual(bad('NOT_FOUND'))
+    await expect(registered(CONTRACT.storage.stats.channel)(undefined, gone)).resolves.toEqual(bad('NOT_FOUND'))
+    await expect(registered(CONTRACT.storage.shrink.channel)(undefined, gone, [])).resolves.toEqual(bad('NOT_FOUND'))
   })
 
   it('shrink answers the counts', async () => {
-    await expect(registered(CH.storageShrink)(undefined, root, [])).resolves.toEqual({ ok: true, value: { shrunk: 0, skipped: 0, bytesMoved: 0 } })
+    await expect(registered(CONTRACT.storage.shrink.channel)(undefined, root, [])).resolves.toEqual({ ok: true, value: { shrunk: 0, skipped: 0, bytesMoved: 0 } })
   })
 })

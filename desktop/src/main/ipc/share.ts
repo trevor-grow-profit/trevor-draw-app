@@ -1,7 +1,7 @@
 import { readdir, readFile } from 'node:fs/promises'
 import { join, relative, resolve, sep } from 'node:path'
 import { shell } from 'electron'
-import { CH } from '../../channels'
+import { CONTRACT } from '@shared/ipc'
 import { BridgeFailure } from '../fs/fsUtils'
 import { bool, optBool, optStr, requireObject, str, strOrNull } from '../fs/validate'
 import type { Secrets } from '../secrets'
@@ -94,48 +94,48 @@ export function registerShareIpc(userData: string, secrets: Secrets, where: { vi
     // Uploaded verbatim: the same two files `tools/fakeCloudflare.mjs` imports and runs.
     modules: { 'worker.js': workerSource, 'viewer/page.js': viewerSource },
     readAssets: () => readViewerAssets(where.viewerAssetsDir, where.drawioDir, where.fontsDir),
-    onChanged: () => broadcastAll(CH.shareChanged),
+    onChanged: () => broadcastAll(CONTRACT.share.onChanged),
   })
   // Shares follow in-app renames, moves and deletes (the fs IPC calls these beside its favorites repair).
   shareFsHooks.renamed = (roots, oldPath, newPath) => sharing.relocate(roots, oldPath, newPath)
   shareFsHooks.deleted = (roots, path) => sharing.forget(roots, path)
 
-  handle(CH.shareStatus, () => sharing.status())
-  handle(CH.shareAccounts, async (body: unknown) => sharing.accounts(str(req(body).token, 'token')))
-  handleWithEvent(CH.shareSetup, (e, body: unknown) => {
+  handle(CONTRACT.share.status, () => sharing.status())
+  handle(CONTRACT.share.accounts, async (body: unknown) => sharing.accounts(str(req(body).token, 'token')))
+  handleWithEvent(CONTRACT.share.setup, (e, body: unknown) => {
     const r = req(body)
     const accountId = optStr(r.accountId, 'accountId')
-    return sharing.setup(str(r.token, 'token'), (p) => e.sender.isDestroyed() || e.sender.send(CH.shareSetupProgress, p), accountId)
+    return sharing.setup(str(r.token, 'token'), (p) => e.sender.isDestroyed() || e.sender.send(CONTRACT.share.onSetupProgress.channel, p), accountId)
   })
-  handle(CH.shareOpenCloudflare, async () => void (await shell.openExternal(tokenPage)))
-  handle(CH.shareGet, async (body: unknown) => {
+  handle(CONTRACT.share.openCloudflare, async () => void (await shell.openExternal(tokenPage)))
+  handle(CONTRACT.share.get, async (body: unknown) => {
     const r = req(body)
     return sharing.get(str(r.root, 'root'), str(r.path, 'path'))
   })
-  handle(CH.shareList, async (body: unknown) => {
+  handle(CONTRACT.share.list, async (body: unknown) => {
     const r = req(body)
     const check = optBool(r.check, 'check')
     return sharing.list(str(r.root, 'root'), { check: check !== false })
   })
-  handle(CH.sharePublish, async (body: unknown) => {
+  handle(CONTRACT.share.publish, async (body: unknown) => {
     const r = req(body)
     const id = optStr(r.id, 'id')
     return sharing.publish(str(r.root, 'root'), str(r.path, 'path'), str(r.content, 'content'), id)
   })
-  handle(CH.shareSetPermission, async (body: unknown) => {
+  handle(CONTRACT.share.setPermission, async (body: unknown) => {
     const r = req(body)
     const allowDownload = bool(r.allowDownload, 'allowDownload')
     return sharing.setPermission(str(r.root, 'root'), str(r.path, 'path'), allowDownload)
   })
-  handle(CH.shareStop, async (body: unknown) => {
+  handle(CONTRACT.share.stop, async (body: unknown) => {
     const r = req(body)
     return sharing.stop(str(r.root, 'root'), str(r.path, 'path'))
   })
-  handle(CH.shareSetDomain, async (body: unknown) => {
+  handle(CONTRACT.share.setDomain, async (body: unknown) => {
     const h = strOrNull(req(body).hostname, 'hostname')
     return sharing.setDomain(h === null || h.trim() === '' ? null : h)
   })
-  handle(CH.shareDisconnect, async (body: unknown) => {
+  handle(CONTRACT.share.disconnect, async (body: unknown) => {
     const r = req(body)
     return sharing.disconnect(strOrNull(r.root, 'root'), r.deleteEverything === true)
   })

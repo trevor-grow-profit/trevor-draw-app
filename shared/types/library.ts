@@ -80,27 +80,6 @@ export type MediaFavoritesRequest = { op: 'list' } | { op: 'add'; item: MediaIte
 /** `media:recent` — the same shape: read the MRU, or push an item to its head. */
 export type MediaRecentRequest = { op: 'list' } | { op: 'record'; item: MediaItem }
 
-/**
- * The media library as `window.yaseenDraw.media` (🔒 YAZ-1775 D4 / D5, YAZ-1817). Pointers only: the
- * BYTES never travel through here (YAZ-1818's `media:import` writes them into the vault's `assets/`).
- * Every mutation answers the list it produced, so a caller that just wrote does not have to read
- * back — and `onChanged` still fires in every window, so the OTHER vaults' windows follow too.
- */
-export interface MediaApi {
-  /** List / add / remove favorites; `add` on an itemKey already there changes nothing. */
-  favorites(req: MediaFavoritesRequest): Promise<StoredMediaItem[]>
-  /** List the MRU, or record a use — which moves the item to the head and stamps it. */
-  recent(req: MediaRecentRequest): Promise<StoredMediaItem[]>
-  /** Fired in EVERY window whenever `media.json` changes, this app's write or an external one. Returns an unsubscribe. */
-  onChanged(listener: () => void): () => void
-  /** Federated provider search (🔒 YAZ-1775 D4, YAZ-1818) — main fetches, curates and caches; the renderer never reaches a provider. */
-  search(req: MediaSearchRequest): Promise<MediaSearchResponse>
-  /** One tile's picture as a dataURL, disk-cached 24 h. The ONLY way a preview reaches the renderer. */
-  preview(req: MediaPreviewRequest): Promise<MediaPreviewResponse>
-  /** The full-size bytes, NEVER cached: they are about to become an `assets/` file (🔒 YAZ-1775 D3). */
-  import(req: MediaImportRequest): Promise<MediaImportResponse>
-}
-
 // ---------- Image Studio: the provider doors (🔒 YAZ-1775 D4, YAZ-1818) ----------
 
 /**
@@ -222,28 +201,6 @@ export interface ComponentReadResponse {
 /** The longest name a component may carry — the web app's `MAX_SAVED_COMPONENT_NAME_LENGTH`. */
 export const MAX_COMPONENT_NAME_LENGTH = 120
 
-/**
- * The saved-component library as `window.yaseenDraw.components` (🔒 YAZ-1775 D5, YAZ-1819). The same shape
- * as `media`: every mutation answers what it produced, and ONE payload-free push tells every
- * window in every vault to re-list, because the library is one folder for all of them.
- */
-export interface ComponentsApi {
-  /** The index, newest-updated first; a missing or corrupt index is rebuilt from the folder. */
-  list(): Promise<ComponentItem[]>
-  /** Write `<slug>.excalidraw` + `<slug>.png` and index them; the slug is derived from the name and uniqued. */
-  save(req: ComponentSaveRequest): Promise<ComponentItem>
-  /** The fragment's bytes, for an insert. */
-  read(req: ComponentSlugRequest): Promise<ComponentReadResponse>
-  /** Change the label; both files keep their names. */
-  rename(req: ComponentRenameRequest): Promise<ComponentItem>
-  /** Both files to the OS trash (`shell.trashItem`, never `fs.rm`), and the row out of the index. */
-  delete(req: ComponentSlugRequest): Promise<void>
-  /** The stored `<slug>.png` as a dataURL — the grid's tile picture. */
-  preview(req: ComponentSlugRequest): Promise<string>
-  /** Fired in EVERY window whenever the components library changes. Returns an unsubscribe. */
-  onChanged(listener: () => void): () => void
-}
-
 // ---------- Secrets (`userData/secrets.json` — 🔒 YAZ-1775 D4) ----------
 
 /** `secrets:set` — a value to store, or null to clear the name entirely. */
@@ -260,15 +217,3 @@ export interface SecretHasRequest {
 /** The name the Pixabay API key is stored under (🔒 YAZ-1775 D4); YAZ-1818 reads it in main, never here. */
 export const PIXABAY_SECRET = 'pixabayApiKey'
 
-/**
- * The secrets door (🔒 YAZ-1775 D4). THE RULE, and it has no exceptions: **the renderer never receives a
- * value.** It may write one and it may ask whether one is there; reading is main's alone
- * (`readSecret` in `desktop/src/main/secrets.ts`), so a key cannot leak through `state:get`, a
- * devtools console or a crash dump of the renderer.
- */
-export interface SecretsApi {
-  /** Store `value`, or clear the name with null. */
-  set(req: SecretSetRequest): Promise<void>
-  /** Whether a value is stored. */
-  has(req: SecretHasRequest): Promise<boolean>
-}
