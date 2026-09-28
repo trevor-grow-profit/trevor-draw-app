@@ -73,7 +73,7 @@ describe('storage.init', () => {
       ...defaultAppState(),
       settings: { ...DEFAULT_SETTINGS, theme: 'dark' },
       recents: [{ path: '/v', lastOpened: 5 }],
-      folders: { '/v': { expanded: ['/v/sub'], lastFile: '/v/a.excalidraw', sortOrder: 'name' } },
+      folders: { '/v': { expanded: ['/v/sub'], lastFile: '/v/a.excalidraw', sortOrder: 'name', name: null } },
     }
     b = installBridge(seeded, { id: 'w2', root: '/v', file: '/v/a.excalidraw', tabs: ['/v/a.excalidraw'], sidebarCollapsed: true })
     await storage.init()
@@ -169,6 +169,19 @@ describe('storage', () => {
     expect(storage.getSortOrder('/r1')).toBe('updated') // the other folder fields survive
   })
 
+  it('vaultName falls back to the folder name; setVaultName cleans, stores the folder name as null, and rides setFolder (Docs YAZ-1974 D3)', () => {
+    expect(storage.vaultName('/v/business-wiki-MASTER')).toBe('business-wiki-MASTER')
+    storage.setVaultName('/v/business-wiki-MASTER', '  Business Wiki ')
+    expect(storage.vaultName('/v/business-wiki-MASTER')).toBe('Business Wiki')
+    expect(b.bridge.state.setFolder).toHaveBeenLastCalledWith('/v/business-wiki-MASTER', { name: 'Business Wiki' })
+    storage.setVaultName('/v/business-wiki-MASTER', 'business-wiki-MASTER') // the folder's own name = no custom name
+    expect(b.bridge.state.setFolder).toHaveBeenLastCalledWith('/v/business-wiki-MASTER', { name: null })
+    storage.setVaultName('/v/business-wiki-MASTER', 'Business Wiki')
+    storage.setVaultName('/v/business-wiki-MASTER', '')
+    expect(b.bridge.state.setFolder).toHaveBeenLastCalledWith('/v/business-wiki-MASTER', { name: null })
+    expect(storage.vaultName('/v/business-wiki-MASTER')).toBe('business-wiki-MASTER')
+  })
+
   it('expanded and lastFile are keyed by root; setWorkspace records lastFile and one complete identity write', () => {
     storage.setExpanded('/r1', ['/r1/a'])
     storage.setExpanded('/r2', ['/r2/b'])
@@ -235,7 +248,7 @@ describe('storage', () => {
 
   it('boot precedence (GRO-2160): identity file wins over the folder lastFile, a pasted hash beats both', async () => {
     // Two windows on the same folder: w2 restored on b.excalidraw while the folder's lastFile is a.excalidraw.
-    const seeded: AppState = { ...defaultAppState(), folders: { '/v': { expanded: [], lastFile: '/v/a.excalidraw', sortOrder: 'name' } } }
+    const seeded: AppState = { ...defaultAppState(), folders: { '/v': { expanded: [], lastFile: '/v/a.excalidraw', sortOrder: 'name', name: null } } }
     b = installBridge(seeded, { id: 'w2', root: '/v', file: '/v/b.excalidraw', tabs: ['/v/b.excalidraw'], sidebarCollapsed: false })
     await storage.init()
     expect(bootFile('', '/v')).toBe('/v/b.excalidraw')
@@ -334,7 +347,7 @@ describe('storage', () => {
     const next: AppState = {
       ...defaultAppState(),
       settings: { ...DEFAULT_SETTINGS, theme: 'light' },
-      folders: { '/v': { expanded: ['/v/sub'], lastFile: '/v/a.excalidraw', sortOrder: 'name' } },
+      folders: { '/v': { expanded: ['/v/sub'], lastFile: '/v/a.excalidraw', sortOrder: 'name', name: null } },
     }
     b.emit(next)
     expect(seen).toHaveBeenCalledTimes(1)

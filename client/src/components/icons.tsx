@@ -66,6 +66,15 @@ export const EyeIcon = () => (
   </svg>
 )
 
+/** Circled "i", for the vault switcher row's full-path tooltip (Docs YAZ-1974 D2). */
+export const InfoIcon = () => (
+  <svg {...svg}>
+    <circle cx="8" cy="8" r="6.5" />
+    <path d="M8 7.2v4.3" />
+    <circle cx="8" cy="4.9" r="0.4" fill="currentColor" />
+  </svg>
+)
+
 /** The sidebar's hover-preview toggle (YAZ-1800): a framed picture; accent while previews are on. */
 export const PreviewIcon = () => (
   <svg {...svg}>

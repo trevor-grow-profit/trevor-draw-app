@@ -1,5 +1,6 @@
 import {
   addRecentRoot,
+  cleanVaultName,
   defaultAppState,
   defaultFolderState,
   type AppState,
@@ -10,6 +11,7 @@ import {
   type SortOrder,
   type WindowIdentity,
 } from '@shared/types'
+import { basename } from './paths'
 
 /**
  * The renderer's view of the app state (D9, GRO-2159): an in-memory cache of the main-owned
@@ -89,6 +91,16 @@ export const storage = {
   removeRecentRoot(path: string): void {
     state = { ...state, recents: state.recents.filter((r) => r.path !== path) }
     send('state.removeRecent', () => window.yaseenDraw.state.removeRecent(path))
+  },
+
+  /** What the app calls a vault (Docs YAZ-1974 D4): its display name, else its folder name. */
+  vaultName: (root: string): string => folderOf(root).name ?? basename(root),
+  /** Set (or, with null / empty / the folder's own name, clear) a vault's display name (Docs YAZ-1974 D3, D5). */
+  setVaultName(root: string, raw: string | null): void {
+    const clean = cleanVaultName(raw)
+    const name = clean === basename(root) ? null : clean
+    patchFolder(root, { name })
+    send('state.setFolder', () => window.yaseenDraw.state.setFolder(root, { name }))
   },
 
   /** The Files lens's order for this vault (🔒 YAZ-1835 D3); another window's change lands through `subscribe`. */

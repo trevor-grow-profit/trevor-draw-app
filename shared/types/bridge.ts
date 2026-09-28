@@ -1,6 +1,6 @@
 /** `window.yaseenDraw` itself: every namespace of the one door the renderer has. */
 
-import type { AppState, FolderState, SIDEBAR_MAX_W, SIDEBAR_MIN_W, SettingsState, SidebarLens, WindowEntry } from './appState'
+import type { AppState, FolderPatch, SIDEBAR_MAX_W, SIDEBAR_MIN_W, SettingsState, SidebarLens, WindowEntry } from './appState'
 import type { DiagramApi } from './diagram'
 import type { DrawingApi } from './drawing'
 import type { BridgeErrorCode } from './errors'
@@ -83,8 +83,8 @@ export interface StateApi {
   pushRecent(path: string): Promise<void>
   /** Drop a folder from recents (its directory vanished on disk, C2 — GRO-2164); unknown path is a no-op. */
   removeRecent(path: string): Promise<void>
-  /** Merge into `folders[root]`; missing root entries are created with defaults. */
-  setFolder(root: string, patch: Partial<Pick<FolderState, 'expanded' | 'lastFile' | 'sortOrder'>>): Promise<void>
+  /** Merge into `folders[root]`; missing root entries are created with defaults. `name` is cleaned main-side (Docs YAZ-1974 D3). */
+  setFolder(root: string, patch: FolderPatch): Promise<void>
   /** Fired in every window after any change; returns an unsubscribe. */
   onChange(listener: (state: AppState) => void): () => void
 }

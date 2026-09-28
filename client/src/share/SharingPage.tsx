@@ -20,6 +20,7 @@ import { useEffect, useState } from 'react'
 import { SHARE_SETUP_LABELS, SHARE_SETUP_STEPS, type ShareListEntry, type ShareSetupProgress, type ShareSetupStep } from '@shared/types'
 import { api } from '../api'
 import { basename, stripExt } from '../lib/paths'
+import { storage } from '../lib/storage'
 import type { SettingsCtx, SettingsSection } from '../settings/registry'
 import { isPending } from './liveShare'
 import { errorText, liveLine, type Line } from './shareText'
@@ -197,7 +198,7 @@ function SharedBoards({ sharing }: SettingsCtx) {
   return (
     <>
       {rows.length === 0 ? (
-        <p className="sharing__muted">Nothing in {basename(root)} is shared. Right-click a board › Share, or File › Share Link (⌘⇧L).</p>
+        <p className="sharing__muted">Nothing in {storage.vaultName(root)} is shared. Right-click a board › Share, or File › Share Link (⌘⇧L).</p>
       ) : (
         <ul className="sharing__boards">
           {rows.map((row) => {

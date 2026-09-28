@@ -3,7 +3,7 @@ import { mkdtemp, readdir, readFile, rename, rm, writeFile } from 'node:fs/promi
 import { existsSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
-import { DEFAULT_SETTINGS, MAX_RECENT_ROOTS, SIDEBAR_DEFAULT_W, SIDEBAR_MAX_W, SIDEBAR_MIN_W, addRecentRoot, defaultAppState, type AppState, type WindowEntry } from '@shared/types'
+import { DEFAULT_SETTINGS, MAX_RECENT_ROOTS, MAX_VAULT_NAME, SIDEBAR_DEFAULT_W, SIDEBAR_MAX_W, SIDEBAR_MIN_W, addRecentRoot, cleanVaultName, defaultAppState, type AppState, type WindowEntry } from '@shared/types'
 import { createStore, isSettings } from './store'
 
 // `rename` is the atomic write's last step: one rename = one write to disk.
@@ -47,6 +47,20 @@ describe('addRecentRoot', () => {
   })
 })
 
+describe('cleanVaultName (Docs YAZ-1974 D3)', () => {
+  it('trims and caps a name; empty, whitespace or a non-string is null (= the folder name)', () => {
+    expect(cleanVaultName('  Business Wiki  ')).toBe('Business Wiki')
+    expect(cleanVaultName('🚀 Launch')).toBe('🚀 Launch')
+    expect(cleanVaultName('x'.repeat(100))).toBe('x'.repeat(MAX_VAULT_NAME))
+    expect(cleanVaultName('🚀'.repeat(100))).toBe('🚀'.repeat(MAX_VAULT_NAME))
+    expect(cleanVaultName('')).toBeNull()
+    expect(cleanVaultName('   ')).toBeNull()
+    expect(cleanVaultName(5)).toBeNull()
+    expect(cleanVaultName(null)).toBeNull()
+    expect(cleanVaultName(undefined)).toBeNull()
+  })
+})
+
 describe('createStore: loading', () => {
   it('a missing file yields the defaults and creates nothing until the first change', () => {
     const store = createStore(file)
@@ -61,7 +75,7 @@ describe('createStore: loading', () => {
       sidebarWidth: 320,
       recents: [{ path: '/v', lastOpened: 5 }],
       windows: [win('w1', { root: '/v', file: '/v/a.excalidraw', tabs: ['/v/a.excalidraw', '/v/b.excalidraw'], sidebarCollapsed: true, sidebarLens: 'files' })],
-      folders: { '/v': { expanded: ['/v/sub'], lastFile: '/v/a.excalidraw', sortOrder: 'name' } },
+      folders: { '/v': { expanded: ['/v/sub'], lastFile: '/v/a.excalidraw', sortOrder: 'name', name: null } },
     }
     await seed(state)
     expect(createStore(file).get()).toEqual({ ...state, folders: { '/v': { ...state.folders['/v'], expanded: [] } } })
@@ -287,11 +301,11 @@ describe('createStore: loading', () => {
       }),
     )
     const { folders } = createStore(file).get()
-    expect(folders['/a']).toEqual({ expanded: [], lastFile: null, sortOrder: 'name' })
+    expect(folders['/a']).toEqual({ expanded: [], lastFile: null, sortOrder: 'name', name: null })
     expect(folders['/b']).toBeUndefined()
     expect(folders['/c'].expanded).toEqual([]) // a session list: the file's value is ignored (YAZ-1642)
     expect(folders['/c'].lastFile).toBe('/c/a.excalidraw')
-    expect(folders['/d']).toEqual({ expanded: [], lastFile: null, sortOrder: 'name' })
+    expect(folders['/d']).toEqual({ expanded: [], lastFile: null, sortOrder: 'name', name: null })
     await seed(valid({ folders: [] }))
     expect(createStore(file).get().folders).toEqual({})
   })
@@ -321,7 +335,7 @@ describe('createStore: loading', () => {
     )
     const store = createStore(file)
     // No migration: the vault bucket could not say WHICH window was focused, so every window starts unfocused.
-    expect(store.get().folders['/v']).toEqual({ expanded: [], lastFile: null, sortOrder: 'name' })
+    expect(store.get().folders['/v']).toEqual({ expanded: [], lastFile: null, sortOrder: 'name', name: null })
     expect(store.get().windows[0]).toMatchObject({ focusDirs: [], focusFavorites: [] })
     store.setSidebarWidth(321)
     await store.flush()
@@ -346,7 +360,7 @@ describe('createStore: loading', () => {
     expect(store.get().folders['/c'].sortOrder).toBe('name')
     store.setFolder('/b', { sortOrder: 'updated' })
     await store.flush()
-    expect(createStore(file).get().folders['/b']).toEqual({ expanded: [], lastFile: null, sortOrder: 'updated' })
+    expect(createStore(file).get().folders['/b']).toEqual({ expanded: [], lastFile: null, sortOrder: 'updated', name: null })
   })
 
   it('folders: expanded is a session list — present, junk or missing, a launch reads it as [] (YAZ-1642)', async () => {
@@ -432,15 +446,29 @@ describe('createStore: mutations', () => {
   it('setFolder creates the entry with defaults, merges the patch and ignores unknown keys', () => {
     const store = createStore(file)
     store.setFolder('/r1', { expanded: ['/r1/a'] })
-    expect(store.get().folders['/r1']).toEqual({ expanded: ['/r1/a'], lastFile: null, sortOrder: 'name' })
+    expect(store.get().folders['/r1']).toEqual({ expanded: ['/r1/a'], lastFile: null, sortOrder: 'name', name: null })
     store.setFolder('/r1', { lastFile: '/r1/a/x.excalidraw' })
-    expect(store.get().folders['/r1']).toEqual({ expanded: ['/r1/a'], lastFile: '/r1/a/x.excalidraw', sortOrder: 'name' })
+    expect(store.get().folders['/r1']).toEqual({ expanded: ['/r1/a'], lastFile: '/r1/a/x.excalidraw', sortOrder: 'name', name: null })
     store.setFolder('/r1', { lastFile: null, openedAt: 5 } as never)
-    expect(store.get().folders['/r1']).toEqual({ expanded: ['/r1/a'], lastFile: null, sortOrder: 'name' })
+    expect(store.get().folders['/r1']).toEqual({ expanded: ['/r1/a'], lastFile: null, sortOrder: 'name', name: null })
     store.setFolder('/r1', { sortOrder: 'updated' })
-    expect(store.get().folders['/r1']).toEqual({ expanded: ['/r1/a'], lastFile: null, sortOrder: 'updated' })
+    expect(store.get().folders['/r1']).toEqual({ expanded: ['/r1/a'], lastFile: null, sortOrder: 'updated', name: null })
     store.setFolder('/r2', {})
-    expect(store.get().folders['/r2']).toEqual({ expanded: [], lastFile: null, sortOrder: 'name' })
+    expect(store.get().folders['/r2']).toEqual({ expanded: [], lastFile: null, sortOrder: 'name', name: null })
+  })
+
+  it('setFolder cleans the display name, other patches leave it alone, and removeRecent keeps it (Docs YAZ-1974 D3)', () => {
+    const store = createStore(file)
+    store.pushRecent('/v', 1)
+    store.setFolder('/v', { name: '  Business Wiki  ' })
+    expect(store.get().folders['/v'].name).toBe('Business Wiki')
+    store.setFolder('/v', { lastFile: '/v/a.excalidraw', sortOrder: 'updated' })
+    store.removeRecent('/v') // forgets the MRU entry only — folders are not pruned with recents
+    expect(store.get().folders['/v'].name).toBe('Business Wiki')
+    store.setFolder('/v', { name: 'x'.repeat(MAX_VAULT_NAME + 20) })
+    expect(store.get().folders['/v'].name).toHaveLength(MAX_VAULT_NAME)
+    store.setFolder('/v', { name: '   ' })
+    expect(store.get().folders['/v'].name).toBeNull()
   })
 
   it('two windows on one root hold independent focusDirs / focusFavorites — upsertWindow on one leaves the other untouched (YAZ-1628)', () => {
@@ -596,9 +624,9 @@ describe('createStore: mutations', () => {
       expect(store.get().folders['/v'].expanded).toEqual(['/v/Keep'])
     })
 
-    it('drops the whole folder-state entry when the deleted folder was itself a stored root', () => {
+    it('drops the whole folder-state entry when the deleted folder was itself a stored root — its display name with it (Docs YAZ-1974 D3)', () => {
       const store = createStore(file)
-      store.setFolder('/v/Sub', { lastFile: '/v/Sub/a.excalidraw' })
+      store.setFolder('/v/Sub', { lastFile: '/v/Sub/a.excalidraw', name: 'Sub Vault' })
       store.setFolder('/v/Keep', { lastFile: '/v/Keep/b.excalidraw' })
       store.removePath('/v/Sub')
       expect(Object.keys(store.get().folders)).toEqual(['/v/Keep'])
@@ -667,9 +695,18 @@ describe('createStore: mutations', () => {
         lastFile: `${NEW}/a.excalidraw`,
         expanded: [NEW, `${NEW}/deep`, '/v/other'],
         sortOrder: 'name',
+        name: null,
       })
       expect(store.get().folders[OLD]).toBeUndefined()
-      expect(store.get().folders[NEW]).toEqual({ lastFile: `${NEW}/a.excalidraw`, expanded: [], sortOrder: 'name' })
+      expect(store.get().folders[NEW]).toEqual({ lastFile: `${NEW}/a.excalidraw`, expanded: [], sortOrder: 'name', name: null })
+    })
+
+    it('a renamed vault ROOT keeps its display name under the new key (Docs YAZ-1974 D3)', () => {
+      const store = createStore(file)
+      store.setFolder(OLD, { name: 'Old Notes' })
+      store.renamePath(OLD, NEW)
+      expect(store.get().folders[NEW].name).toBe('Old Notes')
+      expect(store.get().folders[OLD]).toBeUndefined()
     })
 
     it('remaps a recents entry at or under the dir (a subfolder that was opened as a vault)', () => {
@@ -713,17 +750,27 @@ describe('createStore: persistence', () => {
     await vi.advanceTimersByTimeAsync(60)
     await store.flush()
     expect(renames()).toHaveLength(1)
-    expect(await onDisk()).toEqual({ ...store.get(), folders: { '/v': { lastFile: '/v/a.excalidraw', sortOrder: 'name' } } })
+    expect(await onDisk()).toEqual({ ...store.get(), folders: { '/v': { lastFile: '/v/a.excalidraw', sortOrder: 'name', name: null } } })
     expect((await readdir(dir)).filter((n) => n.includes('.tmp-'))).toEqual([])
   })
 
   it('the session list lives in get() for every window but never reaches disk, so a relaunch starts collapsed (YAZ-1642)', async () => {
     const store = createStore(file)
     store.setFolder('/v', { expanded: ['/v/sub'] })
-    expect(store.get().folders['/v']).toEqual({ expanded: ['/v/sub'], lastFile: null, sortOrder: 'name' })
+    expect(store.get().folders['/v']).toEqual({ expanded: ['/v/sub'], lastFile: null, sortOrder: 'name', name: null })
     await store.flush()
-    expect((await onDisk()).folders['/v']).toEqual({ lastFile: null, sortOrder: 'name' })
-    expect(createStore(file).get().folders['/v']).toEqual({ expanded: [], lastFile: null, sortOrder: 'name' })
+    expect((await onDisk()).folders['/v']).toEqual({ lastFile: null, sortOrder: 'name', name: null })
+    expect(createStore(file).get().folders['/v']).toEqual({ expanded: [], lastFile: null, sortOrder: 'name', name: null })
+  })
+
+  it('the display name is persisted and restored; a junk one reads as null (Docs YAZ-1974 D3)', async () => {
+    const store = createStore(file)
+    store.setFolder('/v', { name: 'Business Wiki' })
+    await store.flush()
+    expect((await onDisk()).folders['/v'].name).toBe('Business Wiki')
+    expect(createStore(file).get().folders['/v'].name).toBe('Business Wiki')
+    await seed(valid({ folders: { '/v': { lastFile: null, name: 42 } } }))
+    expect(createStore(file).get().folders['/v'].name).toBeNull()
   })
 
   it('flush writes at once, cancels the pending timer, and is a no-op when nothing changed', async () => {

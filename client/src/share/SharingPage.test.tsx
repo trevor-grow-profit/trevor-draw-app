@@ -29,6 +29,7 @@ vi.mock('../api', async (importOriginal) => ({
 }))
 
 import { api, BridgeRequestError } from '../api'
+import { storage } from '../lib/storage'
 import { SettingsDialog } from '../settings/SettingsDialog'
 import { resetLiveShareForTests } from './liveShare'
 import { useSharing } from './useSharing'
@@ -315,6 +316,15 @@ describe('Settings › Sharing (YAZ-1889)', () => {
     expect(share.stop).toHaveBeenCalledWith({ root: ROOT, path: '/v/Roadmap.excalidraw' })
     expect(host.querySelector('.sharing__board')).toBeNull()
     expect(row('sharingBoards').textContent).toContain('Nothing in v is shared')
+  })
+
+  it('an empty list names the vault by its display name (YAZ-2056 D4)', async () => {
+    const vaultName = vi.spyOn(storage, 'vaultName').mockReturnValue('Draw Vault')
+    share.status.mockResolvedValue(READY)
+    await mount()
+    expect(vaultName).toHaveBeenCalledWith(ROOT)
+    expect(row('sharingBoards').textContent).toContain('Nothing in Draw Vault is shared')
+    vaultName.mockRestore()
   })
 
   it('no vault open: the list says to open one', async () => {

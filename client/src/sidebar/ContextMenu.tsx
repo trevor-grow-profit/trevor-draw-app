@@ -7,7 +7,7 @@ interface ContextMenuProps {
   /**
    * The items as data (🔒 D8, YAZ-1674) — built by a sections builder, where every gating rule
    * lives: the file tree's `buildMenuSections` (six groups, 🔒 D7) or the vault switcher's
-   * `buildVaultMenuSections` (four, YAZ-1941). This component only draws them: a
+   * `buildVaultMenuSections` (five, YAZ-1941 · YAZ-2056). This component only draws them: a
    * `role="group"` per NON-EMPTY section (the separator is CSS between adjacent groups), and one
    * button per item whose ONLY text child is the label — the hint is drawn from `data-hint`, so
    * `textContent` and the accessible name stay the bare label. A parent item ("Open in ▸", D7

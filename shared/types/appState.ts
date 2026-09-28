@@ -14,6 +14,16 @@ export function addRecentRoot(list: RecentRoots, path: string, now: number): Rec
 /** Entries in a vault's `.yaseendraw/favorites.json` (YAZ-1766 D2, in the vault since 6A/D11) are capped at this many on read and write. */
 export const MAX_FAVORITES = 500
 
+/** A vault display name (Docs YAZ-1974 D3) is cut to this many characters (code points, so an emoji is never split). */
+export const MAX_VAULT_NAME = 80
+
+/** A display name as stored (Docs YAZ-1974 D3): trimmed and capped; empty or not a string → null (= the folder name). */
+export function cleanVaultName(raw: unknown): string | null {
+  if (typeof raw !== 'string') return null
+  const name = [...raw.trim()].slice(0, MAX_VAULT_NAME).join('')
+  return name === '' ? null : name
+}
+
 /**
  * `WindowEntry.sidebarLens` — which lens the sidebar's chrome-v2 ROW 1 tabs show (⚡ YAZ-1775 D8 amended):
  * `files` (the file explorer) or `favorites` (the pinned files and folders, YAZ-1766 D1).
@@ -155,7 +165,12 @@ export interface FolderState {
   lastFile: string | null
   /** The Files lens's order for this vault (🔒 YAZ-1835 D3): persisted, and every window on the vault follows it. */
   sortOrder: SortOrder
+  /** The vault's display name (Docs YAZ-1974 D3) when this bucket's root is a vault; null = its folder name. Persisted, per machine. */
+  name: string | null
 }
+
+/** What `state.setFolder` may merge into a bucket. */
+export type FolderPatch = Partial<Pick<FolderState, 'expanded' | 'lastFile' | 'sortOrder' | 'name'>>
 
 /**
  * The whole persisted app state — one user-global JSON file, owned by the main process
@@ -179,5 +194,5 @@ export function defaultAppState(): AppState {
 }
 
 export function defaultFolderState(): FolderState {
-  return { expanded: [], lastFile: null, sortOrder: 'name' }
+  return { expanded: [], lastFile: null, sortOrder: 'name', name: null }
 }

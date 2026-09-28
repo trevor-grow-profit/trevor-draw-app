@@ -263,7 +263,7 @@ afterEach(() => {
 describe('bootTabs (rules 12/15)', () => {
   const seeded: AppState = {
     ...defaultAppState(),
-    folders: { '/v': { expanded: [], lastFile: '/v/last.excalidraw', sortOrder: 'name' } },
+    folders: { '/v': { expanded: [], lastFile: '/v/last.excalidraw', sortOrder: 'name', name: null } },
   }
 
   it('restores the stored tabs with the identity file active; only the active tab mounts', async () => {

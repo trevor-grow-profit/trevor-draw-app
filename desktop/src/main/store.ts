@@ -10,6 +10,7 @@ import {
   SIDEBAR_MIN_W,
   THEMES,
   addRecentRoot,
+  cleanVaultName,
   defaultAppState,
   defaultFolderState,
   isCanvasPanelTab,
@@ -18,6 +19,7 @@ import {
   type AppState,
   type CanvasPanelState,
   type DiagramDarkColors,
+  type FolderPatch,
   type FolderState,
   type RecentRoots,
   type SettingsState,
@@ -43,7 +45,7 @@ export interface Store {
   setSidebarWidth(width: number): void
   pushRecent(path: string, now?: number): void
   removeRecent(path: string): void
-  setFolder(root: string, patch: Partial<Pick<FolderState, 'expanded' | 'lastFile' | 'sortOrder'>>): void
+  setFolder(root: string, patch: FolderPatch): void
   upsertWindow(entry: WindowEntry): void
   removeWindow(id: string): void
   /**
@@ -193,6 +195,7 @@ function sanitizeFolder(raw: unknown): FolderState | null {
     expanded: [],
     lastFile: typeof raw.lastFile === 'string' ? raw.lastFile : null,
     sortOrder: isSortOrder(raw.sortOrder) ? raw.sortOrder : defaultFolderState().sortOrder,
+    name: cleanVaultName(raw.name),
   }
 }
 
@@ -324,6 +327,7 @@ export function createStore(filePath: string): Store {
         ...(patch.expanded !== undefined ? { expanded: [...patch.expanded] } : {}),
         ...(patch.lastFile !== undefined ? { lastFile: patch.lastFile } : {}),
         ...(patch.sortOrder !== undefined ? { sortOrder: patch.sortOrder } : {}),
+        ...(patch.name !== undefined ? { name: cleanVaultName(patch.name) } : {}),
       }
       commit({ ...state, folders: { ...state.folders, [root]: next } })
     },
