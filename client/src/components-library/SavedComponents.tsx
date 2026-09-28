@@ -14,7 +14,7 @@
  * WHAT AN INSERT COSTS ON DISK: the component's images become `assets/` files in THIS vault the
  * first time the board is saved after it (🔒 YAZ-1775 D3) — see `componentData.ts`.
  */
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import type { ComponentItem } from '@shared/types'
 import { api } from '../api'
 import { loadExcalidrawElement } from '../drawings/engine'
@@ -30,6 +30,7 @@ import {
   type ComponentTarget,
 } from './componentData'
 import { createPreviewCache } from '../lib/previewCache'
+import { createStore } from '../lib/store'
 import { createScenePreviewPng, type PreviewEngine } from '../lib/scenePreview'
 import { importedComponentName, parseImportedComponentJson } from './componentImport'
 import './savedComponents.css'
@@ -62,10 +63,30 @@ const getErrorMessage = (error: unknown, fallback: string): string => (error ins
 const previews = createPreviewCache(async (slug) => api.components.preview({ slug }), { limit: 300 })
 export const clearComponentPreviewMemo = previews.clear
 
+/**
+ * The tab's session (🔒 YAZ-1990 D5): closing the canvas panel UNMOUNTS the tab, so the list, the
+ * query, the rows shown and the scroll live here — one per window, empty after an app restart.
+ * The list is still re-listed on every mount; keeping it is what lets the scroll land on reopen.
+ */
+const session = createStore({ items: [] as ComponentItem[], query: '', shown: PAGE_SIZE })
+let scrollTop = 0
+/** `useState`'s setter shape, so every call site that edits the list reads as it did. */
+const setItems = (next: ComponentItem[] | ((current: ComponentItem[]) => ComponentItem[])) =>
+  session.set({ items: typeof next === 'function' ? next(session.getState().items) : next })
+
+/** A test starts from an empty tab. */
+export function resetComponentsSession() {
+  scrollTop = 0
+  session.set({ items: [], query: '', shown: PAGE_SIZE })
+}
+
 export function SavedComponents({ engine, excalidrawAPI, hasSelection }: SavedComponentsProps) {
-  const [items, setItems] = useState<ComponentItem[]>([])
-  const [query, setQuery] = useState('')
-  const [shown, setShown] = useState(PAGE_SIZE)
+  const { items, query, shown } = useSyncExternalStore(session.subscribe, session.getState)
+  const contentRef = useRef<HTMLDivElement>(null)
+  // Back where the list was left; the rows come from the session, so they exist on the first paint.
+  useLayoutEffect(() => {
+    if (contentRef.current) contentRef.current.scrollTop = scrollTop
+  }, [])
   const [element, setElement] = useState<ComponentElementApi | null>(null)
   const [captured, setCaptured] = useState<CapturedComponent | null>(null)
   const [name, setName] = useState('')
@@ -128,15 +149,13 @@ export function SavedComponents({ engine, excalidrawAPI, hasSelection }: SavedCo
   const visible = matched.slice(0, shown)
   const canLoadMore = matched.length > shown
 
-  useEffect(() => setShown(PAGE_SIZE), [query])
-
   // The Images tab's paging gesture, so one panel does not have two: a sentinel at the end of the
   // grid grows the page as it comes into view. Re-armed whenever the page moves.
   const sentinelRef = useRef<HTMLDivElement>(null)
   useEffect(() => {
     const sentinel = sentinelRef.current
     if (!canLoadMore || sentinel === null || typeof IntersectionObserver === 'undefined') return
-    const observer = new IntersectionObserver(([entry]) => entry.isIntersecting && setShown((count) => count + PAGE_SIZE), { rootMargin: '160px 0px' })
+    const observer = new IntersectionObserver(([entry]) => entry.isIntersecting && session.set({ shown: session.getState().shown + PAGE_SIZE }), { rootMargin: '160px 0px' })
     observer.observe(sentinel)
     return () => observer.disconnect()
   }, [canLoadMore])
@@ -306,7 +325,7 @@ export function SavedComponents({ engine, excalidrawAPI, hasSelection }: SavedCo
         value={query}
         aria-label="Search components"
         placeholder="Search components"
-        onChange={(event) => setQuery(event.target.value)}
+        onChange={(event) => session.set({ query: event.target.value, shown: PAGE_SIZE })}
       />
 
       {notice !== null && (
@@ -320,7 +339,13 @@ export function SavedComponents({ engine, excalidrawAPI, hasSelection }: SavedCo
         </div>
       )}
 
-      <div className="saved-components__content">
+      <div
+        className="saved-components__content"
+        ref={contentRef}
+        onScroll={(event) => {
+          scrollTop = event.currentTarget.scrollTop
+        }}
+      >
         {visible.length === 0 ? (
           <div className="saved-components__state">{query.trim() === '' ? EMPTY_LIBRARY : `No components match “${query}”`}</div>
         ) : (

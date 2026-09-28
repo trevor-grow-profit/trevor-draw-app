@@ -17,7 +17,8 @@
  *
  * PLAY IS NOT THIS PANEL'S. `onStartPresentation` goes up to `ExcalidrawSurface`, which mounts the
  * player as a SIBLING of `<Excalidraw>` — a tab's body is unmounted the moment the panel closes,
- * and closing the panel must not end a presentation.
+ * and closing the panel must not end a presentation. The same unmount is why the Images and
+ * Components tabs keep what they were doing in module-scope sessions (YAZ-1990), not in the surface.
  *
  * ENGINE-BOUND BY DESIGN: this renders the engine's own components, so it takes the LOADED module
  * as a prop rather than importing the package (`engine.ts`'s lazy rule), and it is rendered only
@@ -67,15 +68,17 @@ export interface CanvasSidebarProps {
   onDock: (docked: boolean) => void
   /** The engine's imperative handle, which each tab narrows to what it uses; null until it has mounted. */
   excalidrawAPI: ExcalidrawImperativeApi | null
-  /** Bumped by ⌘F: the Images tab switches to Search and focuses the field (YAZ-1818). */
-  searchFocusRequest: number
+  /** Set by a ⌘F that opened the Images tab: it switches to Search and focuses the field (YAZ-1818, YAZ-1990). */
+  searchFocusPending: boolean
+  /** The Images tab has taken the focus request; the surface clears it. */
+  onSearchFocused: () => void
   /** Whether the canvas holds a selection — the Components tab's "Save selection" gate (YAZ-1819). */
   hasSelection: boolean
   /** Play, from the Present tab (YAZ-1820): the SURFACE owns the player, so it outlives this panel. */
   onStartPresentation: (initialFrameId: string | null) => void
 }
 
-export function CanvasSidebar({ engine, activeTab, onClose, onDock, excalidrawAPI, searchFocusRequest, hasSelection, onStartPresentation }: CanvasSidebarProps) {
+export function CanvasSidebar({ engine, activeTab, onClose, onDock, excalidrawAPI, searchFocusPending, onSearchFocused, hasSelection, onStartPresentation }: CanvasSidebarProps) {
   const { DefaultSidebar, Sidebar } = engine
   return (
     <>
@@ -105,7 +108,7 @@ export function CanvasSidebar({ engine, activeTab, onClose, onDock, excalidrawAP
                 {CANVAS_LOADING}
               </div>
             ) : tab === 'image-studio' ? (
-              <ImageStudio engine={engine} excalidrawAPI={excalidrawAPI} searchFocusRequest={searchFocusRequest} />
+              <ImageStudio engine={engine} excalidrawAPI={excalidrawAPI} searchFocusPending={searchFocusPending} onSearchFocused={onSearchFocused} />
             ) : tab === 'components' ? (
               <SavedComponents engine={engine} excalidrawAPI={excalidrawAPI} hasSelection={hasSelection} />
             ) : (

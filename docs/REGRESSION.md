@@ -94,6 +94,7 @@ Paste into the PR body and tick each line:
 | P1 | Images: Iconify search + insert, Pixabay with a key, offline → Shapes still work, favorites and recent. | A (part): `canvas` — Shapes offline only (no network in the suite); the rest by hand |
 | P2 | Components: save, insert in ANOTHER vault, rename, delete, Import JSON. | A (part): `canvas` — save, insert in another board, rename, delete; another vault and Import JSON by hand |
 | P3 | Present: reorder by drag and ⌥↑/↓, play, → ← Space Home End, Esc zooms out, ⇧T. | A (part): `canvas` — reorder by button, play, → Home; drag, ⌥↑/↓, ← Space End, Esc, ⇧T by hand |
+| P4 | The panel remembers (YAZ-1990): search Images, scroll, close (click the canvas, Esc, hamburger) → reopen by hamburger and by ⌘F — same query (selected on ⌘F), results, view and scroll; each Images view keeps its own scroll; another drawing tab shows the same; Components keeps its query, rows and scroll; an app restart starts empty. | M — unit: `ImageStudio`, `imageStudioSession`, `SavedComponents` |
 
 ## Sync and history (S) — `seedMergeDemoVault.mjs`
 
@@ -182,6 +183,7 @@ Every line of [feature-safety-net](../thoughts/yaz-2073-scope/research/feature-s
 | F21 | Images tab: Iconify / Pixabay, shapes, favorites, recent, insert | A (part): `canvas` — Shapes offline | P1 |
 | F22 | Components tab: save, insert, rename, delete, Import JSON, shared Library | A (part): `canvas` — Import JSON, cross-vault by hand | P2 |
 | F23 | Present tab: frames as slides, reorder, rename, player, keys | A (part): `canvas` — slide rename, drag, most keys by hand | P3 |
+| F87 | Canvas panel keeps its state across close/reopen (Images and Components) | M | P4 |
 
 ### draw.io diagrams
 
