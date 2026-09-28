@@ -265,6 +265,14 @@ function load(filePath: string): AppState {
   return defaultAppState()
 }
 
+/**
+ * The open-vault roots — `AppState.windows`, where null is Welcome — unique: two windows on one
+ * vault are one root. What main keeps per open vault (sync, favorites, repairs) is kept per these.
+ */
+export function openRoots(state: AppState): string[] {
+  return [...new Set(state.windows.map((w) => w.root).filter((r): r is string => r !== null))]
+}
+
 // ---------- the store ----------
 
 export function createStore(filePath: string): Store {
@@ -276,7 +284,8 @@ export function createStore(filePath: string): Store {
   let chain: Promise<void> = Promise.resolve()
   /**
    * The text this store last wrote. A commit whose file would read the same — a session-only
-   * `expanded` toggle, a settings echo — writes nothing (YAZ-2073 5G).
+   * `expanded` toggle, a settings echo — writes nothing (YAZ-2073 5G). Null until then, so a
+   * launch's first commit always writes, whatever the file already holds.
    */
   let written: string | null = null
 

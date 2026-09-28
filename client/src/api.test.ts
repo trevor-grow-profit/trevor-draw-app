@@ -52,20 +52,4 @@ describe('api (the CONTRACT table over window.yaseenDraw, YAZ-2073 🔒 D16)', (
     expect(api.window.onFlush(listener)).toBe(off)
     expect(bridge.window.onFlush).toHaveBeenCalledWith(listener)
   })
-
-  it('the share adapters build the one- and two-field requests from the call sites’ arguments', async () => {
-    const share = { accounts: vi.fn(), setup: vi.fn(), list: vi.fn(), setDomain: vi.fn(), disconnect: vi.fn() }
-    installBridge({ share })
-    await api.share.accounts('t')
-    await api.share.setup('t', 'acc')
-    await api.share.list('/v')
-    await api.share.list('/v', false)
-    await api.share.setDomain(null)
-    await api.share.disconnect('/v', true)
-    expect(share.accounts).toHaveBeenCalledWith({ token: 't' })
-    expect(share.setup).toHaveBeenCalledWith({ token: 't', accountId: 'acc' })
-    expect(share.list.mock.calls).toEqual([[{ root: '/v', check: true }], [{ root: '/v', check: false }]])
-    expect(share.setDomain).toHaveBeenCalledWith({ hostname: null })
-    expect(share.disconnect).toHaveBeenCalledWith({ root: '/v', deleteEverything: true })
-  })
 })

@@ -4,7 +4,7 @@ import { existsSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { DEFAULT_SETTINGS, MAX_RECENT_ROOTS, MAX_VAULT_NAME, SIDEBAR_DEFAULT_W, SIDEBAR_MAX_W, SIDEBAR_MIN_W, addRecentRoot, cleanVaultName, defaultAppState, type AppState, type WindowEntry } from '@shared/types'
-import { createStore, isSettings } from './store'
+import { createStore, isSettings, openRoots } from './store'
 
 // `rename` is the atomic write's last step: one rename = one write to disk.
 vi.mock('node:fs/promises', async (importOriginal) => {
@@ -31,6 +31,15 @@ const bounds = { x: 1, y: 2, width: 300, height: 200 }
 const win = (id: string, extra: Partial<WindowEntry> = {}): WindowEntry => ({ id, root: null, file: null, tabs: [], sidebarCollapsed: false, sidebarLens: 'favorites', focusDirs: [], focusFavorites: [], bounds, ...extra })
 /** A seed with every field valid, to vary one field at a time. */
 const valid = (over: Record<string, unknown> = {}) => ({ ...defaultAppState(), ...over })
+
+describe('openRoots', () => {
+  it('is the unique non-null window roots (a Welcome window has none, two windows on a vault are one root)', () => {
+    const state = (windows: WindowEntry[]): AppState => ({ ...defaultAppState(), windows })
+    expect(openRoots(state([]))).toEqual([])
+    expect(openRoots(state([win('w1')]))).toEqual([])
+    expect(openRoots(state([win('w1', { root: '/a' }), win('w2', { root: '/a' }), win('w3'), win('w4', { root: '/b' })]))).toEqual(['/a', '/b'])
+  })
+})
 
 describe('addRecentRoot', () => {
   it('prepends, de-dupes and caps at MAX_RECENT_ROOTS', () => {

@@ -234,7 +234,7 @@ app.whenReady().then(() => {
 
 // Quit: renderers, then the pending state and the last sync commit (YAZ-1111), then exit for real —
 // `app.exit` re-runs no quit events. The order and every step live in quitSequence.ts, pinned by its
-// tests; index.test.ts pins that this handler goes through it (YAZ-2073 D11).
+// tests; index.startup.test.ts pins that this handler goes through it (YAZ-2073 D11).
 let quitting = false
 app.on('before-quit', (event) => {
   event.preventDefault()

@@ -1,9 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { CONTRACT, isLeaf, SPECIAL } from './ipc'
-
-/** Every leaf of the table, with its dotted name. */
-const leaves = (table: object, at = ''): [string, { kind: string; channel: string }][] =>
-  Object.entries(table).flatMap(([key, v]) => (isLeaf(v) ? [[`${at}${key}`, v] as [string, typeof v]] : leaves(v, `${at}${key}.`)))
+import { CONTRACT, leaves, SPECIAL } from './ipc'
 
 describe('CONTRACT (YAZ-2073 🔒 D16)', () => {
   it('names every channel once: no two doors, and no special, share one', () => {

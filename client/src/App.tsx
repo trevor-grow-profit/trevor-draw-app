@@ -3,7 +3,7 @@ import { SIDEBAR_MAX_W, SIDEBAR_MIN_W, type CanvasPanelState, type CanvasPrefs, 
 import { prefsEqual } from '@shared/canvasPrefs'
 import { isWithin } from '@shared/paths'
 import { api, BridgeRequestError } from './api'
-import { requestBoardCommand } from './drawings/boardCommand'
+import { requestBoardCommand } from './documents/boardCommand'
 import { Editor } from './Editor'
 import { useGithubSync } from './hooks/useGithubSync'
 import { useVaultStorage } from './hooks/useVaultStorage'
@@ -17,7 +17,6 @@ import { LINK_NOTICE_MS, type Notice, type NoticeKind } from './lib/notice'
 import { NoticeIcon } from './components/NoticeIcon'
 import { basename, vaultPath } from './lib/paths'
 import { flushRenamedDir, flushRenamedPath, retireDir, retirePath } from './lib/renameContinuity'
-import { EMPTY_SELECTION } from './lib/selection'
 import { storage } from './lib/storage'
 import { ownsSidebarHotkey } from './lib/sidebarHotkey'
 import { attentionCopy, buildSetupPrompt } from './lib/syncAttention'
@@ -41,6 +40,11 @@ import { Welcome } from './Welcome'
 /** Reflect the open file in the URL (GRO-2069); replaceState keeps Back sane. */
 function syncHash(path: string | null): void {
   history.replaceState(null, '', fileHash(path) || location.pathname + location.search)
+}
+
+/** Paint the sidebar's width into `<html>`'s `--side-w`, where the layout reads it. */
+function paintSideW(px: number): void {
+  document.documentElement.style.setProperty('--side-w', `${px}px`)
 }
 
 export function App() {
@@ -140,7 +144,7 @@ export function App() {
         width = Math.min(SIDEBAR_MAX_W, Math.max(SIDEBAR_MIN_W, raw))
         // Paint-only while dragging: the CSS var, not React state — App renders when the drag starts
         // and when it lands, never per pixel (YAZ-2073 5D).
-        document.documentElement.style.setProperty('--side-w', `${width}px`)
+        paintSideW(width)
       }
       const up = () => {
         window.removeEventListener('mousemove', move)
@@ -148,7 +152,7 @@ export function App() {
         document.body.style.cursor = ''
         setResizing(false)
         if (raw < SIDEBAR_MIN_W * 0.6) {
-          document.documentElement.style.setProperty('--side-w', `${start}px`)
+          paintSideW(start)
           toggleSidebar()
         } else if (width !== start) {
           setSidebarWidth(width)
@@ -211,7 +215,7 @@ export function App() {
   // The sidebar's width rides on <html> beside `data-theme` rather than through a React style
   // prop: it is one custom property, and this keeps the app root free of an inline style object.
   useLayoutEffect(() => {
-    document.documentElement.style.setProperty('--side-w', `${sidebarWidth}px`)
+    paintSideW(sidebarWidth)
   }, [sidebarWidth])
 
   // The URL hash mirrors the ACTIVE tab (GRO-2069; rule 17: on boot the hash already won as
@@ -461,7 +465,7 @@ export function App() {
    * In-app delete landed (GRO-2272). Reaches EVERY window, originator included.
    *
    * ORDER IS NOT NEGOTIABLE: retire the editor, THEN remap the workspace. Removing a tab
-   * unmounts its editor, and `DrawingEditor`'s unmount cleanup flushes the live scene to disk
+   * unmounts its editor, and `useBoardDocument`'s unmount cleanup flushes the live document to disk
    * — which would recreate the file that was just trashed. Retiring first makes that flush a
    * no-op. Reverse these two lines and the delete silently fails a second later.
    *

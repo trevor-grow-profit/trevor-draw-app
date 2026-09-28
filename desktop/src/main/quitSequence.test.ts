@@ -65,11 +65,15 @@ describe('runQuitSequence', () => {
     expect(log).toEqual(['renderers', 'store', 'exit'])
   })
 
-  it('exits even if the renderer flush rejects', async () => {
+  it('a renderer flush that rejects still writes the state file and runs the last sync, then exits, and never rejects', async () => {
     const { log, steps, deps } = harness()
     const done = runQuitSequence(deps)
     steps.renderers.reject(new Error('boom'))
-    await expect(done).rejects.toThrow('boom')
-    expect(log.at(-1)).toBe('exit')
+    await tick()
+    expect(log).toEqual(['renderers', 'store', 'sync'])
+    steps.store.resolve()
+    steps.sync.resolve()
+    await expect(done).resolves.toBeUndefined()
+    expect(log).toEqual(['renderers', 'store', 'sync', 'exit'])
   })
 })

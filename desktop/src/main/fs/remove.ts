@@ -2,8 +2,8 @@ import { shell } from 'electron'
 import { stat } from 'node:fs/promises'
 import path from 'node:path'
 import type { DeleteResponse } from '@shared/types'
-import { BridgeFailure, fsCall, isSkipped, requireAbsPath } from './fsUtils'
-import { requireObject } from './validate'
+import { BridgeFailure, fsCall, isSkipped } from './fsUtils'
+import { requireAbsPath, requireObject } from './validate'
 
 /**
  * In-app delete (GRO-2272 — decision A, LOCKED): the entry moves to the SYSTEM TRASH.

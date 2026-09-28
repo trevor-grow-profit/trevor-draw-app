@@ -1,6 +1,6 @@
 import type { FileClipState } from '@shared/types'
-import { BridgeFailure, requireAbsPath } from './fs/fsUtils'
-import { requireObject } from './fs/validate'
+import { BridgeFailure } from './fs/fsUtils'
+import { requireAbsPath, requireObject } from './fs/validate'
 
 /**
  * The ONE app-wide file clipboard (YAZ-1674, D1): what Cut / Copy in ANY window's sidebar put

@@ -13,8 +13,9 @@ import {
   planOrphanSweep,
   parseBoardMetaBlock,
   referencedFileIds,
+  serializeBoard,
   stampBoardMeta,
-  stripEmbeddedFiles,
+  stripEmbeddedScene,
   unpersistedFiles,
   type AssetListingEntry,
   type DrawingFileData,
@@ -107,47 +108,33 @@ describe('parseDataUrl', () => {
   })
 })
 
-describe('stripEmbeddedFiles', () => {
-  const legacy = JSON.stringify({ type: 'excalidraw', elements: [{ type: 'image', fileId: 'a' }], files: { a: png(), bad: { mimeType: 'image/png', dataURL: 'https://cdn/x.png' }, worse: 7 } })
+describe('stripEmbeddedScene', () => {
+  const legacy = { type: 'excalidraw', elements: [{ type: 'image', fileId: 'a' }], files: { a: png(), bad: { mimeType: 'image/png', dataURL: 'https://cdn/x.png' }, worse: 7 } }
 
-  it('lifts the usable entries out and writes the scene with an empty files map', () => {
-    const { json, embedded } = stripEmbeddedFiles(legacy)
+  it('lifts the usable entries out and leaves the scene with an empty files map', () => {
+    const { lean, embedded } = stripEmbeddedScene(legacy)
     expect(Object.keys(embedded)).toEqual(['a'])
     expect(embedded.a).toEqual(png())
-    const parsed = JSON.parse(json) as { files: unknown; elements: unknown[] }
-    expect(parsed.files).toEqual({})
+    expect(lean.files).toEqual({})
     // The drawing itself is untouched — only its baggage moved.
-    expect(parsed.elements).toEqual([{ type: 'image', fileId: 'a' }])
-    expect(json.endsWith('\n')).toBe(true)
+    expect(lean.elements).toEqual([{ type: 'image', fileId: 'a' }])
   })
 
-  it('is BYTE-STABLE on a scene that is already lean: an untouched save must not churn the vault`s git history', () => {
-    const lean = `${JSON.stringify({ type: 'excalidraw', elements: [], files: {} }, null, 2)}\n`
-    const { json, embedded } = stripEmbeddedFiles(lean)
-    expect(json).toBe(lean)
+  it("is BYTE-STABLE on a scene that is already lean: an untouched save must not churn the vault's git history", () => {
+    const text = serializeBoard({ type: 'excalidraw', elements: [], files: {} })
+    const { lean, embedded } = stripEmbeddedScene(JSON.parse(text) as Record<string, unknown>)
     expect(embedded).toEqual({})
-    // …and running it again over its own output changes nothing either.
-    expect(stripEmbeddedFiles(json).json).toBe(lean)
+    expect(serializeBoard(lean)).toBe(text)
   })
 
-  it('normalises a lean scene that is spelled differently (minified, or with no files key at all)', () => {
-    const minified = '{"type":"excalidraw","elements":[]}'
-    const { json, embedded } = stripEmbeddedFiles(minified)
-    expect(embedded).toEqual({})
-    expect(JSON.parse(json)).toEqual({ type: 'excalidraw', elements: [], files: {} })
+  it('gives a scene with no files key the empty map every save writes', () => {
+    expect(stripEmbeddedScene({ type: 'excalidraw', elements: [] })).toEqual({ lean: { type: 'excalidraw', elements: [], files: {} }, embedded: {} })
   })
 
   it('is idempotent on a legacy scene: the second pass finds nothing left to lift', () => {
-    const once = stripEmbeddedFiles(legacy)
-    const twice = stripEmbeddedFiles(once.json)
-    expect(twice.embedded).toEqual({})
-    expect(twice.json).toBe(once.json)
-  })
-
-  it('throws on bytes that are not a scene object', () => {
-    for (const bad of ['', '{ not json', '[1,2]', 'null', '"a string"']) {
-      expect(() => stripEmbeddedFiles(bad), bad).toThrow()
-    }
+    const once = stripEmbeddedScene(legacy)
+    const twice = stripEmbeddedScene(once.lean)
+    expect(twice).toEqual({ lean: once.lean, embedded: {} })
   })
 })
 
@@ -197,6 +184,15 @@ describe('planOrphanSweep', () => {
 
   it('leaves the user`s own files alone whatever their age: dot-entries, folders, foreign extensions', () => {
     expect(planOrphanSweep(listing, new Set(), NOW).sort()).toEqual(['kept.png', 'orphan.png'])
+  })
+
+  it("sweeps the tmp file a crashed write left behind once it is past the age guard, even under a referenced asset's name", () => {
+    const tmps = [
+      { name: 'kept.png.tmp-0123456789ab', mtime: old },
+      { name: 'gone.png.tmp-abcdef012345', mtime: old },
+      { name: 'writing.png.tmp-00112233aabb', mtime: NOW },
+    ]
+    expect(planOrphanSweep(tmps, new Set(['kept']), NOW)).toEqual(['kept.png.tmp-0123456789ab', 'gone.png.tmp-abcdef012345'])
   })
 
   it('takes a caller-supplied age so a test does not have to wait a day', () => {

@@ -55,7 +55,11 @@ export const BOARD_MERGE_RULES = ['*.[eE][xX][cC][aA][lL][iI][dD][rR][aA][wW] -m
 const SHARES_PATH = `${VAULT_CONFIG_DIR}/${SHARES_FILE}`
 const FAVORITES_PATH = `${VAULT_CONFIG_DIR}/${FAVORITES_FILE}`
 
-/** Each vault's `info/attributes` path: asked of git once, then every pass is one read (YAZ-2073 5H). */
+/**
+ * Each vault's `info/attributes` path: asked of git once, then every pass is one read (YAZ-2073 5H).
+ * Kept for the process's life — it moves only with the repository itself, and a pass on a folder
+ * that is no longer a repo stops before it asks.
+ */
 const attributesFiles = new Map<string, string>()
 
 /**

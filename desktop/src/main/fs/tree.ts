@@ -1,6 +1,7 @@
 import type { TreeResponse } from '@shared/types'
 import { ASSETS_DIR } from '@shared/drawingAssets'
-import { buildTree, fsCall, requireAbsPath, requireDir } from './fsUtils'
+import { buildTree, fsCall, requireDir } from './fsUtils'
+import { requireAbsPath } from './validate'
 
 /**
  * `window.yaseenDraw.tree(root)`: recursive vault tree of `root` (see `buildTree`).
@@ -11,7 +12,7 @@ import { buildTree, fsCall, requireAbsPath, requireDir } from './fsUtils'
  * hiding it by name anywhere would be the app deciding what the user may see in their own vault.
  * Hidden from the TREE, not from disk: the sweep and the loader address it directly.
  */
-export async function tree(root: string): Promise<TreeResponse> {
+export async function tree(root: unknown): Promise<TreeResponse> {
   const dir = requireAbsPath(root, 'root')
   const flight = flights.get(dir)
   if (flight === undefined) return walkOnce(dir)

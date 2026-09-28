@@ -14,17 +14,19 @@
  * SVGs byte for byte); any difference exits 1.
  *   --app   a packaged bundle (default: desktop/dist-app/mac-arm64/Yaseen Draw.app)
  *   --dev   `desktop/out` under the workspace's Electron instead (after `npm run build`)
- *   --work  where the fixture vault and profile go (default: <tmpdir>/yaseen-draw-pixels)
+ *   --work  where the fixture vault and profile go (default: <tmpdir>/yaseen-draw-pixels); refused
+ *           unless empty or made by tools/perf, since it is rewritten on every run
  * Run it on build A with --out a, then on build B with --out b --compare a.
  */
-import { execFileSync, spawn } from 'node:child_process'
 import fs from 'node:fs'
 import { createRequire } from 'node:module'
-import { createServer } from 'node:net'
 import os from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { pixelDiff } from '../lib/pngPixels.mjs'
+import { wipe, writeProfile } from '../lib/seedKit.mjs'
+import { launch, sleep } from './lib/app.mjs'
+import { claimWorkDir } from './lib/fixtures.mjs'
+import { pixelDiff } from './lib/pngPixels.mjs'
 
 const repo = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
 const argv = process.argv.slice(2)
@@ -35,83 +37,11 @@ if (!out) {
   console.error('usage: node tools/perf/exportPixels.mjs --out <dir> [--compare <dir>] [--app <.app> | --dev] [--work <dir>]')
   process.exit(2)
 }
-const work = opt('work') ?? path.join(os.tmpdir(), 'yaseen-draw-pixels')
+const work = claimWorkDir(opt('work') ?? path.join(os.tmpdir(), 'yaseen-draw-pixels'))
 const bundle = opt('app') ?? path.join(repo, 'desktop/dist-app/mac-arm64/Yaseen Draw.app')
 const app = argv.includes('--dev')
   ? { bin: createRequire(path.join(repo, 'desktop/package.json'))('electron'), args: [path.join(repo, 'desktop')] }
   : { bin: path.join(bundle, 'Contents/MacOS/Yaseen Draw'), args: [] }
-
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
-const freePort = () =>
-  new Promise((resolve, reject) => {
-    const srv = createServer().once('error', reject)
-    srv.listen(0, '127.0.0.1', () => {
-      const { port } = srv.address()
-      srv.close(() => resolve(port))
-    })
-  })
-
-/** Starts the app on `profile` and returns a CDP session on its window. */
-async function launch(profile) {
-  const port = await freePort()
-  const child = spawn(app.bin, [...app.args, `--remote-debugging-port=${port}`, '--disable-backgrounding-occluded-windows', '--disable-renderer-backgrounding'], {
-    env: { ...process.env, YASEEN_DRAW_USER_DATA_DIR: profile },
-    stdio: 'ignore',
-  })
-  const exited = new Promise((r) => child.once('exit', r))
-  let target
-  for (const end = Date.now() + 30_000; !target && Date.now() < end; await sleep(50)) {
-    try {
-      target = (await (await fetch(`http://127.0.0.1:${port}/json/list`)).json()).find((t) => t.type === 'page' && t.url.startsWith('app://yaseen/'))
-    } catch {
-      // the DevTools endpoint is not listening yet
-    }
-  }
-  if (!target) throw new Error('no app window appeared')
-  const ws = new WebSocket(target.webSocketDebuggerUrl)
-  await new Promise((resolve, reject) => Object.assign(ws, { onopen: resolve, onerror: reject }))
-  let id = 0
-  const pending = new Map()
-  ws.onmessage = (m) => {
-    const d = JSON.parse(m.data)
-    pending.get(d.id)?.(d)
-    pending.delete(d.id)
-  }
-  const send = (method, params = {}) =>
-    new Promise((resolve, reject) => {
-      pending.set(++id, (d) => (d.error ? reject(new Error(`${method}: ${d.error.message}`)) : resolve(d.result)))
-      ws.send(JSON.stringify({ id, method, params }))
-    })
-  const ev = async (expression) => {
-    const r = await send('Runtime.evaluate', { expression, awaitPromise: true, returnByValue: true })
-    if (r.exceptionDetails) throw new Error(`page threw: ${r.exceptionDetails.exception?.description ?? r.exceptionDetails.text}`)
-    return r.result.value
-  }
-  const waitFor = async (expression) => {
-    for (const end = Date.now() + 30_000; Date.now() < end; await sleep(50)) if (await ev(expression)) return
-    throw new Error(`timed out waiting for ${expression}`)
-  }
-  const quit = async () => {
-    ws.close()
-    child.kill('SIGTERM')
-    if ((await Promise.race([exited.then(() => true), sleep(10_000)])) !== true) child.kill('SIGKILL')
-    try {
-      execFileSync('pkill', ['-f', profile]) // helpers that outlive a killed main
-    } catch {
-      // none left
-    }
-  }
-  return { send, ev, waitFor, quit }
-}
-
-/** An isolated profile whose one window sits on `file` in `vault`, in `theme`. */
-function writeProfile(profile, vault, file, theme) {
-  fs.rmSync(profile, { recursive: true, force: true })
-  fs.mkdirSync(profile, { recursive: true })
-  const window = { id: 'pixels', root: vault, file, tabs: [file], sidebarCollapsed: true, sidebarLens: 'files', focusDirs: [], focusFavorites: [], bounds: { x: 80, y: 60, width: 1280, height: 820 } }
-  const state = { version: 1, settings: { theme, confirmDelete: true, hoverPreview: false }, sidebarWidth: 260, recents: [], windows: [window], folders: {} }
-  fs.writeFileSync(path.join(profile, 'yaseendraw.json'), JSON.stringify(state))
-}
 
 // The engine and the editor, reached read-only through React's fibers: `engine` is the lazily loaded
 // module a surface component holds, `App` the editor instance under `.excalidraw`.
@@ -215,20 +145,23 @@ const CASES = {
 }
 Object.values(CASES).forEach((els, i) => els.forEach((e) => Object.assign(e, { x: (i % 5) * 480 + (e.x ?? 0), y: Math.floor(i / 5) * 460 + (e.y ?? 0) })))
 
-const FILE_IDS = new Set(Object.values(CASES).flat().map((e) => e.fileId).filter(Boolean)).size
+const FILE_COUNT = new Set(Object.values(CASES).flat().map((e) => e.fileId).filter(Boolean)).size
 const THEMES = ['light', 'dark']
 const ZOOMS = [0.5, 1, 2]
 
 fs.mkdirSync(out, { recursive: true })
-const vault = path.join(work, 'vault')
+const vault = work.dirFor('vault')
 const board = path.join(vault, 'Pixels.excalidraw')
 for (const theme of THEMES) {
-  fs.rmSync(vault, { recursive: true, force: true })
+  wipe(vault)
   fs.mkdirSync(vault, { recursive: true })
   fs.writeFileSync(board, JSON.stringify({ type: 'excalidraw', version: 2, source: 'yaseen-draw-pixels', elements: [], appState: { viewBackgroundColor: '#ffffff' }, files: {} }))
-  const profile = path.join(work, `profile-${theme}`)
-  writeProfile(profile, vault, board, theme)
-  const page = await launch(profile)
+  // An isolated profile whose one window sits on the board, in `theme`, sidebar folded, no previews.
+  const profile = work.dirFor(`profile-${theme}`)
+  wipe(profile)
+  writeProfile(profile, vault, { id: 'pixels', theme, settings: { hoverPreview: false }, sidebarWidth: 260, recents: [], file: board, tabs: [board], sidebarCollapsed: true, bounds: { x: 80, y: 60, width: 1280, height: 820 } })
+  const proc = await launch({ ...app, profile })
+  const page = await proc.page()
   try {
     await page.waitFor(`!!${FIBERS}`)
     await page.ev(`window.__px = ${FIBERS}; window.__pxFiles = null; ${FIXTURE_FILES}.then((f) => { window.__pxFiles = f; return true })`)
@@ -249,7 +182,7 @@ for (const theme of THEMES) {
     })()`)
     // the live canvas: the whole fixture as the scene, at fixed viewports, once every image is decoded
     await page.ev(`(() => { const { app } = window.__px; app.addFiles(Object.values(window.__pxFiles)); app.updateScene({ elements: Object.values(window.__pxCases).flat() }); return true })()`)
-    await page.waitFor(`(() => { const c = window.__px.app.imageCache; return c.size === ${FILE_IDS} && [...c.values()].every((e) => !(e.image instanceof Promise)) })()`)
+    await page.waitFor(`(() => { const c = window.__px.app.imageCache; return c.size === ${FILE_COUNT} && [...c.values()].every((e) => !(e.image instanceof Promise)) })()`)
     const rect = await page.ev(`(() => { const r = document.querySelector('.excalidraw canvas.excalidraw__canvas').getBoundingClientRect(); return { x: r.x, y: r.y, width: r.width, height: r.height } })()`)
     // the canvases alone: the chrome over them (save chips, toolbars) is not the engine's drawing and varies with timing
     await page.ev(`(() => { const s = document.createElement('style'); s.textContent = 'body * { visibility: hidden !important } .excalidraw canvas { visibility: visible !important }'; document.head.append(s); return true })()`)
@@ -260,9 +193,9 @@ for (const theme of THEMES) {
       shots[`canvas-${theme}@${zoom}.png`] = data
     }
     for (const [name, b64] of Object.entries(shots)) fs.writeFileSync(path.join(out, name), Buffer.from(b64, 'base64'))
-
   } finally {
-    await page.quit()
+    page.close()
+    await proc.quit()
   }
 }
 console.log(`wrote ${fs.readdirSync(out).length} files to ${out}`)

@@ -1,11 +1,13 @@
 import path from 'node:path'
 import { MAX_DIAGRAM_BYTES, MAX_DRAWING_BYTES, type BoardVersion, type BoardVersionScene } from '@shared/types'
 import { diagramDocumentError } from '@shared/diagramFile'
+import { stripEmbeddedScene } from '@shared/drawingAssets'
 import { isDiagram } from '@shared/fileKind'
 import { resolveBoard } from '../fs/boardDocument'
 import { saveDiagram } from '../fs/diagram'
-import { sceneElements, sceneFiles } from '../fs/drawing'
-import { atomicWrite, BridgeFailure, requireAbsPath } from '../fs/fsUtils'
+import { parseScene, resolveFiles } from '../fs/drawing'
+import { atomicWrite, BridgeFailure } from '../fs/fsUtils'
+import { requireAbsPath } from '../fs/validate'
 import { git, resolveGit } from './exec'
 import { BEFORE_MERGE_REF } from './resolve'
 
@@ -96,7 +98,8 @@ export async function boardVersion(root: unknown, rawPath: unknown, ref: unknown
   if (b === null) throw new BridgeFailure('NOT_FOUND', 'this vault has no git history', { path: String(rawPath) })
   if (isDiagram(b.file)) return { kind: 'diagram', xml: await readDiagramVersion(b, ref) }
   const json = await readVersion(b, ref)
-  return { kind: 'drawing', json, files: (await sceneFiles(b.root, json, sceneElements(json, b.file, 'IO_ERROR'))).files }
+  const { scene, elements } = parseScene(json, b.file, 'IO_ERROR')
+  return { kind: 'drawing', json, files: (await resolveFiles(b.root, stripEmbeddedScene(scene).embedded, elements)).files }
 }
 
 export async function restoreBoardVersion(root: unknown, rawPath: unknown, ref: unknown): Promise<void> {
@@ -107,6 +110,6 @@ export async function restoreBoardVersion(root: unknown, rawPath: unknown, ref: 
     return
   }
   const json = await readVersion(b, ref)
-  sceneElements(json, b.file, 'IO_ERROR') // never write something that is not a scene over a board
+  parseScene(json, b.file, 'IO_ERROR') // never write something that is not a scene over a board
   await atomicWrite(b.file, json)
 }

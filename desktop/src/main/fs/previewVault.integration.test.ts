@@ -10,7 +10,7 @@ import { createThumbs } from '../drawings/thumbs'
 import { loadDrawing } from './drawing'
 import { tree } from './tree'
 
-vi.mock('electron', async () => ({ nativeImage: (await import('../drawings/fakeNativeImage')).fakeNativeImage }))
+vi.mock('electron', async () => ({ nativeImage: (await import('../drawings/nativeImageFixture')).fakeNativeImage }))
 
 /**
  * 1800E — the hover preview's scenarios against the REAL main-process doors and the vault

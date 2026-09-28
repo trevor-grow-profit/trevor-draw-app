@@ -1,8 +1,8 @@
 import { shell } from 'electron'
 import { stat } from 'node:fs/promises'
 import type { RevealResponse } from '@shared/types'
-import { BridgeFailure, fsCall, requireAbsPath } from './fsUtils'
-import { requireObject } from './validate'
+import { BridgeFailure, fsCall } from './fsUtils'
+import { requireAbsPath, requireObject } from './validate'
 
 /**
  * Open in default app (YAZ-1577) — the third read-only OS verb beside `reveal` and `openInVsCode`,

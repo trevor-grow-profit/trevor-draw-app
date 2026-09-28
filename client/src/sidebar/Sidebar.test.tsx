@@ -16,7 +16,9 @@ import { EMPTY_SCENE_JSON } from '../drawings/drawingScene'
 // how a test hands the Sidebar a focus restored from an earlier session (YAZ-1605).
 import { storage } from '../lib/storage'
 import { BridgeRequestError } from '../api'
-import { BOARD_PREVIEW_DWELL_MS, WATCH_REFRESH_MS, countChildren, Sidebar, type SidebarClipboard } from './Sidebar'
+import { BOARD_PREVIEW_DWELL_MS } from './HoverPreviewHost'
+import { WATCH_REFRESH_MS } from './hooks/useVaultTree'
+import { Sidebar, type SidebarClipboard } from './Sidebar'
 import { datedSeed } from './createEntry'
 
 // The hover preview's picture (YAZ-1800) is drawn by the engine, which jsdom cannot run: the cache is
@@ -26,7 +28,6 @@ vi.mock('./boardPreviewCache', async (importActual) => ({
   ...(await importActual<typeof import('./boardPreviewCache')>()),
   boardPreviews: { load: previewLoad, clear: () => undefined, Preview: () => null },
 }))
-
 
 const TREE: TreeNode[] = [
   { type: 'dir', name: 'sub', path: '/v/sub', children: [] },
@@ -125,8 +126,6 @@ async function mount(over: Partial<SidebarProps> = {}, tweakBridge?: (bridge: Re
     onNotice: vi.fn(),
     pendingSearchFocus: false,
     onSearchFocusHandled: vi.fn(),
-    // The selection box (🔒 D4, YAZ-1338): App's in production, the harness's here — every mount gets a
-    // fresh one, and the "hands its selection up" case reads it back.
     // ⌘C / ⌘X / ⌘V's handle (D6 amended, YAZ-1674): App's listener asks it; the chord tests hold their own box.
     clipboardRef: { current: null },
     ...over,
@@ -138,12 +137,10 @@ async function mount(over: Partial<SidebarProps> = {}, tweakBridge?: (bridge: Re
   return { bridge, props, el, rerender }
 }
 
-/** A watcher change refreshes the tree once `WATCH_REFRESH_MS` of quiet has passed (YAZ-2073 5E); this waits it out. */
-const quiet = () =>
-  act(async () => {
-    if (vi.isFakeTimers()) await vi.advanceTimersByTimeAsync(WATCH_REFRESH_MS)
-    else await new Promise((r) => setTimeout(r, WATCH_REFRESH_MS + 5))
-  })
+/** The timers a watcher refresh waits on, faked once the mount has settled, so `quiet` never sleeps real time. */
+const fakeClock = () => vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+/** A watcher change refreshes the tree once `WATCH_REFRESH_MS` of quiet has passed (YAZ-2073 5E); this skips past it. */
+const quiet = () => act(async () => void (await vi.advanceTimersByTimeAsync(WATCH_REFRESH_MS)))
 const fileRow = (el: HTMLElement) => el.querySelector<HTMLButtonElement>('.tree__row--file')
 const searchInput = (el: HTMLElement) => el.querySelector<HTMLInputElement>('input[aria-label="Search boards"]')
 /**
@@ -188,6 +185,7 @@ afterEach(() => {
   container = null
   delete (window as unknown as Record<string, unknown>).yaseenDraw
   vi.restoreAllMocks()
+  vi.useRealTimers()
 })
 
 /**
@@ -513,6 +511,7 @@ describe('Sidebar stale tab activation (I3, GRO-2235)', () => {
       },
     }
     const { bridge, props } = await mount({ activeFile: '/v/a.excalidraw', watch })
+    fakeClock()
     bridge.tree.mockImplementation(async (r: string) => ({ root: r, tree: TREE.filter((n) => n.path !== '/v/a.excalidraw'), generatedAt: 3 }))
     await act(async () => emit?.({ type: 'unlink', path: '/v/a.excalidraw' }))
     await quiet()
@@ -774,34 +773,6 @@ describe('delete (GRO-2272)', () => {
   })
 })
 
-describe('countChildren (GRO-2272 C3)', () => {
-  const TREE_DEEP: TreeNode[] = [
-    {
-      type: 'dir',
-      name: 'Docs',
-      path: '/v/Docs',
-      children: [
-        { type: 'file', name: 'a.excalidraw', path: '/v/Docs/a.excalidraw', size: 1, mtime: 1, kind: 'drawing' },
-        { type: 'dir', name: 'deep', path: '/v/Docs/deep', children: [{ type: 'file', name: 'b.excalidraw', path: '/v/Docs/deep/b.excalidraw', size: 1, mtime: 1, kind: 'drawing' }] },
-      ],
-    },
-    { type: 'file', name: 'x.excalidraw', path: '/v/x.excalidraw', size: 1, mtime: 1, kind: 'drawing' },
-  ]
-
-  it('counts the WHOLE subtree, not just direct children — a delete takes all of it', () => {
-    expect(countChildren(TREE_DEEP, '/v/Docs')).toEqual({ files: 2, folders: 1 })
-  })
-
-  it('counts a nested folder found by descent', () => {
-    expect(countChildren(TREE_DEEP, '/v/Docs/deep')).toEqual({ files: 1, folders: 0 })
-  })
-
-  it('an unknown or empty folder counts zero rather than throwing', () => {
-    expect(countChildren(TREE_DEEP, '/v/nope')).toEqual({ files: 0, folders: 0 })
-    expect(countChildren([], '/v/Docs')).toEqual({ files: 0, folders: 0 })
-  })
-})
-
 /**
  * Reveal in Finder (GRO-2274). Available on every row type AND on blank space, where it
  * targets the vault ROOT — the same target Copy path uses. Reveal-in-parent for all of them
@@ -1006,6 +977,7 @@ describe('search results (YAZ-803)', () => {
     // would send for a new file and the result list follows, with the query still standing.
     let notify: ((ev: WatchEvent) => void) | null = null
     const { el, bridge } = await search('a', { watch: { subscribe: (l) => ((notify = l), () => (notify = null)) } })
+    fakeClock()
     expect(rowLabels(el)).toEqual(['Alpha', 'Anchor'])
     bridge.tree.mockResolvedValue({ root: '/v', tree: [...SEARCH_TREE, drawing('Abacus')], generatedAt: 2 })
     await act(async () => {
@@ -1066,6 +1038,7 @@ describe('search results (YAZ-803)', () => {
       },
     }
     const { el, input, bridge, props } = await search('a', { watch })
+    fakeClock()
     await press(input, 'ArrowDown')
     expect(activeLabel(el)).toBe('Anchor') // index 1 of two rows
     bridge.tree.mockResolvedValue({ root: '/v', tree: [drawing('Alpha')], generatedAt: 2 })
@@ -1794,6 +1767,7 @@ describe('focus mode (YAZ-1605)', () => {
   it('a focused folder that leaves the tree ends the focus and brings the whole vault back', async () => {
     const { watch, fire } = withWatcher()
     const { el, v, bridge } = await mountVault({ watch })
+    fakeClock()
     await focusRow(el, `${v}/Projects`)
     bridge.tree.mockResolvedValue({ root: v, tree: FOCUS(v).filter((n) => n.path !== `${v}/Projects`), generatedAt: 2 } as never)
     await act(async () => fire({ type: 'unlinkDir', path: `${v}/Projects` }))
@@ -1806,6 +1780,7 @@ describe('focus mode (YAZ-1605)', () => {
   it('with two folders focused, the survivor keeps the focus when the other vanishes', async () => {
     const { watch, fire } = withWatcher()
     const { el, v, bridge } = await mountVault({ watch })
+    fakeClock()
     shiftClickRow(rowByPath(el, `${v}/Notes`))
     shiftClickRow(rowByPath(el, `${v}/Projects`))
     rightClick(rowByPath(el, `${v}/Notes`))
@@ -2123,6 +2098,7 @@ describe('favorites (YAZ-1766)', () => {
     let fire: ((ev: WatchEvent) => void) | undefined
     const watch = { subscribe: (l: (ev: WatchEvent) => void) => ((fire = l), () => undefined) }
     const { el, v, bridge } = await mountVault({ lens: 'favorites', watch }, { favorites: ['/Ghost.excalidraw', '/Notes', '/Projects'] })
+    fakeClock()
     expect(topLabels(el)).toEqual(['Notes', 'Projects'])
     bridge.tree.mockResolvedValue({ root: v, tree: FAV(v).filter((n) => n.path !== `${v}/Projects`), generatedAt: 2 } as never)
     await act(async () => fire?.({ type: 'unlinkDir', path: `${v}/Projects` }))
@@ -2321,6 +2297,7 @@ describe('Sidebar multi-select: search, Escape-when-empty, and the prune', () =>
       },
     }
     const { el, bridge } = await mount({ watch }, (b) => b.tree.mockResolvedValue({ root: '/v', tree: [A, B], generatedAt: 1 }))
+    fakeClock()
     for (const row of el.querySelectorAll<HTMLElement>('.tree__row--file')) shiftClick(row)
     expect(selectedRows(el)).toHaveLength(2)
     // b is deleted on disk: the watcher-driven refresh brings the tree that no longer has it.
@@ -2342,6 +2319,7 @@ describe('Sidebar multi-select: search, Escape-when-empty, and the prune', () =>
       },
     }
     const { el, bridge } = await mount({ watch }, (b) => b.tree.mockResolvedValue({ root: '/v', tree: [GONE, KEPT, A], generatedAt: 1 }))
+    fakeClock()
     for (const row of el.querySelectorAll<HTMLElement>('.tree__row[data-path]')) shiftClick(row)
     expect(selectedRows(el)).toHaveLength(3)
     bridge.tree.mockResolvedValue({ root: '/v', tree: [KEPT, A], generatedAt: 2 })
@@ -2605,7 +2583,6 @@ describe('Sidebar multi-select: folded rows (YAZ-1338)', () => {
     act(() => itemByLabel(el, 'Copy 2 paths')?.click())
     expect(writeText).toHaveBeenCalledExactlyOnceWith('/v/a.excalidraw\n/v/sub/b.excalidraw')
   })
-
 })
 
 describe('settings cog (YAZ-1679)', () => {
@@ -2965,6 +2942,7 @@ describe('sort control (🔒 YAZ-1835)', () => {
   it('an older tree walk that lands AFTER a newer one is dropped (D4 — walks overlap now)', async () => {
     let notify: ((ev: WatchEvent) => void) | null = null
     const { el, bridge } = await mountSortable({ watch: { subscribe: (l) => ((notify = l), () => (notify = null)) } })
+    fakeClock()
     const resolvers: Array<(v: { root: string; tree: TreeNode[]; generatedAt: number }) => void> = []
     bridge.tree.mockImplementation(() => new Promise((r) => resolvers.push(r)))
     await act(async () => notify?.({ type: 'change', path: '/v/Apple.excalidraw', mtime: 1 }))
@@ -2981,6 +2959,7 @@ describe('sort control (🔒 YAZ-1835)', () => {
   it('a watcher `change` event refreshes the tree, so a saved board can rise (D4)', async () => {
     let notify: ((ev: WatchEvent) => void) | null = null
     const { el, bridge } = await mountSortable({ watch: { subscribe: (l) => ((notify = l), () => (notify = null)) } })
+    fakeClock()
     act(() => sortButton(el)?.click())
     await act(async () => itemByLabel(el, 'Last updated')?.click())
     const calls = bridge.tree.mock.calls.length
@@ -3026,6 +3005,7 @@ describe('Info popover (🔒 YAZ-1835 D6/D7)', () => {
   it('opens the popover with the six rows, follows a tree refresh, and closes when the board is gone', async () => {
     let notify: ((ev: WatchEvent) => void) | null = null
     const { el, bridge } = await mountSortable({ watch: { subscribe: (l) => ((notify = l), () => (notify = null)) } })
+    fakeClock()
     rightClick(rowFor(el, 'Apple.excalidraw'))
     await act(async () => itemByLabel(el, 'Info')?.click())
     expect(menuItems(el)).toEqual([]) // the menu closed; the popover stands on its own
@@ -3069,6 +3049,7 @@ describe('Info popover (🔒 YAZ-1835 D6/D7)', () => {
   it('a board that comes BACK after vanishing does not reopen its popover', async () => {
     let notify: ((ev: WatchEvent) => void) | null = null
     const { el, bridge } = await mountSortable({ watch: { subscribe: (l) => ((notify = l), () => (notify = null)) } })
+    fakeClock()
     rightClick(rowFor(el, 'Apple.excalidraw'))
     await act(async () => itemByLabel(el, 'Info')?.click())
     expect(popover(el)).not.toBeNull()
@@ -3091,11 +3072,10 @@ describe('hover preview (YAZ-1800)', () => {
   const previewButton = (el: HTMLElement) => el.querySelector<HTMLButtonElement>('.sidebar__preview')
 
   beforeEach(() => previewLoad.mockReset().mockResolvedValue('data:image/png;base64,AA'))
-  afterEach(() => vi.useRealTimers())
 
   it('opens after the dwell on a board row, shows the picture, and closes the moment the pointer leaves', async () => {
     const { el } = await mount()
-    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    fakeClock()
     const row = fileRow(el)!
     expect(row.title).toBe('') // the path tooltip gives way to the panel
     await enter(row)
@@ -3111,7 +3091,7 @@ describe('hover preview (YAZ-1800)', () => {
 
   it('leaving before the dwell ends never opens it; Escape and a row click close an open one', async () => {
     const { el } = await mount()
-    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    fakeClock()
     const row = fileRow(el)!
     await enter(row)
     await leave(row)
@@ -3129,9 +3109,21 @@ describe('hover preview (YAZ-1800)', () => {
     expect(panel()).toBeNull()
   })
 
+  it('Escape during the dwell, before any panel shows, is not the preview`s: it still clears the selection (YAZ-2073 8B)', async () => {
+    const { el } = await mount()
+    fakeClock()
+    const row = fileRow(el)!
+    act(() => void row.dispatchEvent(new MouseEvent('click', { bubbles: true, shiftKey: true })))
+    expect(el.querySelectorAll('.tree__row--selected')).toHaveLength(1)
+    await enter(row)
+    const esc = new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })
+    act(() => void el.querySelector('.sidebar__body')?.dispatchEvent(esc))
+    expect(el.querySelectorAll('.tree__row--selected')).toHaveLength(0)
+  })
+
   it('says so when a board is empty or cannot be drawn', async () => {
     const { el } = await mount()
-    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    fakeClock()
     // StrictMode runs the panel's effect twice, so the stub answers the same for every call.
     previewLoad.mockResolvedValue('')
     await enter(fileRow(el)!)
@@ -3150,7 +3142,7 @@ describe('hover preview (YAZ-1800)', () => {
     expect(previewButton(el)?.getAttribute('aria-pressed')).toBe('false')
     act(() => previewButton(el)?.click())
     expect(props.onChangeSettings).toHaveBeenCalledWith({ ...DEFAULT_SETTINGS, hoverPreview: true })
-    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    fakeClock()
     const row = fileRow(el)!
     expect(row.title).toBe('/v/a.excalidraw')
     await enter(row)
@@ -3167,7 +3159,7 @@ describe('hover preview (YAZ-1800)', () => {
   it('a save to the hovered board keeps the panel up and asks for the new picture (🔒 D5 amendment: swap in place)', async () => {
     const w = watched()
     const { el, bridge } = await mount({ watch: w.watch })
-    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    fakeClock()
     await enter(fileRow(el)!)
     await dwell()
     expect(panel()).not.toBeNull()
@@ -3181,7 +3173,7 @@ describe('hover preview (YAZ-1800)', () => {
   it('the hovered board disappearing from the tree (deleted, renamed, moved) closes the panel', async () => {
     const w = watched()
     const { el, bridge } = await mount({ watch: w.watch })
-    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    fakeClock()
     await enter(fileRow(el)!)
     await dwell()
     bridge.tree.mockResolvedValue({ root: '/v', tree: TREE.filter((n) => n.path !== '/v/a.excalidraw'), generatedAt: 2 })
@@ -3192,7 +3184,7 @@ describe('hover preview (YAZ-1800)', () => {
 
   it('a right-click or a drag on the row closes an open panel', async () => {
     const { el } = await mount()
-    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    fakeClock()
     const row = fileRow(el)!
     await enter(row)
     await dwell()
@@ -3211,7 +3203,7 @@ describe('hover preview (YAZ-1800)', () => {
 
   it('keyboard focus on a board row previews it like the pointer; blur closes it; a search starting closes it too', async () => {
     const { el } = await mount()
-    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    fakeClock()
     const row = fileRow(el)!
     act(() => row.focus())
     await dwell()
@@ -3227,7 +3219,7 @@ describe('hover preview (YAZ-1800)', () => {
 
   it('turning the toggle off closes an open preview', async () => {
     const { el, rerender } = await mount()
-    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    fakeClock()
     await enter(fileRow(el)!)
     await dwell()
     expect(panel()).not.toBeNull()
@@ -3242,7 +3234,6 @@ describe('hover preview (YAZ-1800)', () => {
  * still refreshes at once (🔒 YAZ-1835 D4 is unchanged: every change is followed by a fresh tree).
  */
 describe('watch-driven refresh (YAZ-2073 5E)', () => {
-  afterEach(() => vi.useRealTimers())
   const watched = () => {
     const w: { emit: (ev: WatchEvent) => void; watch: SidebarProps['watch'] } = { emit: () => undefined, watch: { subscribe: (l) => ((w.emit = l), () => (w.emit = () => undefined)) } }
     return w
@@ -3250,7 +3241,7 @@ describe('watch-driven refresh (YAZ-2073 5E)', () => {
   const mountWatched = async () => {
     const w = watched()
     const m = await mount({ watch: w.watch })
-    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    fakeClock()
     return { ...m, emit: (ev: WatchEvent) => act(async () => w.emit(ev)), calls: () => m.bridge.tree.mock.calls.length }
   }
 

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { BridgeFailure } from './fsUtils'
-import { absPaths, bool, optBool, optStr, requireObject, str, strOrNull } from './validate'
+import { absPaths, bool, optBool, optStr, requireAbsPath, requireObject, requireRequest, str, strArray, strOrNull } from './validate'
 
 /** The refusal `fn` throws, as the renderer's envelope would carry it. */
 function refusal(fn: () => unknown): { code: string; message: string } {
@@ -21,6 +21,17 @@ describe('request shape checks', () => {
     for (const bad of [null, undefined, 'x', 3, []]) expect(refusal(() => requireObject(bad))).toEqual({ code: 'BAD_REQUEST', message: 'request must be an object' })
     expect(refusal(() => requireObject(null, 'missing request'))).toEqual({ code: 'BAD_REQUEST', message: 'missing request' })
     expect(refusal(() => requireObject([], 'patch must be an object'))).toEqual({ code: 'BAD_REQUEST', message: 'patch must be an object' })
+  })
+
+  it('requireRequest is requireObject in the wording every door shares', () => {
+    expect(requireRequest({ a: 1 })).toEqual({ a: 1 })
+    expect(refusal(() => requireRequest(undefined))).toEqual({ code: 'BAD_REQUEST', message: 'missing request' })
+  })
+
+  it('strArray takes an array of strings, the empty one included', () => {
+    expect(strArray([], 'paths')).toEqual([])
+    expect(strArray(['', 'a'], 'paths')).toEqual(['', 'a'])
+    for (const bad of [undefined, 'a', [1], ['a', null]]) expect(refusal(() => strArray(bad, 'paths'))).toEqual({ code: 'BAD_REQUEST', message: "'paths' must be a string array" })
   })
 
   it('str takes a non-empty string', () => {
@@ -53,5 +64,21 @@ describe('request shape checks', () => {
     expect(refusal(() => absPaths('/a', 'tabs'))).toEqual({ code: 'BAD_REQUEST', message: "'tabs' must be an array of absolute paths" })
     expect(refusal(() => absPaths(['/a', 'rel'], 'focusDirs'))).toEqual({ code: 'NOT_ABSOLUTE', message: "'focusDirs[1]' must be an absolute path" })
     expect(refusal(() => absPaths(['/a', ''], 'skip'))).toEqual({ code: 'BAD_REQUEST', message: "missing 'skip[1]'" })
+  })
+})
+
+describe('requireAbsPath', () => {
+  it('normalises an absolute path', () => {
+    expect(requireAbsPath('/v/sub/../a.excalidraw', 'path')).toBe('/v/a.excalidraw')
+  })
+
+  it.each([
+    [undefined, 'BAD_REQUEST'],
+    ['', 'BAD_REQUEST'],
+    ['relative.excalidraw', 'NOT_ABSOLUTE'],
+    [42, 'NOT_ABSOLUTE'],
+    ['/v/with\0nul', 'NOT_ABSOLUTE'],
+  ])('refuses %s', (value, code) => {
+    expect(() => requireAbsPath(value, 'path')).toThrowError(expect.objectContaining({ code }))
   })
 })

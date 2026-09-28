@@ -1,10 +1,11 @@
 import path from 'node:path'
 import { BrowserWindow, dialog, type IpcMainInvokeEvent } from 'electron'
-import { MAX_DRAWING_BYTES, type OpenDrawingResponse, type PickFolderResponse, type SaveDrawingRequest, type SaveDrawingResponse, type SaveImageRequest } from '@shared/types'
+import type { OpenDrawingResponse, PickFolderResponse, SaveDrawingRequest, SaveDrawingResponse, SaveImageRequest } from '@shared/types'
 import { CONTRACT } from '@shared/ipc'
+import { BOARDS } from '../fs/boardDocument'
 import { readBoundedRegularFile } from '../fs/boundedRead'
 import { atomicWrite, BridgeFailure, fsCall, requireDrawingFile } from '../fs/fsUtils'
-import { requireObject, str } from '../fs/validate'
+import { requireRequest, str } from '../fs/validate'
 import { handleWithEvent } from './envelope'
 
 const OPTIONS: Electron.OpenDialogOptions = { title: 'Open folder', properties: ['openDirectory', 'createDirectory'] }
@@ -36,8 +37,6 @@ const SAVE_IMAGE_OPTIONS: Omit<Electron.SaveDialogOptions, 'defaultPath'> = {
 /** The data URL each picture arrives as, by the extension it is written under. */
 const IMAGE_DATA_URL = { '.png': 'data:image/png;base64,', '.svg': 'data:image/svg+xml;base64,' } as const
 
-const TOO_LARGE = `drawing exceeds ${MAX_DRAWING_BYTES} bytes`
-
 /**
  * ONE DIALOG IN FLIGHT PER WINDOW, shared by every dialog this module opens: a second call while
  * that window has a sheet up resolves `{ cancelled: true }` — a benign no-op for the renderer,
@@ -62,7 +61,7 @@ const openDialog = (options: Electron.OpenDialogOptions) => (win: BrowserWindow 
 const saveDialog = (options: Electron.SaveDialogOptions) => (win: BrowserWindow | null) => (win === null ? dialog.showSaveDialog(options) : dialog.showSaveDialog(win, options))
 
 /** `window.yaseenDraw.pickFolder()`: the native open-directory dialog, parented to the calling window. */
-export async function pickFolder(e: IpcMainInvokeEvent, inFlight: Set<BrowserWindow | null>): Promise<PickFolderResponse> {
+async function pickFolder(e: IpcMainInvokeEvent, inFlight: Set<BrowserWindow | null>): Promise<PickFolderResponse> {
   const result = await showOnce(e, inFlight, openDialog(OPTIONS))
   if (result === null) return { cancelled: true }
   const picked = result.filePaths[0]
@@ -80,19 +79,19 @@ export async function pickFolder(e: IpcMainInvokeEvent, inFlight: Set<BrowserWin
  * legacy board that still embeds its images; a picked file that is not a `.excalidraw` (a filter
  * can be defeated by typing a name) is `UNSUPPORTED_EXTENSION`.
  */
-export async function openDrawingFile(e: IpcMainInvokeEvent, inFlight: Set<BrowserWindow | null>): Promise<OpenDrawingResponse> {
+async function openDrawingFile(e: IpcMainInvokeEvent, inFlight: Set<BrowserWindow | null>): Promise<OpenDrawingResponse> {
   const result = await showOnce(e, inFlight, openDialog(OPEN_FILE_OPTIONS))
   if (result === null) return { cancelled: true }
   const picked = result.filePaths[0]
   if (result.canceled || picked === undefined) return { cancelled: true }
   const file = path.resolve(picked)
   requireDrawingFile(file)
-  const snapshot = await fsCall(file, () => readBoundedRegularFile(file, MAX_DRAWING_BYTES, TOO_LARGE))
+  const snapshot = await fsCall(file, () => readBoundedRegularFile(file, BOARDS.drawing.max, BOARDS.drawing.tooLarge))
   return { path: file, name: path.basename(file, path.extname(file)), content: snapshot.data.toString('utf8') }
 }
 
 function requireSaveRequest(v: unknown): SaveDrawingRequest {
-  const r = requireObject(v, 'missing request')
+  const r = requireRequest(v)
   return { defaultName: str(r.defaultName, 'defaultName'), content: str(r.content, 'content') }
 }
 
@@ -108,7 +107,7 @@ function requireSaveRequest(v: unknown): SaveDrawingRequest {
  * THE VAULT FILE IS NOT TOUCHED. An export reads nothing from the vault and writes nothing into
  * it; the bytes come from the renderer, which assembled them from the live canvas.
  */
-export async function saveDrawingFile(e: IpcMainInvokeEvent, inFlight: Set<BrowserWindow | null>, body: unknown): Promise<SaveDrawingResponse> {
+async function saveDrawingFile(e: IpcMainInvokeEvent, inFlight: Set<BrowserWindow | null>, body: unknown): Promise<SaveDrawingResponse> {
   const req = requireSaveRequest(body)
   const result = await showOnce(e, inFlight, saveDialog({ ...SAVE_FILE_OPTIONS, defaultPath: req.defaultName }))
   if (result === null) return { cancelled: true }
@@ -121,8 +120,9 @@ export async function saveDrawingFile(e: IpcMainInvokeEvent, inFlight: Set<Brows
 }
 
 function requireSaveImageRequest(v: unknown): SaveImageRequest {
-  const { defaultName: name, png, svg } = requireObject(v, 'missing request')
-  const defaultName = str(name, 'defaultName')
+  const r = requireRequest(v)
+  const defaultName = str(r.defaultName, 'defaultName')
+  const { png, svg } = r
   if (typeof png !== 'string' || !png.startsWith(IMAGE_DATA_URL['.png'])) throw new BridgeFailure('BAD_REQUEST', "'png' must be a PNG data URL")
   if (typeof svg !== 'string' || !svg.startsWith(IMAGE_DATA_URL['.svg'])) throw new BridgeFailure('BAD_REQUEST', "'svg' must be an SVG data URL")
   return { defaultName, png, svg }
@@ -133,7 +133,7 @@ function requireSaveImageRequest(v: unknown): SaveImageRequest {
  * one-door rule, with a PNG / SVG sheet. The name the user picks decides the format; any other
  * extension is refused, because a sheet lets a name be typed freely. The vault is not touched.
  */
-export async function saveImageFile(e: IpcMainInvokeEvent, inFlight: Set<BrowserWindow | null>, body: unknown): Promise<SaveDrawingResponse> {
+async function saveImageFile(e: IpcMainInvokeEvent, inFlight: Set<BrowserWindow | null>, body: unknown): Promise<SaveDrawingResponse> {
   const req = requireSaveImageRequest(body)
   const result = await showOnce(e, inFlight, saveDialog({ ...SAVE_IMAGE_OPTIONS, defaultPath: req.defaultName }))
   if (result === null) return { cancelled: true }

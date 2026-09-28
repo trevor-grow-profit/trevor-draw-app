@@ -3,8 +3,8 @@ import path from 'node:path'
 import type { RenameFileResponse } from '@shared/types'
 import { canRenameWithoutConversion } from '@shared/fileKind'
 import { isWithin } from '@shared/paths'
-import { BridgeFailure, fsCall, requireAbsPath } from './fsUtils'
-import { requireObject } from './validate'
+import { BridgeFailure, fsCall } from './fsUtils'
+import { requireAbsPath, requireObject } from './validate'
 
 export async function hasExactDirectoryEntry(
   filePath: string,

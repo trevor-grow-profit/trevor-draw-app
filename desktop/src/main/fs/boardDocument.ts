@@ -9,10 +9,10 @@ import type { BoardMetaBlock } from '@shared/drawingAssets'
 import { isDiagram, isDrawing } from '@shared/fileKind'
 import { isWithin } from '@shared/paths'
 import { readBoardHead } from './boardHead'
-import { BridgeFailure, fsCall, requireAbsPath } from './fsUtils'
-import { requireObject } from './validate'
+import { BridgeFailure, fsCall } from './fsUtils'
+import { requireAbsPath, requireObject } from './validate'
 
-export type BoardKind = 'drawing' | 'diagram'
+type BoardKind = 'drawing' | 'diagram'
 
 /** Each kind's extension test, the words its failures use, and its read/write ceiling. */
 export const BOARDS = {

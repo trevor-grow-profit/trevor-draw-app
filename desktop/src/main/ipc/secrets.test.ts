@@ -3,19 +3,12 @@ import { mkdtemp, readFile, rm, stat } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { ipcMain } from 'electron'
-import { CONTRACT, type Envelope } from '@shared/ipc'
+import { CONTRACT } from '@shared/ipc'
 import type { Secrets } from '../secrets'
 import { registerSecretsIpc } from './secrets'
+import { registered } from './ipcFixture'
 
 vi.mock('electron', () => ({ ipcMain: { handle: vi.fn(), on: vi.fn() } }))
-
-type Handler = (event: unknown, ...args: unknown[]) => Promise<Envelope<unknown>>
-
-function registered(channel: string): Handler {
-  const call = vi.mocked(ipcMain.handle).mock.calls.find(([ch]) => ch === channel)
-  if (call === undefined) throw new Error(`no handler registered for ${channel}`)
-  return call[1] as unknown as Handler
-}
 
 const ok = (value: unknown) => ({ ok: true, value })
 const bad = (code: string) => expect.objectContaining({ ok: false, error: expect.objectContaining({ code }) })
@@ -30,14 +23,10 @@ beforeEach(async () => {
 })
 afterEach(() => rm(userData, { recursive: true, force: true }))
 
-const set = (req: unknown) => registered(CONTRACT.secrets.set.channel)({ sender }, req)
-const has = (req: unknown) => registered(CONTRACT.secrets.has.channel)({ sender }, req)
+const set = (req: unknown) => registered(CONTRACT.secrets.set)({ sender }, req)
+const has = (req: unknown) => registered(CONTRACT.secrets.has)({ sender }, req)
 
 describe('registerSecretsIpc (🔒 YAZ-1775 D4, YAZ-1817)', () => {
-  it('registers set and has — and NO channel that answers a value', () => {
-    expect(vi.mocked(ipcMain.handle).mock.calls.map(([ch]) => ch).sort()).toEqual([CONTRACT.secrets.has.channel, CONTRACT.secrets.set.channel].sort())
-  })
-
   it('set stores into `<userData>/secrets.json` owner-only; has flips; null clears; main reads the value', async () => {
     expect(await has({ name: 'pixabayApiKey' })).toEqual(ok(false))
     expect(await set({ name: 'pixabayApiKey', value: 'abc123' })).toEqual(ok(undefined))

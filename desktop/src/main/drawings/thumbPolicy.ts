@@ -13,6 +13,7 @@
  *
  * A CROPPED image keeps its bytes: its crop is in the original's pixels, which a thumbnail changes.
  */
+import { isValidFileId } from '@shared/drawingAssets'
 import { isFiniteNumber } from '@shared/guards'
 
 /** The largest box, in picture pixels, one image is drawn into. */
@@ -33,7 +34,6 @@ interface LiveImage {
   angle: number
   cropped: boolean
 }
-
 
 function liveImages(elements: readonly unknown[]): LiveImage[] {
   const images: LiveImage[] = []
@@ -97,6 +97,12 @@ export function thumbPx(natural: { width: number; height: number }, box: DrawnBo
 /** A thumbnail's file name: the asset it was made from, and its longest side. */
 export const thumbFileName = (fileId: string, px: number): string => `${fileId}-${px}.png`
 
+/** Whether `name` is one `thumbFileName` could have made. */
+function isThumbName(name: string): boolean {
+  const m = /^(.+)-\d+\.png$/.exec(name)
+  return m !== null && isValidFileId(m[1])
+}
+
 /** What a cache folder may hold before its least recently used thumbnails go. */
 export const THUMBS_MAX_BYTES = 256 * 1024 * 1024
 
@@ -104,8 +110,8 @@ export const THUMBS_MAX_BYTES = 256 * 1024 * 1024
  * The sweep's plan: least recently used first (a hit touches the file's mtime), until what stays fits
  * in `maxBytes`. Only names shaped like `thumbFileName`'s are the cache's to delete.
  */
-export function planThumbSweep(entries: readonly { name: string; size: number; mtimeMs: number }[], maxBytes = THUMBS_MAX_BYTES): string[] {
-  const ours = entries.filter((e) => /^[A-Za-z0-9_-]{1,128}-\d+\.png$/.test(e.name)).sort((a, b) => a.mtimeMs - b.mtimeMs)
+export function planThumbSweep(entries: readonly { name: string; size: number; mtimeMs: number }[], maxBytes: number): string[] {
+  const ours = entries.filter((e) => isThumbName(e.name)).sort((a, b) => a.mtimeMs - b.mtimeMs)
   let total = ours.reduce((sum, e) => sum + e.size, 0)
   const doomed: string[] = []
   for (const e of ours) {

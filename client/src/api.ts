@@ -53,13 +53,4 @@ export const api = {
   ...bridge,
   watch: (...args: Parameters<Window['yaseenDraw']['watch']>) => window.yaseenDraw.watch(...args),
   window: { ...bridge.window, onFlush: (listener: () => Promise<void> | void) => window.yaseenDraw.window.onFlush(listener) },
-  // The call sites' own shapes for the requests that are one or two fields.
-  share: {
-    ...bridge.share,
-    accounts: (token: string) => bridge.share.accounts({ token }),
-    setup: (token: string, accountId?: string) => bridge.share.setup({ token, accountId }),
-    list: (root: string, check = true) => bridge.share.list({ root, check }),
-    setDomain: (hostname: string | null) => bridge.share.setDomain({ hostname }),
-    disconnect: (root: string | null, deleteEverything: boolean) => bridge.share.disconnect({ root, deleteEverything }),
-  },
 }

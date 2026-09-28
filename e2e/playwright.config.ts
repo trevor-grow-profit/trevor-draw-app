@@ -14,6 +14,6 @@ export default defineConfig({
   expect: { timeout: 15_000 },
   fullyParallel: true,
   workers: Number(process.env.E2E_WORKERS ?? 3),
-  forbidOnly: !!process.env.CI,
+  forbidOnly: true, // a stray test.only must never pass off one test as the whole run
   reporter: [['list']],
 })

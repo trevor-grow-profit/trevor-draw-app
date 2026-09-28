@@ -1,7 +1,7 @@
-import type { OpenLinkRequest } from '@shared/types'
 import { isExternalLinkProtocol } from './fs/openLink'
 
-export type LinkOpener = (req: OpenLinkRequest) => Promise<void>
+/** An external-link intent from the canvas; the opener re-validates the protocol before any OS side effect. */
+export type LinkOpener = (req: { href: string }) => Promise<void>
 
 /** Defense in depth: safe `_blank` URLs leave through the OS; no popup becomes a child window. */
 export function createWindowOpenHandler(open: LinkOpener) {

@@ -2,7 +2,8 @@ import { describe, expect, it, vi } from 'vitest'
 import { mkdir, mkdtemp, open, readdir, readFile, rename, rm, stat, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
-import { atomicWrite, BridgeFailure, buildTree, isAtomicTmp, isSkipped, requireAbsPath, requireDrawingFile, tmpSibling, toBridgeFailure, writeDurable } from './fsUtils'
+import { isAtomicTmp } from '@shared/fileKind'
+import { atomicWrite, BridgeFailure, buildTree, isSkipped, requireDrawingFile, tmpSibling, toBridgeFailure, writeDurable } from './fsUtils'
 
 // Pass-through spies: the durability tests watch the handle's `sync` and the rename that follows it.
 vi.mock('node:fs/promises', async (importOriginal) => {
@@ -31,22 +32,6 @@ async function traceDurability(): Promise<string[]> {
 }
 
 /** The rules every fs handler is built on; until now each was covered only incidentally. */
-
-describe('requireAbsPath', () => {
-  it('normalises an absolute path', () => {
-    expect(requireAbsPath('/v/sub/../a.excalidraw', 'path')).toBe('/v/a.excalidraw')
-  })
-
-  it.each([
-    [undefined, 'BAD_REQUEST'],
-    ['', 'BAD_REQUEST'],
-    ['relative.excalidraw', 'NOT_ABSOLUTE'],
-    [42, 'NOT_ABSOLUTE'],
-    ['/v/with\0nul', 'NOT_ABSOLUTE'],
-  ])('refuses %s', (value, code) => {
-    expect(() => requireAbsPath(value, 'path')).toThrowError(expect.objectContaining({ code }))
-  })
-})
 
 describe('requireDrawingFile', () => {
   it('accepts a drawing, whatever the case of its extension', () => {
@@ -116,6 +101,17 @@ describe('buildTree', () => {
     }
   })
 
+  it('leaves out the tmp file a crashed atomic write left behind', async () => {
+    const root = await mkdtemp(path.join(tmpdir(), 'yaseendraw-tree-'))
+    try {
+      await writeFile(path.join(root, 'b.excalidraw'), '{}')
+      await writeFile(path.join(root, 'b.excalidraw.tmp-0123456789ab'), '{')
+      expect((await buildTree(root)).map((n) => n.name)).toEqual(['b.excalidraw'])
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
   it('carries each file\'s kind: a drawing is `drawing`, anything else is null (YAZ-1577 D1)', async () => {
     const root = await mkdtemp(path.join(tmpdir(), 'yaseendraw-tree-'))
     try {
@@ -158,8 +154,10 @@ describe('durable writes (YAZ-2073 D12)', () => {
       const log = await traceDurability()
       const file = path.join(dir, 'a.excalidraw')
       await writeFile(file, 'old')
+      // A new file's mode under this machine's umask: the tmp file is born with it too.
+      const born = ((await stat(file)).mode & 0o777).toString(8)
       const res = await atomicWrite(file, 'new ✓')
-      expect(log).toEqual(['sync a.excalidraw.tmp', 'rename mode 644'])
+      expect(log).toEqual(['sync a.excalidraw.tmp', `rename mode ${born}`])
       expect(await readFile(file, 'utf8')).toBe('new ✓')
       expect(res.size).toBe(Buffer.byteLength('new ✓'))
       expect(await readdir(dir)).toEqual(['a.excalidraw'])
@@ -203,7 +201,7 @@ describe('durable writes (YAZ-2073 D12)', () => {
       expect(await readFile(file, 'utf8')).toBe('old')
     }))
 
-  it('every tmp sibling is one the watchers stay silent about — a save`s and a landing asset`s alike (YAZ-2073 2B1)', () => {
+  it("every tmp sibling is one the watchers stay silent about — a save's and a landing asset's alike (YAZ-2073 2B1)", () => {
     for (const file of ['/v/Board.excalidraw', '/v/assets/0a1b2c.png']) {
       expect(path.dirname(tmpSibling(file))).toBe(path.dirname(file))
       expect(isAtomicTmp(path.basename(tmpSibling(file)))).toBe(true)

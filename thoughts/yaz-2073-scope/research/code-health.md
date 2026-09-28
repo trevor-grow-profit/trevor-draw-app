@@ -1,6 +1,6 @@
 # Code-health audit — YAZ-2074 (angle: "code-health", refactor-not-remove)
 
-Repo `main @ 51e85cd` (v0.1.11). Read-only; all tool output in `$SCRATCH/code-health/`.
+Repo `main @ 51e85cd` (v0.1.11). Read-only.
 
 ## 1. What I measured (commands + numbers)
 
@@ -25,7 +25,7 @@ Repo `main @ 51e85cd` (v0.1.11). Read-only; all tool output in `$SCRATCH/code-he
   | `client/src/drawings/DrawingEditor.tsx` | 427 | |
 
   - Biggest test file: `Sidebar.test.tsx` at 3,214 lines.
-- **Dead code** (`npx knip@5 --config $SCRATCH/code-health/knip.json`; the no-tests run uses `knip-notest.json`):
+- **Dead code** (`npx knip@5` with a research-only config, with and without tests):
   - **Unused files: 0 real.** Knip flagged 2, both false positives. `shared/links.ts` is reached through the `@shared` alias from `desktop/src/main/index.ts:7`. `share/viewer/drawioConfig.js` is copied by `tools/buildShareViewer.mjs:67`.
   - **Unused exports: 20 values and 47 types.** Every one of them is referenced inside its own file (checked by grep). They are over-exported, not dead, so dropping `export` removes 0 LOC.
   - Excluding test files, a further **~50 exports are used only by tests** (for example `tabsReducer`, `clampBounds`, `_resetSweeps`). These are deliberate test seams; keep them.
@@ -37,7 +37,7 @@ Repo `main @ 51e85cd` (v0.1.11). Read-only; all tool output in `$SCRATCH/code-he
   - Prod: **0.49%** (177 lines, 15 clones). 106 of those lines are in `tools/seed*.mjs`; the rest is `DrawingEditor` vs `DrawioEditor` (47 lines) and `fs/drawing.ts` vs `fs/diagram.ts` (10 lines).
   - Tests: 1.35%.
   - **Structural (non-literal) duplication is the real cost** (see section 2).
-- **Vendored engine** (fork at `~/Documents/GitHub/yaseen-excalidraw`, merge-base with `upstream/master` is `1acf66ed`):
+- **Vendored engine** (the Excalidraw fork, merge-base with `upstream/master` is `1acf66ed`):
   - Fork is **265 commits ahead**.
   - Prod source changed (excluding tests/snapshots/md):
     - excalidraw: +10,723 / −802 in 100 files

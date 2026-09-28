@@ -36,8 +36,8 @@ function createEntry(root: string): Entry {
     .on('add', (p, stats) => emit({ type: 'add', path: p, mtime: stats.mtimeMs }))
     .on('change', (p, stats) => emit({ type: 'change', path: p, mtime: stats.mtimeMs }))
     .on('unlink', (p) => emit({ type: 'unlink', path: p }))
-    .on('addDir', (p) => p !== root && emit({ type: 'addDir', path: p }))
-    .on('unlinkDir', (p) => p !== root && emit({ type: 'unlinkDir', path: p }))
+    .on('addDir', (p) => emit({ type: 'addDir', path: p }))
+    .on('unlinkDir', (p) => emit({ type: 'unlinkDir', path: p }))
     .on('error', (err) => emit({ type: 'error', message: err instanceof Error ? err.message : String(err) }))
   return entry
 }

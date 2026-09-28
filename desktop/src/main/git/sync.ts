@@ -44,9 +44,9 @@ const listFiles = async (bin: string, root: string, args: readonly string[]): Pr
 }
 
 /**
- * Keep the OS's droppings out of the commit `add -A` is about to make (YAZ-1829). `add -A` stages
- * everything, so Finder's `.DS_Store` ends up committed, pushed, and in the commit SUBJECT — which
- * is what this vault's history shows. Two steps, both idempotent and both no-ops until one of
+ * Keep the OS's droppings (and a crashed write's tmp file) out of the commit `add -A` is about to
+ * make (YAZ-1829). `add -A` stages everything, so Finder's `.DS_Store` ends up committed, pushed, and
+ * in the commit SUBJECT — which is what this vault's history shows. Two steps, both idempotent and both no-ops until one of
  * these files actually exists:
  *  - the vault's `.gitignore` gains the entry (APPEND-ONLY; the user's own file is not ours to
  *    reorganise, and a vault that already ignores it is not touched at all);
@@ -198,8 +198,11 @@ function fromFailure(root: string, repo: RepoRef, res: GitResult): GithubSyncSta
  * open does it anyway) and the push gets a short cap instead of the 30s wall, so a half-dead
  * network can never make quitting feel frozen. A push the remote rejects (it was ahead) is fine:
  * the commit is safe locally and the next open rebases and pushes it.
+ *
+ * `fetched: true` says the idle pull's look (`lookAtRemote`) fetched origin a moment ago and found
+ * news, so the pass rebases onto that fetch instead of making the same round trip again.
  */
-export async function syncPass(root: string, opts?: { candidates?: readonly string[]; flush?: boolean }): Promise<GithubSyncStatus> {
+export async function syncPass(root: string, opts?: { candidates?: readonly string[]; flush?: boolean; fetched?: boolean }): Promise<GithubSyncStatus> {
   // No git binary is a CLASSIFICATION, never an exception: a Mac without the Command Line Tools
   // or a PC without Git for Windows is an ordinary machine, and the app must be able to say
   // "install it" (`installGitHint`, per OS) rather than crash a pass.
@@ -241,7 +244,7 @@ export async function syncPass(root: string, opts?: { candidates?: readonly stri
 
   // ---------- 2. learn what the remote has (skipped on flush — see the doc comment) ----------
   const flush = opts?.flush === true
-  if (!flush) {
+  if (!flush && opts?.fetched !== true) {
     const fetched = await git(bin, root, ['fetch', 'origin'], { timeoutMs: TRANSFER_TIMEOUT_MS })
     if (fetched.code !== 0) return withTooLarge(fromFailure(root, repo, fetched), tooLarge)
   }
@@ -295,19 +298,23 @@ async function divergence(bin: string, root: string): Promise<{ behind: number; 
   return { behind: Number.parseInt(b, 10) || 0, ahead: Number.parseInt(a, 10) || 0 }
 }
 
+/** What the idle pull's look found: both tips level, news fetched just now, or no answer at all. */
+export type RemoteLook = 'level' | 'moved' | 'unknown'
+
 /**
  * The idle pull's cheap look (YAZ-2073 5H): `fetch` + one `rev-list`, two spawns where a full pass
  * makes nine. The idle pull only runs while no watcher event has arrived since a `synced` pass,
- * so the working tree is known clean and only the two branch tips can have moved. False ONLY when
- * both sides are provably level; news on the remote, an unpushed commit (one made in a terminal,
- * say), no upstream, or a look that failed are all true — the full pass does and classifies those.
+ * so the working tree is known clean and only the two branch tips can have moved. `level` ONLY
+ * when both sides provably are; news on the remote, an unpushed commit (one made in a terminal,
+ * say) or no upstream is `moved`, with origin already fetched; a look that failed is `unknown` —
+ * the full pass does, fetches and classifies both.
  */
-export async function remoteMoved(root: string): Promise<boolean> {
+export async function lookAtRemote(root: string): Promise<RemoteLook> {
   const bin = await resolveGit()
-  if (bin === null) return true
-  if ((await git(bin, root, ['fetch', 'origin'], { timeoutMs: TRANSFER_TIMEOUT_MS })).code !== 0) return true
+  if (bin === null) return 'unknown'
+  if ((await git(bin, root, ['fetch', 'origin'], { timeoutMs: TRANSFER_TIMEOUT_MS })).code !== 0) return 'unknown'
   const level = await divergence(bin, root)
-  return level === null || level.behind > 0 || level.ahead > 0
+  return level !== null && level.behind === 0 && level.ahead === 0 ? 'level' : 'moved'
 }
 
 /**

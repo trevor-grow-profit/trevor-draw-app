@@ -14,6 +14,7 @@
  */
 import { createHash } from 'node:crypto'
 import { extname } from 'node:path'
+import type { ShareAccount } from '@shared/types'
 import { BridgeFailure } from '../fs/fsUtils'
 
 export const CLOUDFLARE_API = 'https://api.cloudflare.com/client/v4'
@@ -73,7 +74,7 @@ export function offline(what: string, err: unknown): CloudflareError {
 export interface CloudflareClient {
   /** A user token checks at /user/tokens/verify; an account-owned one (`cfat_…`, D18) at its account's. */
   verifyToken(): Promise<void>
-  listAccounts(): Promise<{ id: string; name: string }[]>
+  listAccounts(): Promise<ShareAccount[]>
   /** Creates the bucket; an existing bucket we own is fine (setup is re-runnable). */
   createBucket(accountId: string, name: string): Promise<void>
   deleteBucket(accountId: string, name: string): Promise<void>
@@ -155,7 +156,7 @@ export function createCloudflareClient(token: string, base: string = CLOUDFLARE_
       const result = await ok<{ status: string }>('GET', route, 'Cloudflare did not accept this key')
       if (result.status !== 'active') throw new CloudflareError('PROVIDER_FAILED', `This key is ${result.status}, not active. Make a new one and paste it here.`, 200, null)
     },
-    listAccounts: () => ok<{ id: string; name: string }[]>('GET', '/accounts', 'Could not list your Cloudflare accounts'),
+    listAccounts: () => ok<ShareAccount[]>('GET', '/accounts', 'Could not list your Cloudflare accounts'),
     async createBucket(accountId, name) {
       const { status, env } = await call('POST', `${a(accountId)}/r2/buckets`, jsonBody({ name }), 'application/json')
       if (env.success && status < 400) return

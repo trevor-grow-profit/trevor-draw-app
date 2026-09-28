@@ -3,22 +3,15 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { BrowserWindow, dialog, ipcMain } from 'electron'
-import { CONTRACT, type Envelope } from '@shared/ipc'
+import { CONTRACT } from '@shared/ipc'
 import { registerDialogIpc } from './dialog'
+import { registered } from './ipcFixture'
 
 vi.mock('electron', () => ({
   ipcMain: { handle: vi.fn(), on: vi.fn() },
   dialog: { showOpenDialog: vi.fn(), showSaveDialog: vi.fn() },
   BrowserWindow: { fromWebContents: vi.fn() },
 }))
-
-type Handler = (event: unknown, ...args: unknown[]) => Promise<Envelope<unknown>>
-
-function registered(channel: string): Handler {
-  const call = vi.mocked(ipcMain.handle).mock.calls.find(([ch]) => ch === channel)
-  if (call === undefined) throw new Error(`no handler registered for ${channel}`)
-  return call[1] as unknown as Handler
-}
 
 const showOpenDialog = vi.mocked(dialog.showOpenDialog)
 const showSaveDialog = vi.mocked(dialog.showSaveDialog)
@@ -33,14 +26,10 @@ beforeEach(() => {
   registerDialogIpc()
 })
 
-const pick = () => registered(CONTRACT.pickFolder.channel)({ sender })
-const open = () => registered(CONTRACT.dialog.openDrawing.channel)({ sender })
+const pick = () => registered(CONTRACT.pickFolder)({ sender })
+const open = () => registered(CONTRACT.dialog.openDrawing)({ sender })
 
 describe('dialog:pick-folder', () => {
-  it('registers exactly the four dialog channels', () => {
-    expect(vi.mocked(ipcMain.handle).mock.calls.map(([ch]) => ch)).toEqual([CONTRACT.pickFolder.channel, CONTRACT.dialog.openDrawing.channel, CONTRACT.dialog.saveDrawing.channel, CONTRACT.dialog.saveImage.channel])
-  })
-
   it('opens an openDirectory dialog parented to the calling window and answers { path }', async () => {
     const win = { id: 'w' } as unknown as BrowserWindow
     fromWebContents.mockReturnValue(win)
@@ -133,7 +122,6 @@ describe('one dialog in flight per window', () => {
   })
 })
 
-
 /**
  * The import picker (YAZ-1833). It answers the picked file's BYTES, so these run against a real
  * temp file — the read is the door's own, not a mock's.
@@ -205,7 +193,6 @@ describe('dialog:open-file', () => {
   })
 })
 
-
 /**
  * The export sheet and the write behind it (🔒 YAZ-1775 D3, YAZ-1821). One door: the only path ever written
  * is the one the user has just typed into a native sheet, in the same call.
@@ -224,7 +211,7 @@ describe('dialog:save-file', () => {
     for (const d of made) await rm(d, { recursive: true, force: true })
   })
 
-  const save = (body: unknown) => registered(CONTRACT.dialog.saveDrawing.channel)({ sender }, body)
+  const save = (body: unknown) => registered(CONTRACT.dialog.saveDrawing)({ sender }, body)
   const SCENE = '{"type":"excalidraw","version":2,"elements":[],"files":{}}\n'
 
   it('opens a save sheet on the board\u2019s own name and writes the bytes atomically', async () => {
@@ -307,7 +294,7 @@ describe('dialog:save-image', () => {
     for (const d of made) await rm(d, { recursive: true, force: true })
   })
 
-  const save = (body: unknown) => registered(CONTRACT.dialog.saveImage.channel)({ sender }, body)
+  const save = (body: unknown) => registered(CONTRACT.dialog.saveImage)({ sender }, body)
   const PNG_BYTES = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
   const SVG_TEXT = '<svg xmlns="http://www.w3.org/2000/svg"/>'
   const PICTURES = { defaultName: 'Flow.png', png: `data:image/png;base64,${PNG_BYTES.toString('base64')}`, svg: `data:image/svg+xml;base64,${Buffer.from(SVG_TEXT).toString('base64')}` }

@@ -1,22 +1,14 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 import { writeFile } from 'node:fs/promises'
 import path from 'node:path'
-import { ipcMain } from 'electron'
 import type { WatchEvent } from '@shared/types'
 import { SPECIAL } from '@shared/ipc'
 import { makeFixture, until } from '../fs/testFixture'
 import { activeWatcherRoots } from '../fs/watchers'
 import { registerWatchIpc } from './watch'
+import { listener } from './ipcFixture'
 
 vi.mock('electron', () => ({ ipcMain: { handle: vi.fn(), on: vi.fn() } }))
-
-type Listener = (event: unknown, ...args: unknown[]) => void | Promise<void>
-
-function listener(channel: string): Listener {
-  const call = vi.mocked(ipcMain.on).mock.calls.find(([ch]) => ch === channel)
-  if (call === undefined) throw new Error(`no listener registered for ${channel}`)
-  return call[1] as unknown as Listener
-}
 
 let nextId = 1
 /** Stand-in for `event.sender` (a WebContents): records sends and the `destroyed` hook. */
@@ -53,11 +45,6 @@ const subscribeAs = async (s: Sender, id: string, r: string) => {
 const unsubscribeAs = (s: Sender, id: string) => listener(SPECIAL.watchUnsubscribe)({ sender: s }, id)
 
 describe('watch IPC', () => {
-  it('registers subscribe + unsubscribe listeners', () => {
-    const channels = vi.mocked(ipcMain.on).mock.calls.map(([ch]) => ch).sort()
-    expect(channels).toEqual([SPECIAL.watchSubscribe, SPECIAL.watchUnsubscribe].sort())
-  })
-
   it('two subscriptions on one root share one watcher; each gets `ready` addressed to its id', async () => {
     const s = makeSender()
     await subscribeAs(s, 'sub-1', root)

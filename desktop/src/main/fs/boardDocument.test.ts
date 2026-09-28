@@ -9,7 +9,7 @@ import { failure } from './testFixture'
 /** The rules both board doors share (YAZ-2073 D16); `drawing.test.ts` and `diagram.test.ts` pin them per door. */
 let root: string
 beforeEach(async () => {
-  root = await mkdtemp(path.join(tmpdir(), 'yaz-2107-board-'))
+  root = await mkdtemp(path.join(tmpdir(), 'yaseendraw-board-'))
 })
 afterEach(() => rm(root, { recursive: true, force: true }))
 

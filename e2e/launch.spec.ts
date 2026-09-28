@@ -4,8 +4,9 @@
  */
 import { createHash } from 'node:crypto'
 import { mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
-import { test, expect } from './support/fixtures'
+import { test, expect, identity } from './support/fixtures'
 import { canvasReady } from './support/canvas'
+import { openSettings } from './support/sidebar'
 import { gitVault, readProfile, rect, scene, text } from './support/vault'
 
 test('a first launch opens one Welcome window and writes a fresh state file', async ({ sandbox, launch }) => {
@@ -31,7 +32,7 @@ test('Welcome lists recents; a gone one says so when clicked, a live one opens i
   await expect(gone).toContainText('Folder not found')
   await page.locator('button.welcome__recent').filter({ hasText: 'Notes' }).click()
   await expect(page.getByRole('treeitem', { name: 'Board' })).toBeVisible()
-  expect((await page.evaluate(() => window.yaseenDraw.window.identity())).root).toBe(vault)
+  expect((await identity(page)).root).toBe(vault)
 })
 
 test('a relaunch restores every window with its tabs, active tab and bounds', async ({ sandbox, launch }) => {
@@ -46,7 +47,7 @@ test('a relaunch restores every window with its tabs, active tab and bounds', as
   const app = await launch()
   const pages = await app.windows(2)
   const byRoot = async (root: string) => {
-    for (const p of pages) if ((await p.evaluate(() => window.yaseenDraw.window.identity())).root === root) return p
+    for (const p of pages) if ((await identity(p)).root === root) return p
     throw new Error(`no window on ${root}`)
   }
   const pa = await byRoot(a)
@@ -70,12 +71,8 @@ test('a window names its vault and board in the title and the board path in the 
   expect(decodeURIComponent(new URL(page.url()).hash)).toBe(`#${vault}/Plans/Roadmap.excalidraw`)
 })
 
-test('the renderer is a secure context on app:// (image ids, clipboard, workers depend on it)', async ({ sandbox, launch }) => {
-  const vault = sandbox.vault('V', { 'Board.excalidraw': scene([rect('r')]) })
-  sandbox.writeProfile({ windows: [{ root: vault, file: `${vault}/Board.excalidraw` }] })
-  const app = await launch()
-  const page = await app.window()
-  await canvasReady(page)
+test('the renderer is a secure context on app:// (image ids, clipboard, workers depend on it)', async ({ openBoard }) => {
+  const { page } = await openBoard({ 'Board.excalidraw': scene([rect('r')]) })
   const probe = await page.evaluate(async () => {
     const digest = await crypto.subtle.digest('SHA-1', new TextEncoder().encode('yaseen'))
     return {
@@ -92,8 +89,7 @@ test('the renderer is a secure context on app:// (image ids, clipboard, workers 
 test('opening a text board loads its fonts from the app itself and never touches the network', async ({ sandbox, launch }) => {
   const vault = sandbox.vault('V', { 'Words.excalidraw': scene([text('t1', 'Hand-drawn words', 0, 0), rect('r', 0, 60)]) })
   sandbox.writeProfile({ windows: [{ root: vault, file: `${vault}/Words.excalidraw` }] })
-  const app = await launch()
-  const network = app.outsideRequests()
+  const app = await launch({ network: true })
   const fonts: string[] = []
   app.electron.context().on('request', (req) => void (/\.woff2(\?|$)/.test(req.url()) && fonts.push(req.url())))
   const page = await app.window()
@@ -104,7 +100,7 @@ test('opening a text board loads its fonts from the app itself and never touches
   })).toBe(true)
   expect(fonts.every((url) => url.startsWith('app://yaseen/'))).toBe(true)
   expect(fonts.some((url) => url.startsWith('app://yaseen/excalidraw-assets/fonts/Excalifont/'))).toBe(true)
-  expect(network.attempted).toEqual([])
+  expect(app.outsideRequests().attempted).toEqual([])
 })
 
 test('Settings › Storage measures a git vault on the storage worker', async ({ sandbox, launch }) => {
@@ -116,8 +112,7 @@ test('Settings › Storage measures a git vault on the storage worker', async ({
   const stats = await page.evaluate((root) => window.yaseenDraw.storage.stats(root), vault)
   expect(stats).toMatchObject({ root: vault, boards: { count: 1 }, large: [], embedded: { boards: 0 } })
   expect(stats.git?.historyBytes).toBeGreaterThan(0)
-  await page.getByRole('button', { name: 'Settings' }).click()
-  await page.getByRole('dialog', { name: 'Settings' }).getByRole('button', { name: 'Storage' }).click()
+  await openSettings(page, 'Storage')
   await expect(page.getByRole('img', { name: /of 10 GB/ })).toBeVisible()
 })
 
@@ -132,12 +127,8 @@ test('a corrupt state file is moved aside, never overwritten, and the app still 
   expect(readFileSync(`${sandbox.profile}/${aside[0]}`, 'utf8')).toBe('{ "version": 1, "windows": [ oops')
 })
 
-test('a board opens fitted to its content: a small one at 100 %, a sprawling one zoomed out', async ({ sandbox, launch }) => {
-  const vault = sandbox.vault('V', { 'Small.excalidraw': scene([rect('a')]), 'Sprawl.excalidraw': scene([rect('left', -6000, 0), rect('right', 6000, 3000)]) })
-  sandbox.writeProfile({ windows: [{ root: vault, file: `${vault}/Small.excalidraw` }] })
-  const app = await launch()
-  const page = await app.window()
-  await canvasReady(page)
+test('a board opens fitted to its content: a small one at 100 %, a sprawling one zoomed out', async ({ openBoard }) => {
+  const { page } = await openBoard({ 'Small.excalidraw': scene([rect('a')]), 'Sprawl.excalidraw': scene([rect('left', -6000, 0), rect('right', 6000, 3000)]) })
   const zoom = page.getByRole('button', { name: 'Reset zoom' }).filter({ visible: true })
   await expect(zoom).toHaveText('100%')
   await page.locator('button.tree__row', { hasText: 'Sprawl' }).click()

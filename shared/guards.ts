@@ -2,7 +2,7 @@
  * THE TYPE GUARDS EVERY PARSER IN THIS APP SHARES.
  *
  * Every layer validates what it is handed — a store file, a vault config, a scene off disk, a
- * pasted component — and every one of them starts with the same two questions. Written once, so
+ * pasted component — and every one of them starts with the same few questions. Written once, so
  * "is this a plain object" cannot mean `typeof v === 'object'` in one module (where an ARRAY
  * passes) and something stricter in the next.
  */

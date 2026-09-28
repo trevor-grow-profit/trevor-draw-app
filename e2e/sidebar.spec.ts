@@ -2,11 +2,11 @@
  * The sidebar: the Files tree, ⌘K search, favorites, sort + Info, hover preview, focus mode,
  * collapse, multi-select and the watcher (feature-safety-net "Sidebar").
  */
-import { readFileSync, rmSync, writeFileSync } from 'node:fs'
-import { test, expect } from './support/fixtures'
+import { rmSync, writeFileSync } from 'node:fs'
+import { test, expect, identity, withClipboard } from './support/fixtures'
 import { canvasReady } from './support/canvas'
-import { contextMenu, glance, notice, row, treeReady } from './support/sidebar'
-import { diagram, diagramBox, readProfile, rect, scene, stampedScene } from './support/vault'
+import { contextMenu, glance, nameBox, notice, row, treeReady } from './support/sidebar'
+import { diagram, diagramBox, readOr, readProfile, rect, scene, stampedScene, unchangedFor } from './support/vault'
 
 const DAY = 86_400_000
 
@@ -90,20 +90,14 @@ test('favorites: add from the menu, see them in the Favorites lens, stored in th
   await treeReady(page)
   await contextMenu(page, 'Star', 'Add to favorites')
   await expect(notice(page)).toContainText('Added to favorites')
-  const stored = () => {
-    try {
-      return readFileSync(`${vault}/.yaseendraw/favorites.json`, 'utf8')
-    } catch {
-      return ''
-    }
-  }
+  const stored = () => readOr(`${vault}/.yaseendraw/favorites.json`)
   await expect.poll(stored).toContain('Star.excalidraw')
   await page.getByRole('tab', { name: 'Favorites' }).click()
   await expect(row(page, 'Star')).toBeVisible()
   await expect(row(page, 'Plain')).toHaveCount(0)
   await contextMenu(page, 'Star', 'Rename')
-  await page.locator('input.create-inline__input').fill('Superstar')
-  await page.locator('input.create-inline__input').press('Enter')
+  await nameBox(page).fill('Superstar')
+  await nameBox(page).press('Enter')
   await expect(row(page, 'Superstar')).toBeVisible()
   await expect.poll(stored).toContain('Superstar.excalidraw')
   await contextMenu(page, 'Superstar', 'Remove from favorites')
@@ -172,7 +166,7 @@ test('hover preview: a drawing and a diagram get pictures after the dwell, an em
   await page.getByRole('button', { name: 'Preview on hover' }).click()
   await expect(page.getByRole('button', { name: 'Preview on hover' })).toHaveAttribute('aria-pressed', 'false')
   await row(page, 'Other').hover()
-  await page.waitForTimeout(1_000) // twice the 400 ms dwell: a preview would be up by now
+  await unchangedFor(1_000, () => preview.count()) // twice the 400 ms dwell: a preview would be up by now
   await expect(preview).toHaveCount(0)
 })
 
@@ -204,7 +198,7 @@ test('the sidebar collapses (button, ⌘B) and comes back, and the window rememb
   await page.getByRole('tab', { name: 'Board' }).click()
   await page.keyboard.press('Meta+b')
   await expect(page.getByRole('tree')).toBeHidden()
-  await expect.poll(async () => (await page.evaluate(() => window.yaseenDraw.window.identity())).sidebarCollapsed).toBe(true)
+  await expect.poll(async () => (await identity(page)).sidebarCollapsed).toBe(true)
   await page.keyboard.press('Meta+b')
   await expect(page.getByRole('tree')).toBeVisible()
 })
@@ -219,13 +213,10 @@ test('⇧-click selects several boards; the menu copies their paths and opens th
   await row(page, 'Three').click({ modifiers: ['Shift'] })
   const tabs = page.getByRole('tablist', { name: 'Open files' }).getByRole('tab')
   await expect(tabs).toHaveCount(0) // ⇧-click selects, never opens
-  const saved = await app.electron.evaluate(({ clipboard }) => clipboard.readText())
-  try {
+  await withClipboard(app, async () => {
     await contextMenu(page, 'Three', 'Copy 2 paths')
     await expect.poll(() => app.electron.evaluate(({ clipboard }) => clipboard.readText())).toBe(`${vault}/One.excalidraw\n${vault}/Three.excalidraw`)
-  } finally {
-    await app.electron.evaluate(({ clipboard }, text) => clipboard.writeText(text), saved)
-  }
+  })
   await contextMenu(page, 'Three', 'Open 2 in new tabs')
   await expect(tabs).toHaveText(['One', 'Three'])
 })
@@ -236,14 +227,11 @@ test('Copy path puts the absolute path on the clipboard', async ({ sandbox, laun
   const app = await launch()
   const page = await app.window()
   await treeReady(page)
-  const saved = await app.electron.evaluate(({ clipboard }) => clipboard.readText())
-  try {
+  await withClipboard(app, async () => {
     await contextMenu(page, 'Nested', 'Copy path')
     await expect(notice(page)).toContainText('Copied path')
     expect(await app.electron.evaluate(({ clipboard }) => clipboard.readText())).toBe(`${vault}/Nested`)
-  } finally {
-    await app.electron.evaluate(({ clipboard }, text) => clipboard.writeText(text), saved)
-  }
+  })
 })
 
 test('dragging the sidebar’s edge resizes it within 180–520 px and the width is remembered', async ({ sandbox, launch }) => {

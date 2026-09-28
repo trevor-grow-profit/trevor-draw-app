@@ -2,7 +2,7 @@
  * The Mac download's last step (YAZ-2073 3A), after electron-builder: `tools/packDesktop.mjs --mac`.
  */
 import { execFileSync } from 'node:child_process'
-import { mkdtempSync, renameSync, rmSync } from 'node:fs'
+import { mkdtempSync, renameSync, rmdirSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -10,6 +10,23 @@ import { join } from 'node:path'
 export function dmgPath(desktopDir, build, version) {
   const name = build.dmg.artifactName.replaceAll('${productName}', build.productName).replaceAll('${version}', version)
   return join(desktopDir, build.directories.output, name)
+}
+
+const sleep = (ms) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms)
+
+/**
+ * `hdiutil detach`, retried: Spotlight or fseventsd can hold a just-mounted volume for a moment
+ * ("Resource busy"), so a busy detach waits a second and tries again, the last time with `-force`.
+ */
+export function detach(mount, run, { tries = 3, waitMs = 1_000 } = {}) {
+  for (let i = 1; ; i++) {
+    try {
+      return run('hdiutil', ['detach', mount, ...(i === tries ? ['-force'] : [])])
+    } catch (err) {
+      if (i === tries) throw err
+      sleep(waitMs)
+    }
+  }
 }
 
 /**
@@ -32,12 +49,12 @@ export function lzmaDmg(dmg, appName) {
     try {
       run('codesign', ['--verify', '--deep', '--strict', join(mount, appName)])
     } finally {
-      run('hdiutil', ['detach', mount])
+      detach(mount, run)
     }
     renameSync(tmp, dmg)
     rmSync(`${dmg}.blockmap`, { force: true })
   } finally {
     rmSync(tmp, { force: true })
-    rmSync(mount, { recursive: true, force: true })
+    rmdirSync(mount) // empty once detached; never recursive, which would empty a volume still mounted there
   }
 }

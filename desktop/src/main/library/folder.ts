@@ -8,12 +8,29 @@
  */
 import { mkdir } from 'node:fs/promises'
 import { join } from 'node:path'
+import type { Store } from '../store'
 
 /** The folder's name under userData when the setting is null. */
 export const DEFAULT_LIBRARY_DIR = 'library'
 
 export function resolveLibraryFolder(setting: string | null, userData: string): string {
   return setting ?? join(userData, DEFAULT_LIBRARY_DIR)
+}
+
+/**
+ * Keeps a library store on the setting: answers the folder to open it on now, then hands `moved`
+ * each other folder the setting comes to name — a re-point, which the caller also announces as a
+ * change of the library, since what a window can offer is different now.
+ */
+export function followLibraryFolder(store: Pick<Store, 'get' | 'onChange'>, userData: string, moved: (folder: string) => void): string {
+  let folder = resolveLibraryFolder(store.get().settings.libraryFolder, userData)
+  store.onChange((state) => {
+    const next = resolveLibraryFolder(state.settings.libraryFolder, userData)
+    if (next === folder) return
+    folder = next
+    moved(next)
+  })
+  return folder
 }
 
 /**

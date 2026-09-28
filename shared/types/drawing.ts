@@ -50,7 +50,7 @@ export interface DrawingLoadResponse {
 }
 
 /** One image a save must land in the store before the scene that names it is written. */
-export interface DrawingNewFile extends DrawingFileEntry {
+interface DrawingNewFile extends DrawingFileEntry {
   /** Excalidraw's own content id (the SHA-1 of the bytes) — the file's name under `assets/`. */
   fileId: string
 }

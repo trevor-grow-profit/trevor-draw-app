@@ -14,7 +14,7 @@ Angle owner: renderer-smoothness. Packaged v0.1.11 (`/Applications/Yaseen Draw.a
 
 ## 1. What I measured
 
-**Harness** (files in `$SCRATCH/renderer-smoothness/`):
+**Harness** (one-off research scripts; the checked-in successors are under `tools/perf/`):
 
 - `drive.mjs` is a CDP driver: Runtime, Input, Tracing and Profiler.
 - `harness.js` injects an in-page rAF frame-delta sampler plus a `long-animation-frame` observer, and reports p50/p95/max and the number of frames over 20 ms and 50 ms.
@@ -23,7 +23,7 @@ Angle owner: renderer-smoothness. Packaged v0.1.11 (`/Applications/Yaseen Draw.a
 **Data sets**
 
 - The user's live window, `boards-draw-growprofit` (3 rows, light board).
-- A copy of `~/Documents/GitHub/yaseen-draw-vault` without `.git` (99 MB, 84 files), opened in a second window. The real vault was never opened, so nothing could save into it.
+- A copy of Yasin's drawing vault without `.git` (99 MB, 84 files), opened in a second window. The real vault was never opened, so nothing could save into it.
 - A synthetic 2,000-board vault (100 folders × 20 boards) with the heavy boards copied in.
 
 **Drawer and panel frame times (120 Hz, so 8.3 ms is a perfect frame)**
@@ -85,7 +85,7 @@ Angle owner: renderer-smoothness. Packaged v0.1.11 (`/Applications/Yaseen Draw.a
 - The same path runs when a board opens in the editor and when an image first scrolls into view (`App.addNewImagesToImageCache` → `updateImageCache`). That is the 290 ms long task when opening Agentic Agency.
 - The cache is in memory only (`limit: 32`, `:69`) and keyed by mtime (`:33-35`). The first hover after every launch and after every save repeats the whole cost.
 
-**Fix A (engine fork, small): decode off-thread once, then draw from an `ImageBitmap`.** The fork is at `~/Documents/GitHub/yaseen-excalidraw` @ `e72242f8`.
+**Fix A (engine fork, small): decode off-thread once, then draw from an `ImageBitmap`.** The fork was at `e72242f8`.
 
 ```diff
 --- a/packages/element/src/image.ts
@@ -328,4 +328,4 @@ Also close bitmaps where cache entries are dropped (`imageCache.delete` / App un
 6. **DrawingEditor: chips via store, so `<Excalidraw>` props stay stable** (diff sketch in F5).
 7. **(Decision D1) Remove 120 ms entrance animations**, or add Reduce Motion.
 8. **Follow-up investigation: the 2.9 s first-pan rAF gap** after opening an image-heavy board. Needs a GPU-process trace from a browser-target CDP connection or `--trace-startup`.
-9. **Perf regression harness:** check in the CDP drive, harness and scenario scripts from `$SCRATCH/renderer-smoothness/` as `tools/perf/` (drawers, hover preview, heavy open, freedraw), with a p95/max budget per scenario.
+9. **Perf regression harness:** check in the CDP drive, harness and scenario scripts as `tools/perf/` (drawers, hover preview, heavy open, freedraw), with a p95/max budget per scenario.

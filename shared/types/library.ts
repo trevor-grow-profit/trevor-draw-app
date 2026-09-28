@@ -5,7 +5,7 @@
  * verbatim): Pixabay photos and illustrations, Iconify icons and logos, and the app's own shapes.
  * `shape` needs no network and no key at all.
  */
-export type MediaProvider = 'pixabay' | 'iconify' | 'shape'
+type MediaProvider = 'pixabay' | 'iconify' | 'shape'
 const MEDIA_PROVIDERS: readonly MediaProvider[] = ['pixabay', 'iconify', 'shape']
 export const isMediaProvider = (v: unknown): v is MediaProvider => MEDIA_PROVIDERS.includes(v as MediaProvider)
 

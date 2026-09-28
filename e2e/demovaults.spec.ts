@@ -51,7 +51,7 @@ test('seedDrawioDemoVault: big, multi-page, uppercase and picture diagrams open 
   const vault = sandbox.path('Drawio demo')
   runSeed('seedDrawioDemoVault.mjs', ['--vault', vault])
   sandbox.writeProfile({ windows: [{ root: vault }] })
-  const app = await launch()
+  const app = await launch({ network: true })
   const network = app.outsideRequests()
   const page = await app.window()
   await treeReady(page)

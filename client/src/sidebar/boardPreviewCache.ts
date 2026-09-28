@@ -22,6 +22,8 @@ import { createPreviewCache } from '../lib/previewCache'
 
 /** Bigger than a component tile: the panel is most of the window, and a retina screen doubles it. */
 export const BOARD_PREVIEW_BOUNDS: PreviewBounds = { maxWidth: 1200, maxHeight: 800, padding: 16 }
+/** Pictures in a board no bigger than they can appear in its preview, made once in main (🔒 YAZ-2073 D6). */
+const IMAGE_MAX_PX = Math.max(BOARD_PREVIEW_BOUNDS.maxWidth, BOARD_PREVIEW_BOUNDS.maxHeight)
 
 /**
  * One cache key per board, per write, per theme, per dark-mode colour setting. The mtime, not the
@@ -54,9 +56,7 @@ function parseKey(key: string): { root: string; path: string; theme: 'light' | '
 async function drawBoardPreview(key: string): Promise<string> {
   const { root, path, theme, darkColors } = parseKey(key)
   if (isDiagram(path)) return renderDiagramPreview((await api.diagram.load({ root, path })).xml, theme, darkColors, BOARD_PREVIEW_BOUNDS)
-  // Pictures no bigger than they can appear in the picture, made once in main (🔒 YAZ-2073 D6).
-  const imageMaxPx = Math.max(BOARD_PREVIEW_BOUNDS.maxWidth, BOARD_PREVIEW_BOUNDS.maxHeight)
-  const [res, engine] = await Promise.all([api.drawing.load({ root, path, imageMaxPx }), loadExcalidraw()])
+  const [res, engine] = await Promise.all([api.drawing.load({ root, path, imageMaxPx: IMAGE_MAX_PX }), loadExcalidraw()])
   const parsed = parseSceneText(res.json)
   const elements = visibleElements(engine.restoreElements(parsed.elements as never, null))
   if (elements.length === 0) return ''

@@ -17,17 +17,18 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { asset as assetIn, dirFlag, elementKit, embedded, flag, gradientPNG, noisePNG, refuseExisting, required, scene as sceneOf, solidPNG, stripesPNG, wipe, write as writeIn, writeProfile } from './lib/seedKit.mjs'
+import { asset as assetIn, cli, elementKit, embedded, gradientPNG, noisePNG, refuseExisting, scene as sceneOf, solidPNG, stripesPNG, wipe, write as writeIn, writeProfile } from './lib/seedKit.mjs'
 import { fileIdFor } from './lib/seedDemoVault.mjs'
 
 const USAGE = 'usage: node tools/seedShareDemoVault.mjs --dir <demo-dir> [--port 8787] [--force]'
-const DIR = required(dirFlag('--dir'), USAGE)
-const PORT = Number(flag('--port') ?? 8787)
+const args = cli(USAGE, { '--dir': 'dir', '--port': 'value' }, ['--dir'])
+const DIR = args.dir
+const PORT = Number(args.port ?? 8787)
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const VAULT = path.join(DIR, 'Share Button (YAZ-1799)')
 const PROFILE = path.join(DIR, 'profile')
 const FAKE = path.join(DIR, 'fake-cloudflare')
-refuseExisting(VAULT, USAGE, { what: 'vault' })
+refuseExisting(VAULT, USAGE, { what: 'vault', force: args.force })
 wipe(VAULT, PROFILE, FAKE, path.join(DIR, 'logs'))
 fs.mkdirSync(VAULT, { recursive: true })
 

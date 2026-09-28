@@ -1,10 +1,10 @@
 import { boardBaseName } from '@shared/fileKind'
 import { isWithin, sepOf, trimSep } from '@shared/paths'
 
-/** Last path segment (trailing slashes ignored); the input itself for `/`. */
+/** Last path segment in the path's own separator (trailing ones ignored); the input itself for `/`. */
 export function basename(p: string): string {
-  const trimmed = p.replace(/\/+$/, '')
-  return trimmed.slice(trimmed.lastIndexOf('/') + 1) || p
+  const trimmed = trimSep(p)
+  return trimmed.slice(trimmed.lastIndexOf(sepOf(p)) + 1) || p
 }
 
 /** File name without its board extension (`fileKind`'s contract); every other name is returned whole. */

@@ -30,11 +30,11 @@ import { drawnBoxes, planThumbSweep, thumbFileName, thumbPx, THUMBS_MAX_BYTES } 
 /** The cache's folder under userData. */
 export const THUMBS_DIR = 'thumbs'
 
-/** Base64 characters enough to hold every chunk before a PNG's pixels (a profile or EXIF block is a few KB). */
+/** Base64 characters enough to hold every chunk before a PNG's pixels (a profile or EXIF block is a few KB); a multiple of 4, so it decodes whole. */
 const HEAD_BASE64 = 64 * 1024
 
 export interface Thumbs {
-  /** `files` as a picture of `elements`, at most `picturePx` across, needs them. Never throws. */
+  /** `files` for a picture of `elements` at most `picturePx` across: each PNG no bigger than it is drawn there, the rest as they are. Never throws. */
   fit(files: Record<string, DrawingFileEntry>, elements: readonly unknown[], picturePx: number): Promise<Record<string, DrawingFileEntry>>
 }
 
@@ -94,9 +94,8 @@ export function createThumbs(folder: string, { maxBytes = THUMBS_MAX_BYTES }: Th
         out[fileId] = entry
         const box = boxes.get(fileId)
         const data = parseDataUrl(entry.dataURL)
-        if (box == null || data === null || data.mimeType !== 'image/png' || !isValidFileId(fileId)) continue
-        const head = data.base64.slice(0, HEAD_BASE64 - (HEAD_BASE64 % 4))
-        const natural = plainPngSize(Buffer.from(head, 'base64'))
+        if (box === undefined || box === null || data === null || data.mimeType !== 'image/png' || !isValidFileId(fileId)) continue
+        const natural = plainPngSize(Buffer.from(data.base64.slice(0, HEAD_BASE64), 'base64'))
         const px = natural === null ? null : thumbPx(natural, box)
         if (px === null) continue
         const png = await thumbnail(fileId, px, data.base64).catch(() => null)

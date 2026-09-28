@@ -1,9 +1,10 @@
 import { readdir, readFile } from 'node:fs/promises'
 import { join, relative, resolve, sep } from 'node:path'
 import { shell } from 'electron'
+import { EXCALIDRAW_ASSET_DIR, excalidrawPackageFonts } from '@shared/excalidrawFonts'
 import { CONTRACT } from '@shared/ipc'
 import { BridgeFailure } from '../fs/fsUtils'
-import { bool, optBool, optStr, requireObject, str, strOrNull } from '../fs/validate'
+import { bool, optBool, optStr, requireRequest, str, strOrNull } from '../fs/validate'
 import type { Secrets } from '../secrets'
 import { DRAWIO_SHARE_DIRS, DRAWIO_SHARE_FILES } from '../drawio/assets'
 import { CLOUDFLARE_API, CLOUDFLARE_TOKEN_PAGE, type AssetFile } from '../share/cloudflare'
@@ -13,6 +14,7 @@ import workerSource from '../../../../share/worker.js?raw'
 import viewerSource from '../../../../share/viewer/page.js?raw'
 import { broadcastAll } from './broadcast'
 import { handle, handleWithEvent } from './envelope'
+import { sendPush } from './push'
 
 /**
  * The `share.*` half of `window.yaseenDraw` (YAZ-1799). Every request is shape-checked
@@ -21,7 +23,7 @@ import { handle, handleWithEvent } from './envelope'
  *
  * The demo switches are read by `shareEndpoints` and only in an unpackaged (dev) build.
  */
-const req = (v: unknown): Record<string, unknown> => requireObject(v, 'missing request')
+const req = (v: unknown): Record<string, unknown> => requireRequest(v)
 
 /**
  * Where the viewer's built assets live (`tools/buildShareViewer.mjs` → `share/dist/assets/`, part of
@@ -36,12 +38,12 @@ export function viewerAssetsDir({ isPackaged, resourcesPath, appPath }: { isPack
  * Excalidraw's font files, which the viewer fetches from `/assets/fonts/` (YAZ-2073 3C): the packaged
  * app's ONE copy, beside the renderer bundle in the asar (`excalidrawAssets()` in
  * `electron.vite.config.ts`); dev reads the package itself, wherever npm hoisted it — the same bytes.
+ * Found nowhere, it answers the root's, so the upload's own check says what to run.
  */
 export function excalidrawFontsDir({ isPackaged, mainDir, appPath, exists }: { isPackaged: boolean; mainDir: string; appPath: string; exists: (p: string) => boolean }): string {
-  if (isPackaged) return resolve(mainDir, '..', 'renderer', 'excalidraw-assets', 'fonts')
-  const inPackage = (base: string) => join(base, 'node_modules', '@excalidraw', 'excalidraw', 'dist', 'prod', 'fonts')
-  const repo = join(appPath, '..')
-  return [inPackage(repo), inPackage(join(repo, 'client'))].find(exists) ?? inPackage(repo)
+  if (isPackaged) return resolve(mainDir, '..', 'renderer', EXCALIDRAW_ASSET_DIR, 'fonts')
+  const candidates = excalidrawPackageFonts(join(appPath, '..'))
+  return candidates.find(exists) ?? candidates[0]
 }
 
 /**
@@ -57,6 +59,8 @@ export async function readViewerAssets(dir: string, drawioDir: string, fontsDir:
   }
   const notBuilt = missing('The viewer page', 'npm run build')
   await readdir(drawioDir).catch(missing('draw.io', 'npm run drawio:pack'))
+  // Only dev can lack them: the packaged app carries its fonts in the asar, and dev reads node_modules.
+  await readdir(fontsDir).catch(missing("Excalidraw's fonts", 'npm install'))
   /** Every file under `root`, published at `prefix` + its path relative to `base`. */
   const filesUnder = async (root: string, base: string, prefix: string) =>
     (await readdir(root, { recursive: true, withFileTypes: true }).catch(notBuilt))
@@ -101,42 +105,41 @@ export function registerShareIpc(userData: string, secrets: Secrets, where: { vi
   shareFsHooks.deleted = (roots, path) => sharing.forget(roots, path)
 
   handle(CONTRACT.share.status, () => sharing.status())
-  handle(CONTRACT.share.accounts, async (body: unknown) => sharing.accounts(str(req(body).token, 'token')))
-  handleWithEvent(CONTRACT.share.setup, (e, body: unknown) => {
-    const r = req(body)
-    const accountId = optStr(r.accountId, 'accountId')
-    return sharing.setup(str(r.token, 'token'), (p) => e.sender.isDestroyed() || e.sender.send(CONTRACT.share.onSetupProgress.channel, p), accountId)
+  handle(CONTRACT.share.accounts, async (token: unknown) => sharing.accounts(str(token, 'token')))
+  handleWithEvent(CONTRACT.share.setup, (e, token: unknown, accountId: unknown) => {
+    const t = str(token, 'token')
+    const account = optStr(accountId, 'accountId')
+    return sharing.setup(t, (p) => e.sender.isDestroyed() || sendPush(e.sender, CONTRACT.share.onSetupProgress, p), account)
   })
   handle(CONTRACT.share.openCloudflare, async () => void (await shell.openExternal(tokenPage)))
   handle(CONTRACT.share.get, async (body: unknown) => {
-    const r = req(body)
+    const r = requireRequest(body)
     return sharing.get(str(r.root, 'root'), str(r.path, 'path'))
   })
-  handle(CONTRACT.share.list, async (body: unknown) => {
-    const r = req(body)
-    const check = optBool(r.check, 'check')
-    return sharing.list(str(r.root, 'root'), { check: check !== false })
+  handle(CONTRACT.share.list, async (root: unknown, check: unknown) => {
+    const r = str(root, 'root')
+    return sharing.list(r, { check: optBool(check, 'check') !== false })
   })
   handle(CONTRACT.share.publish, async (body: unknown) => {
-    const r = req(body)
+    const r = requireRequest(body)
     const id = optStr(r.id, 'id')
     return sharing.publish(str(r.root, 'root'), str(r.path, 'path'), str(r.content, 'content'), id)
   })
   handle(CONTRACT.share.setPermission, async (body: unknown) => {
-    const r = req(body)
+    const r = requireRequest(body)
     const allowDownload = bool(r.allowDownload, 'allowDownload')
     return sharing.setPermission(str(r.root, 'root'), str(r.path, 'path'), allowDownload)
   })
   handle(CONTRACT.share.stop, async (body: unknown) => {
-    const r = req(body)
+    const r = requireRequest(body)
     return sharing.stop(str(r.root, 'root'), str(r.path, 'path'))
   })
-  handle(CONTRACT.share.setDomain, async (body: unknown) => {
-    const h = strOrNull(req(body).hostname, 'hostname')
+  handle(CONTRACT.share.setDomain, async (hostname: unknown) => {
+    const h = strOrNull(hostname, 'hostname')
     return sharing.setDomain(h === null || h.trim() === '' ? null : h)
   })
-  handle(CONTRACT.share.disconnect, async (body: unknown) => {
-    const r = req(body)
-    return sharing.disconnect(strOrNull(r.root, 'root'), r.deleteEverything === true)
+  handle(CONTRACT.share.disconnect, async (root: unknown, deleteEverything: unknown) => {
+    const r = strOrNull(root, 'root')
+    return sharing.disconnect(r, bool(deleteEverything, 'deleteEverything'))
   })
 }

@@ -1,6 +1,6 @@
 # Renderer bundle: payload and time to an interactive canvas (YAZ-2074, angle "renderer-bundle")
 
-Scratch: `$SCRATCH/renderer-bundle/` (build scripts, harnesses, traces, raw logs). The repo was not touched: `git status` is clean.
+The build scripts, harnesses, traces and raw logs stayed in a scratch folder; the repo was not touched.
 
 ## TL;DR
 - The renderer is already split well. The engine is lazy (`client/src/drawings/engine.ts:129-135`). Mermaid, CodeMirror, font-subset WASM, locales and pica are lazy chunks inside the engine. Nothing heavy is on the Welcome path.
@@ -12,7 +12,7 @@ Scratch: `$SCRATCH/renderer-bundle/` (build scripts, harnesses, traces, raw logs
 ## 1. What I measured
 
 ### 1a. Shipped bundle (`desktop/out/renderer`, same bytes as `/Applications/Yaseen Draw.app` app.asar; checked `index-kGzVaEUc.js` = 973,567 B in both)
-- 131 files in `assets/`. JS+CSS is **14,758,040 B raw / 3,727,007 B gzip-9**. Full table: `$SCRATCH/renderer-bundle/chunks.tsv`.
+- 131 files in `assets/`. JS+CSS is **14,758,040 B raw / 3,727,007 B gzip-9**.
 - `excalidraw-assets/` is 13 MB in 243 woff2 files (211 are Xiaolai CJK subsets). Fonts load per glyph range, only for text scenes.
 - `out/drawio` is 50 MB and not in scope. Its `js/app.min.js` alone is 9.75 MB.
 - Reproduced byte-for-byte in scratch: `vite build` with the same config gives the same hashes (`build.mjs`, `outA/`).
@@ -59,7 +59,7 @@ Setup: a synthetic 885-element scene (rectangles, ellipses, text in Excalifont, 
 | `codeCache:true` | **669 ms (−113 ms, −14%)** | 118 MB | 20 MB |
 
 ### 1d. Real installed app (`/Applications/Yaseen Draw.app`)
-- Isolated with `YASEEN_DRAW_USER_DATA_DIR=$SCRATCH/renderer-bundle/realapp/ud1`, and CDP on port 9333.
+- Isolated with a throwaway `YASEEN_DRAW_USER_DATA_DIR`, and CDP on port 9333.
 - It opened a scratch vault containing the synthetic board. No user data was read or written.
 - Another agent's instance (port 9335) was left alone. Every instance I started was killed.
 

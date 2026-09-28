@@ -1,5 +1,6 @@
 import type { BoardMeta } from './types/files'
-import { isFiniteNumber as isEpochMs, isRecord as isPlainObject } from './guards'
+import { isAtomicTmp } from './fileKind'
+import { isFiniteNumber, isRecord } from './guards'
 
 /**
  * THE IMAGE STORE'S PURE RULES (🔒 YAZ-1775 D3 on YAZ-1775, built in YAZ-1811).
@@ -113,28 +114,19 @@ export function parseDataUrl(dataURL: string): { mimeType: string; base64: strin
 /**
  * A LEGACY scene — an upstream export, or one an older build wrote — embeds its bytes under
  * `files`. Lift every usable entry out and hand back the scene with `files: {}`, the shape every
- * save writes: pretty-printed like Excalidraw's own writer (`serializeBoard`), plus the trailing
- * newline a text file in a git vault ends with.
+ * save writes once `serializeBoard` spells it.
  *
- * BYTE-STABLE WHEN NOTHING CHANGED. A scene that is already lean round-trips as ITSELF, so
- * saving an untouched document never rewrites it into a different spelling — which would show up
- * as a diff in the vault's git history for no reason at all.
- *
- * Throws when the bytes are not a scene object; the caller decides what that means.
+ * BYTE-STABLE WHEN NOTHING CHANGED. A scene that is already lean, spelled as main writes it,
+ * serializes back as ITSELF, so saving an untouched document never rewrites it into a different
+ * spelling — which would show up as a diff in the vault's git history for no reason at all.
  */
-export function stripEmbeddedFiles(json: string): { json: string; embedded: Record<string, DrawingFileData> } {
-  const { lean, embedded } = stripEmbeddedScene(parseSceneObject(json))
-  return { json: serializeBoard(lean), embedded }
-}
-
-/** `stripEmbeddedFiles` on a scene already parsed, for a caller that parses once (YAZ-2073 5G). */
 export function stripEmbeddedScene(scene: Record<string, unknown>): { lean: Record<string, unknown>; embedded: Record<string, DrawingFileData> } {
   const embedded: Record<string, DrawingFileData> = {}
   const files = scene.files
-  if (typeof files === 'object' && files !== null) {
-    for (const [id, entry] of Object.entries(files as Record<string, unknown>)) {
-      if (typeof entry !== 'object' || entry === null) continue
-      const { mimeType, dataURL } = entry as Record<string, unknown>
+  if (isRecord(files)) {
+    for (const [id, entry] of Object.entries(files)) {
+      if (!isRecord(entry)) continue
+      const { mimeType, dataURL } = entry
       if (typeof mimeType !== 'string' || typeof dataURL !== 'string' || parseDataUrl(dataURL) === null) continue
       embedded[id] = { mimeType, dataURL }
     }
@@ -142,7 +134,7 @@ export function stripEmbeddedScene(scene: Record<string, unknown>): { lean: Reco
   return { lean: { ...scene, files: {} }, embedded }
 }
 
-/** How every board main writes is spelled: 2-space JSON and a trailing newline. */
+/** How every board main writes is spelled: 2-space JSON like Excalidraw's own writer, and the trailing newline a text file in a git vault ends with. */
 export const serializeBoard = (scene: Record<string, unknown>): string => `${JSON.stringify(scene, null, 2)}\n`
 
 // ---------- The `yaseendraw` block (🔒 YAZ-1834 D1/D3/D5/D7) ----------
@@ -155,7 +147,7 @@ export const BOARD_META_HEAD_BYTES = 1024
 /** The text as a scene object; throws on anything else (the callers decide what that means). */
 function parseSceneObject(json: string): Record<string, unknown> {
   const parsed: unknown = JSON.parse(json)
-  if (!isPlainObject(parsed)) throw new Error('not an Excalidraw scene')
+  if (!isRecord(parsed)) throw new Error('not an Excalidraw scene')
   return parsed
 }
 
@@ -165,35 +157,31 @@ export type BoardMetaBlock = BoardMeta & Record<string, unknown>
 /** `{ "yaseendraw": {` at the very start of a file — the only place a block is read from. */
 const BLOCK_OPENS = new RegExp(`^\\s*\\{\\s*"${BOARD_META_KEY}"\\s*:\\s*\\{`)
 
+/** `stampBoardMetaScene` on text: the create door's empty scene (`fs/create.ts`). Throws when the text is not a JSON object. */
+export function stampBoardMeta(json: string, at: { createdAt: number; updatedAt: number }, prior: BoardMetaBlock | null = null): string {
+  return serializeBoard(stampBoardMetaScene(parseSceneObject(json), at, prior))
+}
+
 /**
- * Place and stamp the block on a scene that is on its way to disk (🔒 YAZ-1834 D3). `json` is the
- * lean text `stripEmbeddedFiles` produced, or the empty scene a create ships; `at` carries the
- * dates the caller has decided on; `prior` is the block the FILE currently holds (the save door
- * reads it off the head), which wins over any block inside `json` because the disk is the block's
- * truth — the engine's serializer never sends it back. The cloud importer (YAZ-1832) is a caller
- * too: its `prior` is the cloud row's dates, and this is what keeps the block first. The result is re-serialized the way every board
- * main writes it (2-space, trailing newline) with `yaseendraw` as the FIRST key, so the tree can
- * read it back from the file head alone.
+ * Place and stamp the block on a scene that is on its way to disk (🔒 YAZ-1834 D3). `scene` is the
+ * lean scene a save is about to write, or the empty one a create ships; `at` carries the dates the
+ * caller has decided on; `prior` is the block the FILE currently holds (the save door reads it off
+ * the head), which wins over any block inside `scene` because the disk is the block's truth — the
+ * engine's serializer never sends it back. `yaseendraw` comes back as the FIRST key, so once
+ * `serializeBoard` writes it the tree can read it back from the file head alone.
  *
  * What survives from the existing block (D5, the backfill contract): a finite `createdAt` is
  * kept over `at.createdAt`; every key the app does not know is kept verbatim (an importer's
  * `cloudId`, say). `updatedAt` is always `at.updatedAt`. A block that is not a plain object is
  * replaced (D7). The block's own key order is normalized — `createdAt, updatedAt, …extras` — so
  * stamping twice with the same `at` is byte-stable. Every other top-level key keeps its order.
- *
- * Throws when the text is not a JSON object; the save door has validated the scene before this.
  */
-export function stampBoardMeta(json: string, at: { createdAt: number; updatedAt: number }, prior: BoardMetaBlock | null = null): string {
-  return serializeBoard(stampBoardMetaScene(parseSceneObject(json), at, prior))
-}
-
-/** `stampBoardMeta` on a scene already parsed, for a caller that parses once (YAZ-2073 5G). */
 export function stampBoardMetaScene(scene: Record<string, unknown>, at: { createdAt: number; updatedAt: number }, prior: BoardMetaBlock | null = null): Record<string, unknown> {
   const { [BOARD_META_KEY]: own, ...rest } = scene
   const existing = prior ?? own
   // `_stale` is pulled out so the old `updatedAt` cannot ride along inside `...extras`.
-  const { createdAt, updatedAt: _stale, ...extras } = isPlainObject(existing) ? existing : {}
-  const block = { createdAt: isEpochMs(createdAt) ? createdAt : at.createdAt, updatedAt: at.updatedAt, ...extras }
+  const { createdAt, updatedAt: _stale, ...extras } = isRecord(existing) ? existing : {}
+  const block = { createdAt: isFiniteNumber(createdAt) ? createdAt : at.createdAt, updatedAt: at.updatedAt, ...extras }
   return { [BOARD_META_KEY]: block, ...rest }
 }
 
@@ -215,7 +203,7 @@ export function parseBoardMetaBlock(head: string): BoardMetaBlock | null {
   } catch {
     return null
   }
-  if (!isPlainObject(block) || !isEpochMs(block.createdAt) || !isEpochMs(block.updatedAt)) return null
+  if (!isRecord(block) || !isFiniteNumber(block.createdAt) || !isFiniteNumber(block.updatedAt)) return null
   return block as BoardMetaBlock
 }
 
@@ -261,13 +249,18 @@ export interface AssetListingEntry {
 /**
  * The orphan sweep's DECISION (🔒 YAZ-1775 D3). An `assets/` entry goes to the trash when all three hold:
  * it is an image asset by extension, NO `.excalidraw` anywhere in the vault references its id,
- * AND it is older than `ORPHAN_MAX_AGE_MS`. Dot-entries, sub-folders and foreign files are never
- * candidates — the store is the app's, but the folder is the user's.
+ * AND it is older than `ORPHAN_MAX_AGE_MS`. An atomic write's tmp file that old is a crash's
+ * leftover and goes too, whatever it is named after. Dot-entries, sub-folders and foreign files are
+ * never candidates — the store is the app's, but the folder is the user's.
  */
 export function planOrphanSweep(listing: readonly AssetListingEntry[], referenced: ReadonlySet<string>, now: number, maxAgeMs = ORPHAN_MAX_AGE_MS): string[] {
   const out: string[] = []
   for (const entry of listing) {
     if (entry.isDir === true || entry.name.startsWith('.')) continue
+    if (isAtomicTmp(entry.name)) {
+      if (now - entry.mtime > maxAgeMs) out.push(entry.name)
+      continue
+    }
     const dot = entry.name.lastIndexOf('.')
     if (dot <= 0 || mimeForAssetExt(entry.name.slice(dot + 1)) === null) continue
     const id = fileIdOfAssetName(entry.name)

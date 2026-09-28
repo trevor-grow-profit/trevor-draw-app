@@ -1,6 +1,6 @@
 // Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
 
-exports[`the preload bridge > exposes window.yaseenDraw with exactly the surface and channels it had before the table (YAZ-2073 🔒 D16) 1`] = `
+exports[`the preload bridge > exposes window.yaseenDraw as the whole surface a renderer can reach: every door on its channel, and the two specials (YAZ-2073 🔒 D16) 1`] = `
 "components.delete -> invoke components:delete
 components.list -> invoke components:list
 components.onChanged -> on components:changed, off components:changed
@@ -89,7 +89,7 @@ tree -> invoke fs:tree
 watch -> on watch:event, send watch:subscribe, off watch:event, send watch:unsubscribe
 window.closeSelf -> invoke window:close-self
 window.identity -> invoke window:identity
-window.onFlush -> 
+window.onFlush -> (no IPC)
 window.open -> invoke window:open
 window.openRecent -> invoke window:open-recent
 window.setIdentity -> invoke window:set-identity"

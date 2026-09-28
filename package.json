@@ -19,6 +19,7 @@
     "perf": "node tools/perf/run.mjs",
     "perf:budget": "node tools/perf/measureBudget.mjs",
     "perf:budget:ci": "node tools/perf/measureBudget.mjs --out-only",
+    "perf:pixels": "node tools/perf/exportPixels.mjs",
     "e2e": "npm run build && playwright test -c e2e/playwright.config.ts"
   },
   "devDependencies": {
@@ -31,6 +32,6 @@
     "vitest": "^3.2.7"
   },
   "engines": {
-    "node": ">=22"
+    "node": ">=22.2"
   }
 }

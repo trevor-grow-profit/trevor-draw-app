@@ -11,30 +11,45 @@
 - Commits without Claude attribution; no push.
 
 ## Key Decisions
-- Stay on Electron (D1); 10× means per-dimension targets (D2).
-- Keep animations (D4); full-res ImageBitmap (D5); no LRU of mounted tabs (D8) — all to keep looks/behavior identical.
-- Work split into per-wave branches merged into `yaz-2073-speed`.
+- Status of every decision (shipped / kept / parked / declined): `thoughts/yaz-2073-scope/decisions.md`.
+- Stay on Electron (D1); 10× means per-dimension targets, gated in `tools/perf/budget.json` (D2).
+- Looks and behavior stay identical: animations kept (D4), every visited tab stays mounted (D8).
+- Parked for Yasin: 3B locale trim (D3, YAZ-2087 — changes `Intl` / sort on non-English Macs) and
+  5B1 off-thread full-res decode (D5, YAZ-2126 — RSS 211 → 1,863 MB on 3×121-image tabs).
+- Declined: #12050 (≈0% dark-mode drag gain, visible handle colour change) and #12063 (D18); 2G
+  force-kill of Chromium's helpers after quit.
+- 5C thumbnails accepted with a softness flag (tiny text in a 121-tile grid a little lighter).
 
 ## State
 - Done:
-  - [x] 0 Deep scope (YAZ-2074): 8 research angles + decisions + tree
-  - [x] Phase 2 merged (2A 2B 2C 2D); 2B1 (YAZ-2122) found → p5-mem
-  - [x] Phase 3/4 merged (3A 3C 3D 3E 4A 4B); 3B PARKED for Yasin (locale trim changes Intl on non-English Macs)
-  - [x] Main-process smoothness merged (5E 5F 5G 5H)
-- Now: [→] 1A/1B/1D (p1-net), 1C (p1c-e2e), 5A/5B engine (p5-engine + fork wt), 2B1/5I/5J (p5-mem), 5D/6C (p5-sidebar), 5C (p5-thumbs)
-- Remaining:
-  - [ ] Wave 3 — 6A IPC contract, 6B board document, 6C sidebar split, 6D hygiene
-  - [ ] 7A/7B/7C verify + demo
-  - [ ] 8A/8B polish
+  - [x] 0 Deep scope (YAZ-2074)
+  - [x] 1 Safety net: 1A budget gate, 1B perf harness, 1C Playwright suite + REGRESSION.md, 1D glue tests
+  - [x] 2 Reliability: 2A 2B 2B1 2C 2D
+  - [x] 3/4 Size and launch: 3A 3C 3D 3E 4A 4B (3B parked)
+  - [x] 5 Smoothness: 5A 5B (5B1 parked) 5C 5D 5E 5F 5G 5H 5I 5J
+  - [x] 6 Refactors: 6A 6B 6C 6D
+  - [x] 7C demo vault + isolated dev app
+  - [x] 8A audit
+- Now:
+  - [→] 7A full before/after run (budget ratchet in tools/perf) and 7B packaged-app pass
+  - [→] 8B apply the audit: code lanes merged into `yaz-2073-8b-main`; docs, thoughts/ and ledger done
+- Next: lead merges 8B into `yaz-2073-speed`; Yasin reviews.
 
 ## Open Questions
-- UNCONFIRMED: which upstream engine perf PRs the fork lacks (audit running).
-- UNCONFIRMED: RSS impact of full-res ImageBitmap (D5 guard: +25% → escalate).
-- Baselines measured while other agents build → re-measure before/after on a quiet machine in 7A.
+- Needs Yasin: push fork branch `yaz-2073-perf` @ 759e7dfd (and fast-forward the fork's main)
+  before the app merges — `client/vendor/README.md` says the tarballs come from the public fork.
+- Needs Yasin: raise the `mainBundleBytes` ceiling (285,442 → ~356 KB: the bundled chokidar
+  fallback plus 5F/6A) — the ratchet says raising needs his OK.
+- Needs Yasin: eyeball the 5C preview softness (before/after PNGs in commit `cb1f5a2`; reverting
+  `a8388a6` alone restores the old look).
+- Needs Yasin: land or drop 3B (branch `yaz-2073-parked-3b-locale-trim`) and 5B1 (fork branch
+  `yaz-2073-parked-5b1-bitmap-decode`; recommended: a byte-budgeted bitmap cache).
+- Latent FSEvents reopen race in the watcher: follow-up issue to be created by the lead.
 
 ## Working Set
 - Integration worktree: `/Users/yasin/Documents/GitHub/yaseen-draw-app-yaz-2073` (branch `yaz-2073-speed`)
-- Wave worktrees: `../yaseen-draw-app-yaz-2073-{p1-net,p1c-e2e,p2-reliability,p34-size-launch,p5-main}`
-- Engine fork: `/Users/yasin/Documents/GitHub/yaseen-excalidraw` @ e72242f8 (read-only; work in a separate worktree)
-- Tests: `npm test`, `npm run typecheck`, `npm run e2e` (after 1C), `npm run perf:budget`, `npm run perf -- <scenario>` (after 1A/1B)
-- Flaky under heavy load (seen once at load ~130, passed on rerun): tools/dmg.test.mjs lzmaDmg (real hdiutil) → check in 8A
+- 8B worktree: `../yaseen-draw-app-yaz-2073-8b-main` (branch `yaz-2073-8b-main`, all three 8B code lanes merged)
+- Engine fork worktree: `/Users/yasin/Documents/GitHub/yaseen-excalidraw-yaz-2073` (branch `yaz-2073-perf` @ 759e7dfd, on no remote yet)
+- Tests: `npm test`, `npm run typecheck`, `npm run e2e`, `npm run perf:budget`, `npm run perf -- <scenario>`
+- Flaky under heavy load, pass alone: e2e external-change reloads (`autosave`, `boardDocument`)
+  at 4+ workers; `tools/dmg.test.mjs` hardened in 8B (retrying detach, 180 s, one retry).

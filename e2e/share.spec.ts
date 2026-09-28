@@ -7,9 +7,9 @@ import { spawn, type ChildProcess } from 'node:child_process'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import type { Page } from '@playwright/test'
-import { PACKAGED, test as base, expect, type DrawApp, type Sandbox } from './support/fixtures'
+import { PACKAGED, test as base, expect, type Fixtures, type Sandbox } from './support/fixtures'
 import { canvasReady, drawRect } from './support/canvas'
-import { contextMenu, row, treeReady } from './support/sidebar'
+import { contextMenu, openSettings, row, treeReady } from './support/sidebar'
 import { REPO, diagram, diagramBox, rect, scene } from './support/vault'
 
 interface FakeCloudflare {
@@ -19,7 +19,7 @@ interface FakeCloudflare {
 
 const test = base.extend<{ cloudflare: FakeCloudflare }>({
   cloudflare: async ({ sandbox }, use) => {
-    const child: ChildProcess = spawn(process.execPath, [join(REPO, 'tools/fakeCloudflare.mjs'), '--data', sandbox.path('fake-cloudflare'), '--port', '0'], { stdio: ['ignore', 'pipe', 'pipe'] })
+    const child: ChildProcess = spawn(process.execPath, [join(REPO, 'tools/fakeCloudflare.mjs'), '--data', sandbox.path('fake-cloudflare'), '--port', '0'], { stdio: ['ignore', 'pipe', 'inherit'] })
     const port = await new Promise<string>((resolve, reject) => {
       let out = ''
       child.stdout?.on('data', (chunk: Buffer) => {
@@ -42,15 +42,13 @@ test.skip(PACKAGED, 'share links run only against the unpackaged app and the fak
 const shareDialog = (page: Page) => page.getByTestId('share-dialog')
 
 async function setUpSharing(page: Page, token = 'demo-good'): Promise<void> {
-  await page.getByRole('button', { name: 'Settings' }).click()
-  const dialog = page.getByRole('dialog', { name: 'Settings' })
-  await dialog.getByRole('button', { name: 'Sharing' }).click()
+  const dialog = await openSettings(page, 'Sharing')
   await expect(dialog.getByTestId('sharing-status')).toContainText('Not set up')
   await dialog.getByRole('textbox', { name: 'Cloudflare API key' }).fill(token)
   await dialog.getByTestId('sharing-setup').click()
 }
 
-async function launchShared(sandbox: Sandbox, launch: (o?: { env?: Record<string, string> }) => Promise<DrawApp>, cloudflare: FakeCloudflare, files: Record<string, string>, file?: string) {
+async function launchShared(sandbox: Sandbox, launch: Fixtures['launch'], cloudflare: FakeCloudflare, files: Record<string, string>, file?: string) {
   const vault = sandbox.vault('Shared vault', files)
   sandbox.writeProfile({ windows: [{ root: vault, file: file === undefined ? null : `${vault}/${file}` }] })
   const app = await launch({ env: cloudflare.env })
@@ -63,13 +61,12 @@ async function launchShared(sandbox: Sandbox, launch: (o?: { env?: Record<string
   return { vault, app, page }
 }
 
-/** Right-click › Share › Anyone with the link, then Done once the first upload is up. */
+/** Right-click › Share › Anyone with the link; the dialog stays open once the first upload is up. */
 async function shareBoard(page: Page, label: string): Promise<void> {
   await contextMenu(page, label, 'Share')
   await shareDialog(page).getByTestId('share-access').click()
   await page.getByRole('menuitemradio', { name: 'Anyone with the link' }).click()
   await expect(shareDialog(page).getByTestId('share-live')).toContainText('Up to date', { timeout: 30_000 })
-  await shareDialog(page).getByTestId('share-done').click()
 }
 
 const shareOf = (page: Page, root: string, path: string) => page.evaluate((req) => window.yaseenDraw.share.get(req), { root, path })
@@ -104,11 +101,7 @@ test('a bad key is refused with the reason, and nothing is set up', async ({ san
 test('sharing a board makes a live link; View only blocks the download; Not shared takes it down', async ({ sandbox, launch, cloudflare }) => {
   const { vault, page } = await launchShared(sandbox, launch, cloudflare, { 'Plan.excalidraw': scene([rect('a')]) })
   const board = `${vault}/Plan.excalidraw`
-  await contextMenu(page, 'Plan', 'Share')
-  await expect(shareDialog(page)).toBeVisible()
-  await shareDialog(page).getByTestId('share-access').click()
-  await page.getByRole('menuitemradio', { name: 'Anyone with the link' }).click()
-  await expect(shareDialog(page).getByTestId('share-live')).toContainText('Up to date', { timeout: 30_000 })
+  await shareBoard(page, 'Plan')
   const entry = await shareOf(page, vault, board)
   expect(entry?.url).toBe(`${cloudflare.origin}/b/${entry?.id}`)
   await expect(row(page, 'Plan').locator('.tree__share')).toBeVisible() // the tree marks shared boards
@@ -132,6 +125,7 @@ test('a shared board re-uploads itself after an edit settles', async ({ sandbox,
   const { vault, page } = await launchShared(sandbox, launch, cloudflare, { 'Live.excalidraw': scene([rect('a')]) }, 'Live.excalidraw')
   await canvasReady(page)
   await shareBoard(page, 'Live')
+  await shareDialog(page).getByTestId('share-done').click()
   const entry = await shareOf(page, vault, `${vault}/Live.excalidraw`)
   await drawRect(page)
   // The live re-upload waits for 10 s of quiet, then sends the new scene.
@@ -146,12 +140,8 @@ test('a diagram shares too, and its link serves the diagram', async ({ sandbox, 
   expect(await (await fetch(`${cloudflare.origin}/raw/${entry?.id}`)).text()).toContain('Shared box')
 })
 
-test('before setup, Share explains and sends you to Settings › Sharing', async ({ sandbox, launch }) => {
-  const vault = sandbox.vault('V', { 'Board.excalidraw': scene() })
-  sandbox.writeProfile({ windows: [{ root: vault, file: `${vault}/Board.excalidraw` }] })
-  const app = await launch()
-  const page = await app.window()
-  await canvasReady(page)
+test('before setup, Share explains and sends you to Settings › Sharing', async ({ openBoard }) => {
+  const { app, page } = await openBoard({ 'Board.excalidraw': scene() })
   await app.menu('menu.file.share-link', page)
   await expect(shareDialog(page)).toContainText("Sharing isn't set up")
   await page.getByTestId('share-setup').click()

@@ -1,6 +1,6 @@
 import { CONTRACT } from '@shared/ipc'
-import { requireAbsPath, requireDir } from '../fs/fsUtils'
-import { absPaths } from '../fs/validate'
+import { requireDir } from '../fs/fsUtils'
+import { absPaths, requireAbsPath } from '../fs/validate'
 import { runOffThread } from '../storageJob'
 import storageWorker from '../storageWorker?modulePath'
 import { handle } from './envelope'

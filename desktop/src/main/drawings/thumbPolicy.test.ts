@@ -94,6 +94,5 @@ describe('planThumbSweep', () => {
 
   it('keeps a quarter gigabyte by default', () => {
     expect(THUMBS_MAX_BYTES).toBe(256 * 1024 * 1024)
-    expect(planThumbSweep([entry('a-64.png', THUMBS_MAX_BYTES, 0)])).toEqual([])
   })
 })

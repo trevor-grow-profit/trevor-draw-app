@@ -4,10 +4,10 @@
  * start). The OS side — LaunchServices registration — stays in docs/REGRESSION.md (O1–O4).
  */
 import { spawn } from 'node:child_process'
-import type { Page } from '@playwright/test'
-import { appCommand, test, expect, type DrawApp } from './support/fixtures'
+import { appCommand, identity, test, expect, type DrawApp } from './support/fixtures'
 import { canvasReady } from './support/canvas'
-import { treeReady } from './support/sidebar'
+import { diagramReady } from './support/drawio'
+import { notice, treeReady } from './support/sidebar'
 import { diagram, diagramBox, rect, scene } from './support/vault'
 
 /** What macOS would deliver: `open-url` for a clicked link, `open-file` for a double-clicked board. */
@@ -17,7 +17,6 @@ const emit = (app: DrawApp, event: 'open-url' | 'open-file', arg: string) =>
   }, [event, arg] as const)
 
 const fileLink = (path: string) => `yaseendraw://${encodeURI(path).replace(/#/g, '%23').replace(/\?/g, '%3F')}`
-const identity = (page: Page) => page.evaluate(() => window.yaseenDraw.window.identity())
 
 test('a yaseendraw:// link opens its board in the window already on that vault', async ({ sandbox, launch }) => {
   const vault = sandbox.vault('V', { 'Linked board.excalidraw': scene([rect('a')]), 'Other.excalidraw': scene() })
@@ -53,7 +52,7 @@ test('a broken link shows a notice, never a dialog', async ({ sandbox, launch })
   const page = await app.window()
   await treeReady(page)
   await emit(app, 'open-url', 'yaseendraw://not a path')
-  await expect(page.locator('.link-notice')).toContainText("Can't open link: yaseendraw://not a path")
+  await expect(notice(page)).toContainText("Can't open link: yaseendraw://not a path")
   await expect(page.getByRole('dialog')).toHaveCount(0)
 })
 
@@ -64,15 +63,16 @@ test('a double-clicked .drawio (open-file) opens in its vault’s window', async
   const page = await app.window()
   await treeReady(page)
   await emit(app, 'open-file', `${vault}/Flow.drawio`)
-  await expect(page.frameLocator('iframe.drawio-editor__frame').getByText('Opened by Finder')).toBeVisible({ timeout: 30_000 })
+  await diagramReady(page, 'Opened by Finder')
 })
 
 test('a cold start handed a board path opens it — the parent folder becomes the vault when none is open', async ({ sandbox, launch }) => {
   const loose = sandbox.vault('Loose folder', { 'Handed over.excalidraw': scene([rect('a')]) })
   sandbox.writeProfile({ windows: [{ root: null }] })
   const app = await launch({ args: [`${loose}/Handed over.excalidraw`] })
+  // A window still navigating has no bridge yet: its identity reads as null, and the poll asks again.
   const holding = async () => {
-    for (const p of app.electron.windows()) if ((await identity(p)).file === `${loose}/Handed over.excalidraw`) return p
+    for (const p of app.electron.windows()) if ((await identity(p).catch(() => null))?.file === `${loose}/Handed over.excalidraw`) return p
     return null
   }
   await expect.poll(async () => (await holding()) !== null).toBe(true)
@@ -90,10 +90,7 @@ test('a second launch on the same profile hands its board to the running app and
   await treeReady(page)
   // The same binary, the same profile, a board in argv: what a Windows double-click does.
   const { command, args } = appCommand([`${vault}/Second launch.excalidraw`])
-  const second = spawn(command, args, {
-    env: { ...process.env, YASEEN_DRAW_USER_DATA_DIR: sandbox.profile, E2E_SANDBOX: sandbox.dir },
-    stdio: 'ignore',
-  })
+  const second = spawn(command, args, { env: sandbox.env(), stdio: 'ignore' })
   const exitCode = await new Promise<number | null>((resolve) => second.once('exit', resolve))
   expect(exitCode).toBe(0)
   await expect(page.getByRole('tab', { name: 'Second launch' })).toHaveAttribute('aria-selected', 'true')

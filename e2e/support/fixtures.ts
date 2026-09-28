@@ -6,10 +6,12 @@
  */
 import { test as base, expect, _electron, type ElectronApplication, type Page } from '@playwright/test'
 import type { ChildProcess } from 'node:child_process'
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { GIT_ENV } from '../../tools/lib/seedKit.mjs'
+import { canvasReady } from './canvas'
 import { REPO, writeProfile, writeVault, type ProfileSpec, type VaultFiles } from './vault'
 
 const APP_DIR = join(REPO, 'desktop')
@@ -21,12 +23,12 @@ export const PACKAGED = process.env.E2E_PACKAGED === '1'
 const PACKAGED_BIN = join(REPO, 'desktop/dist-app/mac-arm64/Yaseen Draw.app/Contents/MacOS/Yaseen Draw')
 /** In node, the `electron` package's export is the path of its binary. */
 const DEV_BIN = createRequire(__filename)('electron') as string
+const MAIN_HOOK = join(__dirname, 'mainHook.cjs')
 
 /** The app's own command line — what a second launch or a double-click would run — plus `extra`. */
 export function appCommand(extra: string[] = []): { command: string; args: string[] } {
   return PACKAGED ? { command: PACKAGED_BIN, args: ['-r', MAIN_HOOK, ...extra] } : { command: DEV_BIN, args: ['-r', MAIN_HOOK, APP_DIR, ...extra] }
 }
-const MAIN_HOOK = join(__dirname, 'mainHook.cjs')
 /** A quit is renderers-flush (5 s cap each) + exit; past this the sequence is stuck, not slow. */
 const QUIT_TIMEOUT_MS = 30_000
 const EXIT_GRACE_MS = 3_000
@@ -54,6 +56,13 @@ export class Sandbox {
   writeProfile(spec: ProfileSpec): void {
     writeProfile(this.profile, spec)
   }
+  /**
+   * The environment an app on this sandbox runs with: its profile, its sandbox for mainHook.cjs, and
+   * git without this machine's user or system config (hooks, signing) — the app runs the real `git`.
+   */
+  env(extra: Record<string, string> = {}): Record<string, string> {
+    return { ...GIT_ENV, ...extra, YASEEN_DRAW_USER_DATA_DIR: this.profile, E2E_SANDBOX: this.dir }
+  }
   /** The OS hand-offs the app made (support/mainHook.cjs), oldest first. */
   osCalls(): { call: string; arg: string }[] {
     const log = this.path('os-calls.jsonl')
@@ -71,36 +80,49 @@ export interface LaunchOptions {
   /** Extra argv after the app dir — e.g. a board path, as a Finder double-click on Windows would pass. */
   args?: string[]
   env?: Record<string, string>
+  /**
+   * Record requests from the moment the app is handed over (`outsideRequests`). Opt-in: a listener
+   * makes Playwright forward every one of the app's own requests too, which slows a busy run.
+   */
+  network?: boolean
 }
 
 /** A running app: its Electron handle plus the helpers every spec needs. */
 export class DrawApp {
   private readonly proc: ChildProcess
+  private readonly network: { attempted: string[]; reached: string[] } | null = null
 
   private constructor(
     readonly electron: ElectronApplication,
     private readonly sandbox: Sandbox,
+    network: boolean,
   ) {
     this.proc = electron.process()
+    if (!network) return
+    const log = (this.network = { attempted: [] as string[], reached: [] as string[] })
+    const outside = (url: string) => !/^(app|data|blob):/.test(url)
+    electron.context().on('request', (req) => void (outside(req.url()) && log.attempted.push(req.url())))
+    electron.context().on('requestfinished', (req) => void (outside(req.url()) && log.reached.push(req.url())))
   }
 
-  static async launch(sandbox: Sandbox, { args = [], env = {} }: LaunchOptions = {}): Promise<DrawApp> {
+  static async launch(sandbox: Sandbox, { args = [], env = {}, network = false }: LaunchOptions = {}): Promise<DrawApp> {
     mkdirSync(sandbox.profile, { recursive: true })
     const { command, args: argv } = appCommand(args)
     const electron = await _electron.launch({
       // Unpackaged, Playwright finds the dev binary itself (and preloads its own loader first).
       ...(PACKAGED ? { executablePath: command } : {}),
       args: argv,
-      env: { ...process.env, ...env, YASEEN_DRAW_USER_DATA_DIR: sandbox.profile, E2E_SANDBOX: sandbox.dir },
+      env: sandbox.env(env),
       cwd: REPO,
       // Playwright emulates a light `prefers-color-scheme` by default; the app must see the OS's
       // (i.e. `nativeTheme.themeSource`, which the Theme setting drives).
       colorScheme: null,
     })
+    const app = new DrawApp(electron, sandbox, network)
     if (PACKAGED) await electron.evaluate((_electron, hook) => void process.mainModule?.require(hook), MAIN_HOOK)
     // Config `use` options only reach contexts Playwright creates; this one Electron made.
     electron.context().setDefaultTimeout(ACTION_TIMEOUT_MS)
-    return new DrawApp(electron, sandbox)
+    return app
   }
 
   /** The first window, loaded. */
@@ -135,16 +157,28 @@ export class DrawApp {
   }
 
   /**
-   * Every request any window makes to somewhere other than the app itself (`app:`, `data:`, `blob:`):
-   * `attempted` (whatever the page tried) and `reached` (what actually got an answer — a request the
-   * CSP blocks is attempted, not reached). Start it before the page acts.
+   * Every request any window has made to somewhere other than the app itself (`app:`, `data:`,
+   * `blob:`), recorded from the moment Playwright handed the app over — before a spec can act — for
+   * an app launched with `{ network: true }`: `attempted` (whatever the page tried) and `reached`
+   * (what actually got an answer — a request the CSP blocks is attempted, not reached).
    */
   outsideRequests(): { attempted: string[]; reached: string[] } {
-    const log = { attempted: [] as string[], reached: [] as string[] }
-    const outside = (url: string) => !/^(app|data|blob):/.test(url)
-    this.electron.context().on('request', (req) => void (outside(req.url()) && log.attempted.push(req.url())))
-    this.electron.context().on('requestfinished', (req) => void (outside(req.url()) && log.reached.push(req.url())))
-    return log
+    if (this.network === null) throw new Error('launch the app with { network: true } to record its requests')
+    return this.network
+  }
+
+  /** Makes the next native Save sheet answer `path`, as if the user typed it and pressed Save. */
+  answerSaveDialog(path: string): Promise<void> {
+    return this.electron.evaluate(({ dialog }, filePath) => {
+      dialog.showSaveDialog = (async () => ({ canceled: false, filePath })) as typeof dialog.showSaveDialog
+    }, path)
+  }
+
+  /** Makes the next native Open sheet answer `path`, as if the user picked it. */
+  answerOpenDialog(path: string): Promise<void> {
+    return this.electron.evaluate(({ dialog }, filePath) => {
+      dialog.showOpenDialog = (async () => ({ canceled: false, filePaths: [filePath] })) as typeof dialog.showOpenDialog
+    }, path)
   }
 
   /**
@@ -211,19 +245,107 @@ export class DrawApp {
   }
 }
 
+/** `window.yaseenDraw.window.identity()` of `page`: its window's id, vault, tabs and front file. */
+export const identity = (page: Page) => page.evaluate(() => window.yaseenDraw.window.identity())
+
+/** macOS's tmpdir is a symlink (/var → /private/var); the real path is what the app reports back. */
+const RUN_DIR = join(realpathSync(tmpdir()), 'yaseen-draw-e2e')
+/** A failed test's sandbox is kept for its traces; one more than a day old is pruned when a worker starts. */
+const KEEP_FAILED_MS = 86_400_000
+
+/**
+ * One holder at a time of `lock` (a folder, made atomically) across every worker process. A holder
+ * that died without releasing it — a killed worker — is taken over.
+ */
+async function hold(lock: string): Promise<() => void> {
+  for (;;) {
+    try {
+      mkdirSync(lock)
+      writeFileSync(join(lock, 'pid'), String(process.pid))
+      return () => rmSync(lock, { recursive: true, force: true })
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code !== 'EEXIST') throw err
+    }
+    const holder = pidIn(lock)
+    if (holder !== null && !alive(holder)) rmSync(lock, { recursive: true, force: true })
+    else await sleep(100)
+  }
+}
+/** The lock holder's pid; null while it is still being written, or already released. */
+function pidIn(lock: string): number | null {
+  try {
+    return Number(readFileSync(join(lock, 'pid'), 'utf8')) || null
+  } catch {
+    return null
+  }
+}
+/** Signal 0 only asks; it throws for a pid that is gone (or not one of this user's workers). */
+function alive(pid: number): boolean {
+  try {
+    return process.kill(pid, 0)
+  } catch {
+    return false
+  }
+}
+
+/**
+ * Lends `body` the OS clipboard. Every worker's app shares the one clipboard, so the tests that use
+ * it take turns (a lock beside the sandboxes); and whatever text or image the clipboard held before
+ * is put back after — a run borrows the user's clipboard, it does not keep it.
+ */
+export async function withClipboard(app: DrawApp, body: () => Promise<void>): Promise<void> {
+  const release = await hold(join(RUN_DIR, 'clipboard.lock'))
+  try {
+    const saved = await app.electron.evaluate(({ clipboard }) => ({ text: clipboard.readText(), image: clipboard.readImage().isEmpty() ? null : clipboard.readImage().toPNG().toString('base64') }))
+    try {
+      await body()
+    } finally {
+      await app.electron.evaluate(({ clipboard, nativeImage }, s) => {
+        clipboard.clear()
+        if (s.image !== null) clipboard.writeImage(nativeImage.createFromBuffer(Buffer.from(s.image, 'base64')))
+        if (s.text !== '') clipboard.writeText(s.text)
+      }, saved)
+    }
+  } finally {
+    release()
+  }
+}
+
+export interface OpenBoard {
+  app: DrawApp
+  page: Page
+  vault: string
+  /** The absolute path of the board the window opened on. */
+  board: string
+}
+
 export interface Fixtures {
   sandbox: Sandbox
   /** Launches the app on `sandbox.profile`; every app launched this way is quit (or killed) after the test. */
   launch: (options?: LaunchOptions) => Promise<DrawApp>
+  /**
+   * The common start: `files` as the vault `V`, one window on it with `open` (default: the first
+   * file) in front, launched. A drawing is waited for until its canvas is ready; a diagram's test
+   * waits for its own content (`diagramReady`).
+   */
+  openBoard: (files: VaultFiles, open?: string, options?: LaunchOptions) => Promise<OpenBoard>
 }
 
-/** macOS's tmpdir is a symlink (/var → /private/var); the real path is what the app reports back. */
-const RUN_DIR = join(realpathSync(tmpdir()), 'yaseen-draw-e2e')
-
-export const test = base.extend<Fixtures>({
+export const test = base.extend<Fixtures, { pruneSandboxes: void }>({
+  pruneSandboxes: [
+    // eslint-disable-next-line no-empty-pattern
+    async ({}, use) => {
+      mkdirSync(RUN_DIR, { recursive: true })
+      for (const name of readdirSync(RUN_DIR).filter((n) => /^\d+-/.test(n))) {
+        const mtime = statSync(join(RUN_DIR, name), { throwIfNoEntry: false })?.mtimeMs ?? Date.now()
+        if (Date.now() - mtime > KEEP_FAILED_MS) rmSync(join(RUN_DIR, name), { recursive: true, force: true, maxRetries: 3 })
+      }
+      await use()
+    },
+    { scope: 'worker', auto: true },
+  ],
   // eslint-disable-next-line no-empty-pattern
   sandbox: async ({}, use, testInfo) => {
-    mkdirSync(RUN_DIR, { recursive: true })
     const dir = mkdtempSync(join(RUN_DIR, `${testInfo.workerIndex}-`))
     await use(new Sandbox(dir))
     if (testInfo.status === testInfo.expectedStatus && process.env.E2E_KEEP !== '1') rmSync(dir, { recursive: true, force: true, maxRetries: 3 })
@@ -238,6 +360,17 @@ export const test = base.extend<Fixtures>({
     for (const app of apps) {
       await app.quit().catch(() => app.kill())
     }
+  },
+  openBoard: async ({ sandbox, launch }, use) => {
+    await use(async (files, open = Object.keys(files)[0], options) => {
+      const vault = sandbox.vault('V', files)
+      const board = join(vault, open)
+      sandbox.writeProfile({ windows: [{ root: vault, file: board }] })
+      const app = await launch(options)
+      const page = await app.window()
+      if (board.endsWith('.excalidraw')) await canvasReady(page)
+      return { app, page, vault, board }
+    })
   },
 })
 

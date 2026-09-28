@@ -3,15 +3,22 @@
  * "Supported file capabilities"; 🔒 YAZ-1999 name-first birth; delete = Trash only).
  */
 import { existsSync, readFileSync } from 'node:fs'
+import type { Page } from '@playwright/test'
 import { test, expect } from './support/fixtures'
 import { canvasReady } from './support/canvas'
 import { contextMenu, nameBox, notice, row, treeReady } from './support/sidebar'
 import { diagram, diagramBox, readScene, rect, scene } from './support/vault'
 
-const dated = () => {
-  const now = new Date()
+/** `MM_DD- ` for `daysAgo` days back. */
+const dated = (daysAgo = 0) => {
+  const day = new Date(Date.now() - daysAgo * 86_400_000)
   const p = (n: number) => String(n).padStart(2, '0')
-  return `${p(now.getMonth() + 1)}_${p(now.getDate())}- `
+  return `${p(day.getMonth() + 1)}_${p(day.getDate())}- `
+}
+/** The name box holding today's prefix — or yesterday's, when the run crossed midnight since the app read its clock. */
+async function datedSeed(page: Page): Promise<string> {
+  await expect(nameBox(page)).toHaveValue(new RegExp(`^(${dated()}|${dated(1)})$`))
+  return nameBox(page).inputValue()
 }
 
 test('New Excalidraw drawing is born name-first, stamped, and opens in the current tab', async ({ sandbox, launch }) => {
@@ -55,21 +62,21 @@ test('New dated drawing and New dated folder seed today’s MM_DD- prefix; New f
   const page = await app.window()
   await treeReady(page)
   await contextMenu(page, null, 'New dated Excalidraw drawing')
-  await expect(nameBox(page)).toHaveValue(dated())
+  const drawingSeed = await datedSeed(page)
   await nameBox(page).press('Enter') // the untouched seed makes nothing
   await expect(nameBox(page)).toBeVisible()
   await nameBox(page).press('End')
   await nameBox(page).pressSequentially('Standup')
   await nameBox(page).press('Enter')
-  await expect.poll(() => existsSync(`${vault}/${dated()}Standup.excalidraw`)).toBe(true)
+  await expect.poll(() => existsSync(`${vault}/${drawingSeed}Standup.excalidraw`)).toBe(true)
   await canvasReady(page) // the new board opens and its canvas takes focus — let it, before the next box
 
   await contextMenu(page, null, 'New dated folder')
-  await expect(nameBox(page)).toHaveValue(dated())
+  const folderSeed = await datedSeed(page)
   await nameBox(page).press('End')
   await nameBox(page).pressSequentially('Sprint')
   await nameBox(page).press('Enter')
-  await expect(row(page, `${dated()}Sprint`)).toBeVisible()
+  await expect(row(page, `${folderSeed}Sprint`)).toBeVisible()
 
   await contextMenu(page, null, 'New folder')
   await nameBox(page).fill('Archive')
@@ -98,12 +105,8 @@ test('Escape leaves nothing behind, and a taken name is refused in place without
   expect(readScene(`${vault}/Taken.excalidraw`).elements.map((el) => el.id)).toEqual(['mine'])
 })
 
-test('Rename keeps the kind, moves the file on disk and the open tab follows', async ({ sandbox, launch }) => {
-  const vault = sandbox.vault('V', { 'Old name.excalidraw': scene([rect('a')]), 'Flow.drawio': diagram(diagramBox('c', 'Box')) })
-  sandbox.writeProfile({ windows: [{ root: vault, file: `${vault}/Old name.excalidraw` }] })
-  const app = await launch()
-  const page = await app.window()
-  await canvasReady(page)
+test('Rename keeps the kind, moves the file on disk and the open tab follows', async ({ openBoard }) => {
+  const { page, vault } = await openBoard({ 'Old name.excalidraw': scene([rect('a')]), 'Flow.drawio': diagram(diagramBox('c', 'Box')) })
   await contextMenu(page, 'Old name', 'Rename')
   await expect(nameBox(page)).toHaveValue('Old name')
   await nameBox(page).fill('Ünïcödé plan 🎨')
@@ -131,12 +134,8 @@ test('dragging a board onto a folder moves it there', async ({ sandbox, launch }
   await expect(row(page, 'Mover')).toBeHidden() // folders start collapsed
 })
 
-test('Delete asks first, Cancel keeps the file, Delete moves it to the Trash and closes its tab', async ({ sandbox, launch }) => {
-  const vault = sandbox.vault('V', { 'Doomed.excalidraw': scene([rect('a')]), 'Stay.excalidraw': scene() })
-  sandbox.writeProfile({ windows: [{ root: vault, file: `${vault}/Doomed.excalidraw` }] })
-  const app = await launch()
-  const page = await app.window()
-  await canvasReady(page)
+test('Delete asks first, Cancel keeps the file, Delete moves it to the Trash and closes its tab', async ({ sandbox, openBoard }) => {
+  const { page, vault } = await openBoard({ 'Doomed.excalidraw': scene([rect('a')]), 'Stay.excalidraw': scene() })
   await contextMenu(page, 'Doomed', 'Delete')
   const confirm = page.getByRole('dialog').filter({ hasText: 'Delete "Doomed.excalidraw"? It moves to the Trash.' })
   await expect(confirm).toBeVisible()

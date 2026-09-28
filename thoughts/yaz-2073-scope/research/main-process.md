@@ -1,6 +1,6 @@
 # Main-process findings (Electron main + preload): startup, IPC, file I/O, watchers, sync
 
-Angle: `main-process`. Repo read-only; every measurement ran on copies under `$SCRATCH/main-process/` (vault copies, isolated userData via `YASEEN_DRAW_USER_DATA_DIR`, git remote re-pointed to a local bare clone so nothing reached GitHub).
+Angle: `main-process`. Repo read-only; every measurement ran on copies (vault copies, isolated userData via `YASEEN_DRAW_USER_DATA_DIR`, git remote re-pointed to a local bare clone so nothing reached GitHub).
 
 ## TL;DR (ranked)
 
@@ -349,4 +349,4 @@ Consequences:
 10. **Incremental `TreeIndex` in main** (seed walk + event patches; `fs:tree` answers from cache) (D2 option 2).
 11. **Small items:** skip identical state-file writes, parallel quit flush across windows, lean `drawing:load` for legacy boards, fuse hardening in `afterPack` (F9).
 
-Scratch artifacts (reproducible): `$SCRATCH/main-process/{startup.mjs,stormapp.mjs,idlecpu.mjs,quitflush.mjs,bench.cjs,storm.cjs,fswatch.cjs,saveevents.cjs,gen.mjs,mkud.sh}`. The patched app is at `$SCRATCH/main-process/app-cc/`.
+The research harnesses (startup, tree storm, idle CPU, quit flush, fs.watch bench) were one-off scripts; their checked-in successors are under `tools/perf/`.

@@ -1,9 +1,9 @@
-import type { AppState, MediaFavoritesRequest, MediaItem, MediaRecentRequest } from '@shared/types'
+import type { MediaFavoritesRequest, MediaItem, MediaRecentRequest } from '@shared/types'
 import { normalizeMediaItem } from '@shared/mediaLibrary'
 import { CONTRACT } from '@shared/ipc'
 import { BridgeFailure } from '../fs/fsUtils'
-import { requireObject, str } from '../fs/validate'
-import { resolveLibraryFolder } from '../library/folder'
+import { requireRequest, str } from '../fs/validate'
+import { followLibraryFolder } from '../library/folder'
 import { createMediaStore, type MediaStore } from '../library/mediaStore'
 import type { Store } from '../store'
 import { broadcastAll } from './broadcast'
@@ -26,7 +26,7 @@ function requireItem(v: unknown): MediaItem {
 }
 
 function requireFavoritesRequest(v: unknown): MediaFavoritesRequest {
-  const r = requireObject(v, 'missing request')
+  const r = requireRequest(v)
   switch (r.op) {
     case 'list':
       return { op: 'list' }
@@ -40,7 +40,7 @@ function requireFavoritesRequest(v: unknown): MediaFavoritesRequest {
 }
 
 function requireRecentRequest(v: unknown): MediaRecentRequest {
-  const r = requireObject(v, 'missing request')
+  const r = requireRequest(v)
   switch (r.op) {
     case 'list':
       return { op: 'list' }
@@ -53,17 +53,12 @@ function requireRecentRequest(v: unknown): MediaRecentRequest {
 
 /** Returns the store so a test can close its watcher; `main/index.ts` lets the process end take it. */
 export function registerMediaLibraryIpc(store: Store, userData: string): MediaStore {
-  const folderFor = (state: AppState): string => resolveLibraryFolder(state.settings.libraryFolder, userData)
-  let folder = folderFor(store.get())
-  const media = createMediaStore(folder)
-  media.onChanged(() => broadcastAll(CONTRACT.media.onChanged))
-  store.onChange((state) => {
-    const next = folderFor(state)
-    if (next === folder) return
-    folder = next
+  const folder = followLibraryFolder(store, userData, (next) => {
     media.setFolder(next)
     broadcastAll(CONTRACT.media.onChanged)
   })
+  const media = createMediaStore(folder)
+  media.onChanged(() => broadcastAll(CONTRACT.media.onChanged))
   handle(CONTRACT.media.favorites, async (req: unknown) => media.favorites(requireFavoritesRequest(req)))
   handle(CONTRACT.media.recent, async (req: unknown) => media.recent(requireRecentRequest(req)))
   return media

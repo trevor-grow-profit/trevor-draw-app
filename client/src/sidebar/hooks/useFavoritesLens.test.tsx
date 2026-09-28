@@ -1,16 +1,16 @@
-/** The Favorites list's writer and reorder, driven directly (YAZ-1766; a hook since YAZ-2073 6C). */
+/** The Favorites list's reorder, driven directly (YAZ-1766; a hook since YAZ-2073 6C). */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
-import { useFavoritesLens } from './useVaultTree'
+import { useFavoritesLens } from './useFavoritesLens'
 
 const PATHS = ['/v/a', '/v/b', '/v/c']
 
 let root: Root | null = null
 let hook: ReturnType<typeof useFavoritesLens>
 const onNotice = vi.fn()
-function Probe({ focusFavorites = [] }: { focusFavorites?: readonly string[] }) {
-  hook = useFavoritesLens('/v', null, focusFavorites, onNotice)
+function Probe() {
+  hook = useFavoritesLens('/v', null, [], onNotice)
   return null
 }
 const bridge = {
@@ -37,28 +37,12 @@ const reorder = (from: string, over: string, edge: 'before' | 'after') => {
   act(() => hook.favoriteReorder.drop())
 }
 
+// The drag itself, the focused tab's lock and a refused write's revert are pinned through the real rows in
+// `Sidebar.test.tsx`; this suite keeps only what the rows cannot easily reach.
 describe('useFavoritesLens', () => {
-  it('a drop lands before or after the hovered row, and dropping a row on itself writes nothing', () => {
-    reorder('/v/c', '/v/a', 'before')
-    expect(bridge.set).toHaveBeenLastCalledWith('/v', ['/v/c', '/v/a', '/v/b'])
-    reorder('/v/c', '/v/a', 'after')
-    expect(bridge.set).toHaveBeenLastCalledWith('/v', ['/v/a', '/v/c', '/v/b'])
-    bridge.set.mockClear()
+  it('dropping a row on itself writes nothing and ends the drag', () => {
     reorder('/v/a', '/v/a', 'after')
     expect(bridge.set).not.toHaveBeenCalled()
     expect(hook.favoriteReorder.dragging).toBeNull()
-  })
-
-  it('does not drag while the tab is focused', async () => {
-    await act(async () => root?.render(<Probe focusFavorites={['/v/a']} />))
-    act(() => hook.favoriteReorder.start('/v/c'))
-    expect(hook.favoriteReorder.dragging).toBeNull()
-  })
-
-  it('a refused write reverts the list and says why', async () => {
-    bridge.set.mockRejectedValueOnce(new Error('bad file'))
-    await act(async () => hook.toggleFavorite(['/v/d'], false))
-    expect(hook.favorites).toEqual(PATHS)
-    expect(onNotice).toHaveBeenCalledWith("Can't save favorites: bad file", 'error')
   })
 })

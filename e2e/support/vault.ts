@@ -1,13 +1,18 @@
 /**
  * Builders for what a test puts on disk: vault files, Excalidraw scenes, draw.io XML and the app's
- * `yaseendraw.json` profile. Plain node — no app code is imported, so a test states the on-disk
- * shape it expects in its own words, the way a user's older file would look.
+ * `yaseendraw.json` profile. No app code is imported, so a test states the on-disk shape it expects
+ * in its own words, the way a user's older file would look. The PNG encoder, scene, git and profile
+ * writers are the seed scripts' own (tools/lib/seedKit.mjs); the elements are this suite's, with the
+ * ids a test names them by.
  */
 import { execFileSync } from 'node:child_process'
 import { mkdirSync, readFileSync, renameSync, statSync, writeFileSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
-import { crc32, deflateSync } from 'node:zlib'
-import { createHash } from 'node:crypto'
+import { fileIdFor } from '../../tools/lib/seedDemoVault.mjs'
+import { GIT_ENV, git, json, profileWindow, publish, scene as sceneOf, writeState } from '../../tools/lib/seedKit.mjs'
+
+export { fileIdFor }
+export { embedded, solidPNG } from '../../tools/lib/seedKit.mjs'
 
 export const REPO = resolve(__dirname, '../..')
 
@@ -52,12 +57,11 @@ export interface SceneOptions {
   files?: Record<string, unknown>
 }
 
-export const scene = (elements: unknown[] = [], { background = '#ffffff', files = {} }: SceneOptions = {}) =>
-  `${JSON.stringify({ type: 'excalidraw', version: 2, source: 'yaseen-draw-e2e', elements, appState: { viewBackgroundColor: background, gridSize: 20 }, files }, null, 2)}\n`
+export const scene = (elements: unknown[] = [], { background = '#ffffff', files = {} }: SceneOptions = {}): string => json(sceneOf('yaseen-draw-e2e', elements, { bg: background, files }))
 
 /** `scene` with the app's own dates block as its first key (🔒 YAZ-1834), as main writes it. */
-export const stampedScene = (elements: unknown[], createdAt: number, updatedAt: number) =>
-  `${JSON.stringify({ yaseendraw: { createdAt, updatedAt }, ...JSON.parse(scene(elements)) }, null, 2)}\n`
+export const stampedScene = (elements: unknown[], createdAt: number, updatedAt: number): string =>
+  json(sceneOf('yaseen-draw-e2e', elements, { block: { createdAt, updatedAt } }))
 
 /** A one-page draw.io file holding `cells` (mxCell XML) under the default parent. */
 export const diagram = (cells = '') =>
@@ -67,28 +71,6 @@ export const diagramBox = (id: string, label: string, x = 40, y = 40) =>
   `<mxCell id="${id}" value="${label}" style="rounded=0;whiteSpace=wrap;html=1;" vertex="1" parent="1"><mxGeometry x="${x}" y="${y}" width="120" height="60" as="geometry" /></mxCell>`
 
 // ---------------------------------------------------------------- images
-
-const chunk = (type: string, data: Buffer) => {
-  const body = Buffer.concat([Buffer.from(type, 'ascii'), data])
-  const out = Buffer.alloc(8 + data.length + 4)
-  out.writeUInt32BE(data.length, 0)
-  body.copy(out, 4)
-  out.writeUInt32BE(crc32(body), 8 + data.length)
-  return out
-}
-
-/** A solid-colour RGB PNG — distinct colours are distinct bytes, so distinct content ids. */
-export function png(width: number, height: number, [r, g, b]: [number, number, number]): Buffer {
-  const row = Buffer.concat([Buffer.from([0]), Buffer.alloc(width * 3).map((_, i) => [r, g, b][i % 3])])
-  const ihdr = Buffer.alloc(13)
-  ihdr.writeUInt32BE(width, 0)
-  ihdr.writeUInt32BE(height, 4)
-  ihdr.set([8, 2, 0, 0, 0], 8)
-  return Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), chunk('IHDR', ihdr), chunk('IDAT', deflateSync(Buffer.concat(Array(height).fill(row)))), chunk('IEND', Buffer.alloc(0))])
-}
-
-/** Excalidraw's own image id: the SHA-1 of the bytes (🔒 YAZ-1775 D3) — also the asset's file name. */
-export const fileIdOf = (bytes: Buffer): string => createHash('sha1').update(bytes).digest('hex')
 
 export const imageElement = (id: string, fileId: string, x = 0, y = 0, width = 160, height = 120) =>
   base(id, { type: 'image', x, y, width, height, fileId, status: 'saved', scale: [1, 1], crop: null, backgroundColor: 'transparent' })
@@ -104,14 +86,29 @@ export interface SceneFile {
 
 export const readScene = (path: string): SceneFile => JSON.parse(readFileSync(path, 'utf8')) as SceneFile
 
-/** Live (not deleted) elements of a board on disk; a half-written or missing file reads as null. */
-export function liveElements(path: string): SceneFile['elements'] | null {
+/** `readScene` for a poll: a half-written or missing file reads as null, and the poll asks again. */
+export function sceneOr(path: string): SceneFile | null {
   try {
-    return readScene(path).elements.filter((el) => el.isDeleted !== true)
+    return readScene(path)
   } catch {
     return null
   }
 }
+
+/** Live (not deleted) elements of a board on disk; a half-written or missing file reads as null. */
+export const liveElements = (path: string): SceneFile['elements'] | null => sceneOr(path)?.elements.filter((el) => el.isDeleted !== true) ?? null
+
+/** `path`'s text, or `fallback` while it is missing (not written yet, or mid-rename). */
+export function readOr(path: string, fallback = ''): string {
+  try {
+    return readFileSync(path, 'utf8')
+  } catch {
+    return fallback
+  }
+}
+
+/** `path`'s mtime, or null while it is missing (a rename in flight). */
+const mtimeOf = (path: string): number | null => statSync(path, { throwIfNoEntry: false })?.mtimeMs ?? null
 
 /**
  * Resolves once `path` has not been written for `quietMs`. One gesture can autosave more than once
@@ -120,12 +117,12 @@ export function liveElements(path: string): SceneFile['elements'] | null {
  */
 export async function writesSettled(path: string, quietMs = 1_200, timeoutMs = 20_000): Promise<void> {
   const end = Date.now() + timeoutMs
-  let last = statSync(path).mtimeMs
+  let last = mtimeOf(path)
   let since = Date.now()
   while (Date.now() - since < quietMs) {
     if (Date.now() > end) throw new Error(`${path} kept changing for ${timeoutMs} ms`)
     await new Promise((resolve) => setTimeout(resolve, 50))
-    const now = statSync(path).mtimeMs
+    const now = mtimeOf(path)
     if (now !== last) {
       last = now
       since = Date.now()
@@ -134,9 +131,22 @@ export async function writesSettled(path: string, quietMs = 1_200, timeoutMs = 2
 }
 
 /**
+ * Asserts `read()` answers the same for all of `ms` — "nothing happens", checked throughout rather
+ * than once after a fixed wait. `read` is re-asked every 50 ms; the first different answer fails.
+ */
+export async function unchangedFor<T>(ms: number, read: () => T | Promise<T>): Promise<void> {
+  const first = await read()
+  for (const end = Date.now() + ms; Date.now() < end; ) {
+    await new Promise((resolve) => setTimeout(resolve, 50))
+    const now = await read()
+    if (now !== first) throw new Error(`expected no change for ${ms} ms, but ${String(first)} became ${String(now)}`)
+  }
+}
+
+/**
  * Another program's save, done the way editors and sync tools do it: a temp file renamed over the
- * target. (A plain in-place `writeFileSync` truncates then writes, and the watcher can report that
- * as two changes — see the note in autosave.spec.ts.)
+ * target. (The suite also covers a plain in-place `writeFileSync`, which truncates then writes — see
+ * autosave.spec.ts.)
  */
 export function writeOutside(path: string, content: string): void {
   writeFileSync(`${path}.outside-tmp`, content)
@@ -162,32 +172,20 @@ export function writeVault(root: string, files: VaultFiles): string {
   return root
 }
 
-/** `git init` a vault with one commit and a bare origin beside it, sync switched on (YAZ-1081). */
+/** A vault committed and pushed to a bare origin beside it (the seed kit's `publish`), sync switched on (YAZ-1081). */
 export function gitVault(root: string, { sync = true }: { sync?: boolean } = {}): { root: string; origin: string } {
   const origin = `${root}.origin.git`
-  const git = (cwd: string, ...args: string[]) => execFileSync('git', args, { cwd, stdio: 'pipe', env: gitEnv() }).toString()
-  mkdirSync(origin, { recursive: true })
-  git(origin, 'init', '--bare', '-b', 'main')
   if (sync) writeVault(root, { '.yaseendraw/github.json': `${JSON.stringify({ enabled: true })}\n` })
-  git(root, 'init', '-b', 'main')
-  git(root, 'config', 'user.name', 'E2E')
-  git(root, 'config', 'user.email', 'e2e@example.invalid')
-  git(root, 'config', 'commit.gpgsign', 'false')
-  git(root, 'add', '-A')
-  git(root, 'commit', '-m', 'seed')
-  git(root, 'remote', 'add', 'origin', origin)
-  git(root, 'push', '-u', 'origin', 'main')
+  publish(root, origin, 'seed')
   return { root, origin }
 }
 
-/** Git with no user/system config leaking in (signing, hooks, templates). */
-export const gitEnv = (): NodeJS.ProcessEnv => ({ ...process.env, GIT_CONFIG_NOSYSTEM: '1', GIT_CONFIG_GLOBAL: '/dev/null', GIT_TERMINAL_PROMPT: '0' })
-
-export const gitIn = (cwd: string, ...args: string[]): string => execFileSync('git', args, { cwd, stdio: 'pipe', env: gitEnv() }).toString()
+/** `git` in `cwd` (none of this machine's git config), its output trimmed. */
+export const gitIn = (cwd: string, ...args: string[]): string => git(cwd, args)
 
 /** Runs one of `tools/seed*.mjs` with the same node that runs the tests. */
 export function runSeed(script: string, args: string[]): string {
-  return execFileSync(process.execPath, [join(REPO, 'tools', script), ...args], { cwd: REPO, stdio: 'pipe', env: gitEnv() }).toString()
+  return execFileSync(process.execPath, [join(REPO, 'tools', script), ...args], { cwd: REPO, stdio: 'pipe', env: GIT_ENV }).toString()
 }
 
 // ---------------------------------------------------------------- the app profile
@@ -210,34 +208,19 @@ export interface ProfileSpec {
   sidebarWidth?: number
 }
 
-/** Writes `<profile>/yaseendraw.json` in the schema of docs/CONTRACTS.md "App state schema". */
+/**
+ * Writes `<profile>/yaseendraw.json` in the schema of docs/CONTRACTS.md "App state schema": light
+ * theme, each window staggered on screen, recents = the windows' vaults unless given.
+ */
 export function writeProfile(profile: string, spec: ProfileSpec = {}): void {
   const windows = (spec.windows ?? []).map((w, i) => {
     const tabs = w.tabs ?? (w.file ? [w.file] : [])
-    return {
-      id: w.id ?? `w${i + 1}`,
-      root: w.root,
-      file: w.file ?? tabs[tabs.length - 1] ?? null,
-      tabs,
-      sidebarCollapsed: w.sidebarCollapsed ?? false,
-      sidebarLens: w.sidebarLens ?? 'files',
-      focusDirs: [],
-      focusFavorites: [],
-      bounds: w.bounds ?? { x: 40 + i * 40, y: 40 + i * 40, width: 1280, height: 820 },
-    }
+    const file = w.file ?? tabs[tabs.length - 1]
+    return profileWindow({ ...w, id: w.id ?? `w${i + 1}`, file, tabs, bounds: w.bounds ?? { x: 40 + i * 40, y: 40 + i * 40, width: 1280, height: 820 } })
   })
-  const roots = windows.map((w) => w.root).filter((r): r is string => r !== null)
+  const roots = (spec.windows ?? []).map((w) => w.root).filter((r): r is string => r !== null)
   const recents = (spec.recents ?? [...new Set(roots)]).map((path, i) => ({ path, lastOpened: 1_700_000_000_000 - i }))
-  const state = {
-    version: 1,
-    settings: { theme: 'light', confirmDelete: true, ...spec.settings },
-    sidebarWidth: spec.sidebarWidth ?? 280,
-    recents,
-    windows,
-    folders: spec.folders ?? {},
-  }
-  mkdirSync(profile, { recursive: true })
-  writeFileSync(join(profile, 'yaseendraw.json'), `${JSON.stringify(state, null, 2)}\n`)
+  writeState(profile, { theme: 'light', settings: spec.settings, sidebarWidth: spec.sidebarWidth ?? 280, recents, windows, folders: spec.folders })
 }
 
 export const readProfile = (profile: string): { windows: Required<WindowSpec>[]; settings: Record<string, unknown>; recents: { path: string }[]; [k: string]: unknown } =>

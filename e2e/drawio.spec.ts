@@ -5,20 +5,14 @@
  */
 import { readFileSync } from 'node:fs'
 import { deflateRawSync } from 'node:zlib'
-import type { FrameLocator, Page } from '@playwright/test'
 import { test, expect } from './support/fixtures'
+import { savedChip } from './support/canvas'
+import { cellCount, diagramReady, editorFrame } from './support/drawio'
 import { row, treeReady } from './support/sidebar'
 import { diagram, diagramBox, scene, writeOutside, writesSettled } from './support/vault'
 
-const editorFrame = (page: Page): FrameLocator => page.frameLocator('iframe.drawio-editor__frame')
-const cellCount = (path: string) => (readFileSync(path, 'utf8').match(/<mxCell id="(?!0"|1")/g) ?? []).length
-
-test('a diagram opens in draw.io on app://drawio, offline and locked down, after the overlay’s handshake', async ({ sandbox, launch }) => {
-  const vault = sandbox.vault('V', { 'Flow.drawio': diagram(diagramBox('c1', 'Hello box')), 'Board.excalidraw': scene() })
-  sandbox.writeProfile({ windows: [{ root: vault, file: `${vault}/Board.excalidraw` }] })
-  const app = await launch()
-  const network = app.outsideRequests()
-  const page = await app.window()
+test('a diagram opens in draw.io on app://drawio, offline and locked down, after the overlay’s handshake', async ({ openBoard }) => {
+  const { app, page } = await openBoard({ 'Flow.drawio': diagram(diagramBox('c1', 'Hello box')), 'Board.excalidraw': scene() }, 'Board.excalidraw', { network: true })
   await treeReady(page)
   await page.evaluate(() => {
     const w = window as unknown as { __drawioEvents: string[] }
@@ -29,27 +23,22 @@ test('a diagram opens in draw.io on app://drawio, offline and locked down, after
     })
   })
   await row(page, 'Flow').click()
-  await expect(editorFrame(page).getByText('Hello box')).toBeVisible({ timeout: 30_000 })
+  await diagramReady(page, 'Hello box')
   const src = new URL((await page.locator('iframe.drawio-editor__frame').getAttribute('src')) ?? '')
   expect(`${src.protocol}//${src.host}`).toBe('app://drawio')
   expect(Object.fromEntries(src.searchParams)).toMatchObject({ embed: '1', offline: '1', lockdown: '1', stealth: '1', ui: 'simple' })
   const events = await page.evaluate(() => (window as unknown as { __drawioEvents: string[] }).__drawioEvents)
   expect(events).toContain('yaseenReady')
   expect(events.indexOf('yaseenReady')).toBeLessThan(events.indexOf('load'))
-  expect(network.attempted).toEqual([])
+  expect(app.outsideRequests().attempted).toEqual([])
   await expect(page.getByRole('tab', { name: /Flow/ }).getByRole('img', { name: 'draw.io diagram' })).toBeVisible()
 })
 
-test('an edit in draw.io autosaves plain XML with the diagram’s own dates, and never rewrites a clean diagram', async ({ sandbox, launch }) => {
-  const vault = sandbox.vault('V', { 'Flow.drawio': diagram(diagramBox('c1', 'Hello box')) })
-  const file = `${vault}/Flow.drawio`
-  const original = readFileSync(file, 'utf8')
-  sandbox.writeProfile({ windows: [{ root: vault, file }] })
-  const app = await launch()
-  const page = await app.window()
-  const box = editorFrame(page).getByText('Hello box')
-  await expect(box).toBeVisible({ timeout: 30_000 })
-  await expect(page.getByRole('status').filter({ hasText: /^Saved$/ })).toBeVisible()
+test('an edit in draw.io autosaves plain XML with the diagram’s own dates, and never rewrites a clean diagram', async ({ openBoard }) => {
+  const original = diagram(diagramBox('c1', 'Hello box'))
+  const { page, board: file } = await openBoard({ 'Flow.drawio': original })
+  const box = await diagramReady(page, 'Hello box')
+  await expect(savedChip(page)).toBeVisible()
   expect(readFileSync(file, 'utf8')).toBe(original) // opened, not written
   await box.click()
   await page.keyboard.press('Meta+d') // duplicate the selected box
@@ -60,13 +49,9 @@ test('an edit in draw.io autosaves plain XML with the diagram’s own dates, and
   expect(xml).toContain('<mxGraphModel')
 })
 
-test('the Excalidraw keymap works in draw.io: R then a drag draws a rectangle, and it autosaves', async ({ sandbox, launch }) => {
-  const vault = sandbox.vault('V', { 'Flow.drawio': diagram(diagramBox('c1', 'Keymap box')) })
-  const file = `${vault}/Flow.drawio`
-  sandbox.writeProfile({ windows: [{ root: vault, file }] })
-  const app = await launch()
-  const page = await app.window()
-  await expect(editorFrame(page).getByText('Keymap box')).toBeVisible({ timeout: 30_000 })
+test('the Excalidraw keymap works in draw.io: R then a drag draws a rectangle, and it autosaves', async ({ openBoard }) => {
+  const { page, board: file } = await openBoard({ 'Flow.drawio': diagram(diagramBox('c1', 'Keymap box')) })
+  await diagramReady(page, 'Keymap box')
   const graph = editorFrame(page).locator('.geDiagramContainer')
   const box = await graph.boundingBox()
   if (box === null) throw new Error('no draw.io canvas')
@@ -79,47 +64,34 @@ test('the Excalidraw keymap works in draw.io: R then a drag draws a rectangle, a
   await expect.poll(() => cellCount(file)).toBe(2)
 })
 
-test('an outside change to a clean diagram reloads it in the editor', async ({ sandbox, launch }) => {
-  const vault = sandbox.vault('V', { 'Flow.drawio': diagram(diagramBox('c1', 'Before')) })
-  const file = `${vault}/Flow.drawio`
-  sandbox.writeProfile({ windows: [{ root: vault, file }] })
-  const app = await launch()
-  const page = await app.window()
-  await expect(editorFrame(page).getByText('Before')).toBeVisible({ timeout: 30_000 })
+test('an outside change to a clean diagram reloads it in the editor', async ({ openBoard }) => {
+  const { page, board: file } = await openBoard({ 'Flow.drawio': diagram(diagramBox('c1', 'Before')) })
+  await diagramReady(page, 'Before')
   writeOutside(file, diagram(diagramBox('c1', 'After the outside edit')))
   await expect(editorFrame(page).getByText('After the outside edit')).toBeVisible()
   await expect(page.getByRole('alert')).toHaveCount(0)
 })
 
-test('an edit to a diagram survives ⌘Q straight after it', async ({ sandbox, launch }) => {
-  const vault = sandbox.vault('V', { 'Flow.drawio': diagram(diagramBox('c1', 'Only box here')) })
-  const file = `${vault}/Flow.drawio`
-  sandbox.writeProfile({ windows: [{ root: vault, file }] })
-  const app = await launch()
-  const page = await app.window()
-  const box = editorFrame(page).getByText('Only box here')
-  await expect(box).toBeVisible({ timeout: 30_000 })
+test('an edit to a diagram survives ⌘Q straight after it', async ({ openBoard }) => {
+  const { app, page, board: file } = await openBoard({ 'Flow.drawio': diagram(diagramBox('c1', 'Only box here')) })
+  const box = await diagramReady(page, 'Only box here')
   await box.click()
   await page.keyboard.press('Meta+d')
   await app.quit()
   expect(cellCount(file)).toBe(2)
 })
 
-test('a broken diagram shows why it cannot open; a compressed one opens and its first save is plain XML', async ({ sandbox, launch }) => {
+test('a broken diagram shows why it cannot open; a compressed one opens and its first save is plain XML', async ({ openBoard }) => {
   const plain = diagram(diagramBox('c1', 'Packed label'))
   const page1 = plain.match(/<mxGraphModel[\s\S]*<\/mxGraphModel>/)?.[0] ?? ''
   const packed = deflateRawSync(Buffer.from(encodeURIComponent(page1))).toString('base64')
-  const vault = sandbox.vault('V', {
+  const { page, vault } = await openBoard({
     'Broken.drawio': 'this is not xml at all',
     'Packed.drawio': `<mxfile><diagram id="p1" name="Page-1">${packed}</diagram></mxfile>\n`,
   })
-  sandbox.writeProfile({ windows: [{ root: vault, file: `${vault}/Broken.drawio` }] })
-  const app = await launch()
-  const page = await app.window()
   await expect(page.getByText(/This draw.io diagram can't be opened: .*not a draw.io diagram/)).toBeVisible()
   await row(page, 'Packed').click()
-  const box = editorFrame(page).getByText('Packed label')
-  await expect(box).toBeVisible({ timeout: 30_000 })
+  const box = await diagramReady(page, 'Packed label')
   await box.click()
   await page.keyboard.press('Meta+d')
   await expect.poll(() => cellCount(`${vault}/Packed.drawio`)).toBe(2)
@@ -127,12 +99,9 @@ test('a broken diagram shows why it cannot open; a compressed one opens and its 
   expect(readFileSync(`${vault}/Packed.drawio`, 'utf8')).toContain('<mxGraphModel')
 })
 
-test('the menu enables Export Image for a diagram but not the drawing-only items', async ({ sandbox, launch }) => {
-  const vault = sandbox.vault('V', { 'Flow.drawio': diagram(diagramBox('c1', 'Only box here')), 'Board.excalidraw': scene() })
-  sandbox.writeProfile({ windows: [{ root: vault, file: `${vault}/Flow.drawio` }] })
-  const app = await launch()
-  const page = await app.window()
-  await expect(editorFrame(page).getByText('Only box here')).toBeVisible({ timeout: 30_000 })
+test('the menu enables Export Image for a diagram but not the drawing-only items', async ({ openBoard }) => {
+  const { app, page } = await openBoard({ 'Flow.drawio': diagram(diagramBox('c1', 'Only box here')), 'Board.excalidraw': scene() })
+  await diagramReady(page, 'Only box here')
   await app.focus(page)
   await expect.poll(() => app.menuEnabled('menu.file.export-image')).toBe(true)
   expect(await app.menuEnabled('menu.file.export-drawing')).toBe(false)

@@ -3,7 +3,8 @@ import { EventEmitter } from 'node:events'
 import { existsSync, watch as fsWatch, type FSWatcher, type Stats } from 'node:fs'
 import { lstat, readdir, realpath } from 'node:fs/promises'
 import path from 'node:path'
-import { isAtomicTmp } from './fsUtils'
+import { isWithin } from '@shared/paths'
+import { isAtomicTmp } from '@shared/fileKind'
 
 /**
  * THE WATCHER ENGINE (YAZ-2073 5F, 🔒 D9): one recursive `fs.watch` per watched folder — FSEvents
@@ -26,13 +27,14 @@ import { isAtomicTmp } from './fsUtils'
  *    meaning), so `change` and `add` can be told apart from the first event on.
  *  - A FOLDER THAT DOES NOT EXIST YET is waited for from its nearest existing ancestor, and its
  *    contents arrive as `add`s when it appears.
- *  - FALLBACK. Where `fs.watch` cannot serve — it throws, or the folder is on a network volume
- *    (FSEvents never hears another machine's writes to a share) — chokidar polling runs instead,
- *    with today's options, loaded only then.
+ *  - FALLBACK. Where `fs.watch` cannot serve — it throws (at the start, or on a folder that arrives
+ *    later), or the folder is on a network volume (FSEvents never hears another machine's writes to
+ *    a share) — chokidar polling runs instead, with chokidar's former options (`awaitWriteFinish`
+ *    200/50), loaded only then.
  */
 
 /** How long a path must be quiet before it is looked at. */
-export const SETTLE_MS = 100
+const SETTLE_MS = 100
 /** The polling fallback's stat interval: a network volume is slow to stat, and a share is not a text field. */
 const POLL_INTERVAL_MS = 1000
 
@@ -75,7 +77,7 @@ function nearestExisting(p: string): string {
  * `mount`'s table: the longest mount point containing it decides. Windows' change notifications
  * work on shares, so only macOS asks.
  */
-export async function onNetworkVolume(dir: string): Promise<boolean> {
+async function onNetworkVolume(dir: string): Promise<boolean> {
   if (process.platform !== 'darwin') return false
   const at = nearestExisting(dir)
   const real = await realpath(at).catch(() => at)
@@ -125,7 +127,7 @@ class Engine extends EventEmitter implements TreeWatcher {
     this.native?.close()
     this.timers.forEach(clearTimeout)
     this.timers.clear()
-    await this.polling?.close()
+    await Promise.all([this.chain, this.polling?.close()])
   }
 
   private async start(): Promise<void> {
@@ -161,7 +163,9 @@ class Engine extends EventEmitter implements TreeWatcher {
       interval: POLL_INTERVAL_MS,
       binaryInterval: POLL_INTERVAL_MS,
     })
-    for (const event of ['add', 'change', 'unlink', 'addDir', 'unlinkDir', 'ready', 'error'] as const) w.on(event, (...args: unknown[]) => this.emit(event, ...args))
+    for (const event of ['add', 'change', 'unlink', 'addDir', 'unlinkDir', 'error'] as const) w.on(event, (...args: unknown[]) => this.emit(event, ...args))
+    // A fallback taken after the engine's own `ready` must not announce a second one.
+    if (!this.started) w.on('ready', () => this.emit('ready'))
     this.polling = w as unknown as TreeWatcher
   }
 
@@ -187,10 +191,18 @@ class Engine extends EventEmitter implements TreeWatcher {
     const anchor = nearestExisting(path.dirname(this.dir))
     const w = fsWatch(anchor, () => {
       if (this.closed) return
-      if (existsSync(this.dir)) this.arrived(w)
-      else if (nearestExisting(path.dirname(this.dir)) !== anchor) {
-        w.close()
-        this.awaitDir()
+      try {
+        if (existsSync(this.dir)) this.arrived(w)
+        else if (nearestExisting(path.dirname(this.dir)) !== anchor) {
+          w.close()
+          this.awaitDir()
+        }
+      } catch {
+        // The next folder down cannot be watched (EACCES, say): poll instead, as `start` would have,
+        // and announce what the folder already holds, as the native path would have.
+        this.poll()
+          .then(() => (this.closed ? undefined : this.walk(this.dir, true)))
+          .catch((err: unknown) => void this.emit('error', err))
       }
     })
     w.on('error', (err) => this.emit('error', err))
@@ -301,7 +313,7 @@ class Engine extends EventEmitter implements TreeWatcher {
 
   /** `p` and everything known beneath it are gone: deepest first, then `p` itself (never the watched folder). */
   private forget(p: string): void {
-    const inside = [...this.known.keys()].filter((k) => k.startsWith(`${p}${path.sep}`)).sort((a, b) => b.length - a.length)
+    const inside = [...this.known.keys()].filter((k) => isWithin(p, k, true)).sort((a, b) => b.length - a.length)
     for (const k of [...inside, ...(p === this.dir ? [] : [p])]) {
       const was = this.known.get(k)
       if (was === undefined) continue
