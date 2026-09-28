@@ -30,6 +30,10 @@
  * serialised scene on every pointer move, which is the cost the version exists to avoid, and the
  * failure mode is "a redundant save was skipped", not "an edit was lost".
  *
+ * THE BOARD'S OWN appState COUNTS TOO (YAZ-2073 2E): the version adds `appStateEdits` — how often a
+ * field the serializer writes (the canvas background, the grid size) has moved since the engine's
+ * first `onChange` — so View › Canvas Background is an edit like any other (`boardAppState.ts`).
+ *
  * SHAPE ON DISK: `serializeAsJSON(…, 'local')` is the library's OWN writer — the same one its
  * "Save to disk" uses — so element cleanup is its rules, not ours. Two things are ours: the
  * `files` argument is deliberately EMPTY (🔒 YAZ-1775 D3: bytes live in `<vault>/assets/`, the scene
@@ -102,6 +106,7 @@ import { referencedFileIds, type DrawingFileData } from '@shared/drawingAssets'
 import { appStateToPrefs, changedPrefKeys, prefsEqual, prefsToAppState, type EngineAppStateSlice } from '@shared/canvasPrefs'
 import { DEFAULT_CANVAS_PANEL, DEFAULT_CANVAS_PREFS, type CanvasPanelState, type CanvasPanelTab, type CanvasPrefs } from '@shared/types'
 import { CANVAS_SIDEBAR, CanvasSidebar, openCanvasTab } from './CanvasSidebar'
+import { appStateEdits, boardAppStateKeys } from './boardAppState'
 import { openViewport, type DrawingScene } from './drawingScene'
 import { applyToolbarMode, loadExcalidraw, type ExcalidrawModule } from './engine'
 import { yaseenFormFactor } from './formFactor'
@@ -117,7 +122,7 @@ type EngineAppState = ChangeArgs[1]
 
 /** What the host learns about the canvas; deliberately engine-free (a number and a thunk). */
 export interface DrawingSnapshot {
-  /** Cheap identity of the drawn content: equal to the baseline's = nothing to save. */
+  /** Cheap identity of the drawn content — elements and the board's own appState: equal to the baseline's = nothing to save. */
   readonly version: number
   /**
    * Everything a save needs, computed once when the save timer fires: the scene in the 🔒 YAZ-1775 D3
@@ -235,6 +240,8 @@ export function ExcalidrawSurface({
   // Callbacks change identity on every host render; the load must run ONCE and `onChange` must
   // never change identity, so all of them go through refs.
   const engineRef = useRef<ExcalidrawModule | null>(null)
+  /** The board's own appState edits (see the module doc), counted from the engine's first `onChange`. */
+  const countEdits = useRef<ReturnType<typeof appStateEdits> | null>(null)
   const emitRef = useRef(onSnapshot)
   const failRef = useRef(onFailed)
   const apiRef = useRef(onApi)
@@ -426,11 +433,12 @@ export function ExcalidrawSurface({
       (mod) => {
         if (!live) return
         engineRef.current = mod
+        countEdits.current = appStateEdits(boardAppStateKeys(mod))
         setEngine(mod)
         // The baseline, before the engine has said anything — through the engine's own restore,
         // because restored elements are what it mounts (see the module doc).
         const { elements, appState, files } = engineScene(openedOn.current.scene, prefsToAppState(openedOn.current.canvasPrefs))
-        emitRef.current(snapshotOf(mod, mod.restoreElements(elements, null) as ChangeArgs[0], appState, files))
+        emitRef.current(snapshotOf(mod, mod.restoreElements(elements, null) as ChangeArgs[0], appState, files, 0))
       },
       () => {
         if (live) failRef.current(ENGINE_LOAD_FAILED)
@@ -451,7 +459,8 @@ export function ExcalidrawSurface({
   const onChange = useCallback(
     (elements: ChangeArgs[0], appState: EngineAppState, files: ChangeArgs[2]) => {
       const mod = engineRef.current
-      if (mod !== null) emitRef.current(snapshotOf(mod, elements, appState, files))
+      const edits = countEdits.current
+      if (mod !== null && edits !== null) emitRef.current(snapshotOf(mod, elements, appState, files, edits(appState as unknown as Record<string, unknown>)))
       // The canvas panel's open tab: the rail's emphasis, the triggers' opacity, and the memory
       // the hamburger opens on next time.
       setHasSelection(Object.keys((appState as unknown as { selectedElementIds?: Record<string, unknown> }).selectedElementIds ?? {}).length > 0)
@@ -598,9 +607,9 @@ const BUSY_APP_STATE_KEYS = [
 ] as const
 
 /** One snapshot from the engine's own two utilities; the only place either is called. */
-function snapshotOf(engine: ExcalidrawModule, elements: ChangeArgs[0], appState: EngineAppState, files: ChangeArgs[2]): DrawingSnapshot {
+function snapshotOf(engine: ExcalidrawModule, elements: ChangeArgs[0], appState: EngineAppState, files: ChangeArgs[2], appStateEditCount: number): DrawingSnapshot {
   return {
-    version: engine.getSceneVersion(elements),
+    version: engine.getSceneVersion(elements) + appStateEditCount,
     serialize: () => {
       // The engine's map, flattened to the two fields that cross the bridge: its `created` /
       // `lastRetrieved` bookkeeping is about this session, not about the file.

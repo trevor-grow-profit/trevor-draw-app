@@ -169,7 +169,7 @@ Every line of feature-safety-net §2 (the YAZ-2073 inventory), in its 12 groups.
 | F13 | Engine tools as lazy chunks (shapes … Mermaid, SVG subset, image resize) | A (part): `canvas`, `engine` — rectangle, laser, Mermaid, eraser, frame, stats, link, SVG subset | ★C7 |
 | F14 | Paste / drop an OS-clipboard image → one asset, small JSON | A: `images`, `launch` (secure context) | ★C3 ★C4 |
 | F15 | 14 canvas prefs, global and live across windows | A (part): `settings`, `canvas` — 3 of 14 | T1 |
-| F16 | Canvas background (View menu) | A (part): `canvas` — saving the colour is `test.fail` (known bug, YAZ-2073 1C) | — |
+| F16 | Canvas background (View menu) | A: `canvas` — the colour is saved (YAZ-2073 2E); panning and zooming never write | — |
 | F17 | Export Image… ⌘⇧E (engine PNG / SVG dialog) | A (part): `canvas`, `engine` — dialog + SVG; drawing PNG by hand | ★C5 |
 | F18 | Export Excalidraw Drawing… ⌘⇧S, images embedded | A: `canvas` | ★C6 |
 | F19 | Excalidraw fonts served offline from `app://` | A: `launch` | ★C2 |

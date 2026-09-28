@@ -69,10 +69,7 @@ test('Export Image… on a diagram writes the PNG the user named', async ({ sand
 })
 
 test('View › Canvas Background changes the canvas and saves the colour into the board', async ({ sandbox, launch }) => {
-  // PRODUCT BUG found by this suite (reported on YAZ-2073 1C): the colour is applied on screen but
-  // never saved — autosave keys on `getSceneVersion` (element versions only), so an appState-only
-  // change leaves the board "Saved"; quit and it is gone. Flip to a plain test when it is fixed.
-  test.fail()
+  // Found by this suite (YAZ-2073 1C), fixed by 2E: an appState-only edit is an edit (`boardAppState.ts`).
   const vault = sandbox.vault('V', { 'Board.excalidraw': scene([rect('a')]) })
   const board = `${vault}/Board.excalidraw`
   sandbox.writeProfile({ windows: [{ root: vault, file: board }] })
@@ -84,6 +81,26 @@ test('View › Canvas Background changes the canvas and saves the colour into th
   await canvasChanged(page, before)
   await app.quit()
   expect(readScene(board).appState?.viewBackgroundColor).toBe('#fffce8')
+})
+
+test('panning and zooming the canvas is not an edit: the board is never written', async ({ sandbox, launch }) => {
+  const vault = sandbox.vault('V', { 'Board.excalidraw': scene([rect('a')]) })
+  const board = `${vault}/Board.excalidraw`
+  const before = statSync(board).mtimeMs
+  sandbox.writeProfile({ windows: [{ root: vault, file: board }] })
+  const app = await launch()
+  const page = await app.window()
+  await canvasReady(page)
+  const box = await activeCanvas(page).boundingBox()
+  if (box === null) throw new Error('no canvas')
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
+  await page.mouse.wheel(300, 200) // pan
+  await page.keyboard.down('Meta')
+  await page.mouse.wheel(0, -400) // zoom in
+  await page.keyboard.up('Meta')
+  await page.waitForTimeout(2_000) // several autosave debounces
+  await app.quit()
+  expect(statSync(board).mtimeMs).toBe(before)
 })
 
 test('View › zoom in / out / actual size change the window’s zoom', async ({ sandbox, launch }) => {
