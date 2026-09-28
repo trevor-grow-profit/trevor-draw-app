@@ -115,7 +115,7 @@ export function measure({ out, app, dmg }) {
     m.shareViewerBytes = bytes(join(res, 'share-viewer'))
     m.dmgBytes = dmg ? bytes(dmg) : null
     m.lprojCount = existsSync(res) ? readdirSync(res).filter((n) => n.endsWith('.lproj')).length : null
-    // Chromium's own UI strings, one locale.pak per language (🔒 D3 trims these, never the app .lproj above).
+    // Chromium's own UI strings, one locale.pak per language (YAZ-2073 3B would trim these, never the app .lproj above — parked, YAZ-2087).
     m.chromiumLocaleBytes = existsSync(fwRes) ? readdirSync(fwRes).filter((n) => n.endsWith('.lproj')).reduce((n, d) => n + (bytes(join(fwRes, d, 'locale.pak')) ?? 0), 0) : null
     m.chromiumLocaleCount = existsSync(fwRes) ? readdirSync(fwRes).filter((n) => n.endsWith('.lproj')).length : null
     const asar = join(res, 'app.asar')

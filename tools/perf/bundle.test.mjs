@@ -142,7 +142,7 @@ function fakeApp(plist) {
 const docType = (ext) => ({ CFBundleTypeExtensions: [ext], CFBundleTypeRole: 'Editor', LSHandlerRank: 'Owner' })
 const PLIST = { CFBundleIdentifier: 'com.yasinarshad.yaseendraw', CFBundleURLTypes: [{ CFBundleURLSchemes: ['yaseendraw'] }], CFBundleDocumentTypes: [docType('excalidraw'), docType('drawio')] }
 
-describe('checkApp', () => {
+describe.skipIf(process.platform !== 'darwin')('checkApp', () => {
   it('passes a complete bundle except for the seal, which only a real build has', () => {
     expect(checkApp(fakeApp(PLIST)).filter((f) => !f.startsWith('codesign'))).toEqual([])
   })
