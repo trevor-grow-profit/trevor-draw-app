@@ -138,7 +138,9 @@ export function App() {
       const move = (ev: MouseEvent) => {
         raw = start + ev.clientX - x0
         width = Math.min(SIDEBAR_MAX_W, Math.max(SIDEBAR_MIN_W, raw))
-        setSidebarWidth(width)
+        // Paint-only while dragging: the CSS var, not React state — App renders when the drag starts
+        // and when it lands, never per pixel (YAZ-2073 5D).
+        document.documentElement.style.setProperty('--side-w', `${width}px`)
       }
       const up = () => {
         window.removeEventListener('mousemove', move)
@@ -146,9 +148,12 @@ export function App() {
         document.body.style.cursor = ''
         setResizing(false)
         if (raw < SIDEBAR_MIN_W * 0.6) {
-          setSidebarWidth(start)
+          document.documentElement.style.setProperty('--side-w', `${start}px`)
           toggleSidebar()
-        } else if (width !== start) storage.setSidebarWidth(width)
+        } else if (width !== start) {
+          setSidebarWidth(width)
+          storage.setSidebarWidth(width)
+        }
       }
       window.addEventListener('mousemove', move)
       window.addEventListener('mouseup', up)

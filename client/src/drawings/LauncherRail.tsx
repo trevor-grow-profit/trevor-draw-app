@@ -22,6 +22,7 @@
  */
 import { useSyncExternalStore } from 'react'
 import type { CanvasPanelTab } from '@shared/types'
+import { createStore, type Store } from '../lib/store'
 import { frameIcon, freedrawIcon, hamburgerIcon } from './launcherIcons'
 
 export interface LauncherState {
@@ -42,33 +43,11 @@ export interface LauncherActions {
   toggleFrames: () => void
 }
 
-export interface LauncherStore extends LauncherActions {
-  getState(): LauncherState
-  subscribe(listener: () => void): () => void
-  /** Merge a patch; listeners fire only when something actually moved. */
-  set(patch: Partial<LauncherState>): void
-}
+export interface LauncherStore extends LauncherActions, Store<LauncherState> {}
 
 /** The store's state half; the surface supplies the actions, which read its refs. */
 export function createLauncherStore(actions: LauncherActions, initial: LauncherState): LauncherStore {
-  let state = initial
-  const listeners = new Set<() => void>()
-  return {
-    ...actions,
-    getState: () => state,
-    subscribe: (listener) => {
-      listeners.add(listener)
-      return () => {
-        listeners.delete(listener)
-      }
-    },
-    set: (patch) => {
-      const next = { ...state, ...patch }
-      if ((Object.keys(next) as Array<keyof LauncherState>).every((k) => next[k] === state[k])) return
-      state = next
-      listeners.forEach((l) => l())
-    },
-  }
+  return { ...actions, ...createStore(initial) }
 }
 
 export function LauncherRail({ store }: { store: LauncherStore }) {

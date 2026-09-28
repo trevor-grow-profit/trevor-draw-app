@@ -52,7 +52,7 @@
  * `capture()` answers null on purpose: a text buffer can travel to the new path as a string, a
  * live canvas cannot, and the pre-rename flush has already put it on disk.
  */
-import { useCallback, useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type KeyboardEvent as ReactKeyboardEvent } from 'react'
 import type { CanvasPanelState, CanvasPrefs, DrawingLoadResponse, GithubSyncStatus } from '@shared/types'
 import { unpersistedFiles } from '@shared/drawingAssets'
 import { api, BridgeRequestError } from '../api'
@@ -61,6 +61,7 @@ import type { NoticeKind } from '../lib/notice'
 import { basename } from '../lib/paths'
 import { Autosave, SaveConflict, type SaveStatus } from '../lib/autosave'
 import { registerRenameContinuity } from '../lib/renameContinuity'
+import { createStore, type Store } from '../lib/store'
 import { useAppliedTheme } from '../lib/theme'
 import { BOARD_COMMAND_EVENT, type BoardCommand } from './boardCommand'
 import { exportFileName } from './exportDrawing'
@@ -188,7 +189,8 @@ interface DrawingHostProps extends DrawingEditorProps {
 function DrawingHost({ root, path, loaded, watch, sync, onSyncNow, canvasPrefs, onCanvasPrefsChange, canvasPanel, onCanvasPanelChange, onNotice, onFailed }: DrawingHostProps) {
   const theme = useAppliedTheme()
   const hostRef = useRef<HTMLDivElement>(null)
-  const [status, setStatus] = useState<SaveStatus>('saved')
+  // The chips' live state, read by `<Chips>` alone (YAZ-2073 5D): a save's three status moves never re-render this host.
+  const [chips] = useState(() => createStore<ChipState>({ status: 'saved', sync, onSyncNow }))
   const [conflictMtime, setConflictMtime] = useState<number | null>(null)
   /** The latest snapshot; read only when a save fires (see the module doc). */
   const snapshot = useRef<DrawingSnapshot | null>(null)
@@ -228,7 +230,7 @@ function DrawingHost({ root, path, loaded, watch, sync, onSyncNow, canvasPrefs, 
       const a = autosave.current
       // The first snapshot IS the clean baseline (the surface restored the disk elements first).
       if (a === null) {
-        autosave.current = new Autosave<number>({ content: next.version, mtime: loaded.mtime, delayMs: 500, save, onStatus: setStatus, onConflict: setConflictMtime })
+        autosave.current = new Autosave<number>({ content: next.version, mtime: loaded.mtime, delayMs: 500, save, onStatus: (status) => chips.set({ status }), onConflict: setConflictMtime })
         return
       }
       const mtime = reloadedTo.current
@@ -241,7 +243,7 @@ function DrawingHost({ root, path, loaded, watch, sync, onSyncNow, canvasPrefs, 
       }
       a.update(next.version)
     },
-    [loaded.mtime, save],
+    [chips, loaded.mtime, save],
   )
 
   /** Disk truth into the canvas, then a fresh baseline: the clean editor's answer to a change. */
@@ -357,17 +359,10 @@ function DrawingHost({ root, path, loaded, watch, sync, onSyncNow, canvasPrefs, 
     return () => observer.disconnect()
   }, [])
 
-  // The chips, as the engine's top-right slot content: a new identity only when they would look
-  // different (the surface hands this straight to a memoized `<Excalidraw>`).
-  const renderTopRight = useCallback(
-    () => (
-      <div className="drawing-editor__chips">
-        {sync != null && onSyncNow !== undefined && <SyncIndicator status={sync} onSyncNow={onSyncNow} />}
-        <SaveIndicator status={status} />
-      </div>
-    ),
-    [status, sync, onSyncNow],
-  )
+  useLayoutEffect(() => chips.set({ sync, onSyncNow }), [chips, sync, onSyncNow])
+  // The chips, as the engine's top-right slot content: ONE identity for the host's life (the surface
+  // hands this straight to a memoized `<Excalidraw>`); what they say comes from the store.
+  const renderTopRight = useCallback(() => <Chips store={chips} />, [chips])
 
   const onApi = useCallback((a: DrawingSurfaceApi) => {
     surface.current = a
@@ -422,6 +417,23 @@ function DrawingHost({ root, path, loaded, watch, sync, onSyncNow, canvasPrefs, 
           renderTopRight={renderTopRight}
         />
       </div>
+    </div>
+  )
+}
+
+/** What the chips show: the save status (the autosave reports it) and the vault's sync, App's. */
+interface ChipState {
+  status: SaveStatus
+  sync: GithubSyncStatus | null | undefined
+  onSyncNow: (() => void) | undefined
+}
+
+function Chips({ store }: { store: Store<ChipState> }) {
+  const { status, sync, onSyncNow } = useSyncExternalStore(store.subscribe, store.getState)
+  return (
+    <div className="drawing-editor__chips">
+      {sync != null && onSyncNow !== undefined && <SyncIndicator status={sync} onSyncNow={onSyncNow} />}
+      <SaveIndicator status={status} />
     </div>
   )
 }
