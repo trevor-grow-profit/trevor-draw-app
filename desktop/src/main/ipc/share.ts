@@ -137,6 +137,6 @@ export function registerShareIpc(userData: string, secrets: Secrets, where: { vi
   })
   handle(CONTRACT.share.disconnect, async (body: unknown) => {
     const r = req(body)
-    return sharing.disconnect(strOrNull(r.root, 'root'), r.deleteEverything === true)
+    return sharing.disconnect(strOrNull(r.root, 'root'), bool(r.deleteEverything, 'deleteEverything'))
   })
 }

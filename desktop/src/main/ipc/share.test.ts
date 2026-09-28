@@ -142,7 +142,7 @@ describe('registerShareIpc refuses malformed requests before sharing sees them',
     [CONTRACT.share.setPermission.channel, [{ root: '/v', path: 'a' }, { root: '/v', path: 'a', allowDownload: 'yes' }]],
     [CONTRACT.share.stop.channel, [{ root: '/v' }, null]],
     [CONTRACT.share.setDomain.channel, [{}, { hostname: 5 }]],
-    [CONTRACT.share.disconnect.channel, [{}, { root: 5, deleteEverything: true }]],
+    [CONTRACT.share.disconnect.channel, [{}, { root: 5, deleteEverything: true }, { root: null }, { root: null, deleteEverything: 'yes' }]],
   ])('%s refuses %j with BAD_REQUEST', async (channel, requests) => {
     for (const r of requests) expect(await registered(channel)({ sender }, r)).toEqual(bad)
   })
