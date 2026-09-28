@@ -185,8 +185,12 @@ export const SCENARIOS = {
           const frames = await sampled(page, key, async () => {
             const t = performance.now()
             await page.mouse('mouseMoved', x, y)
-            await page.waitFor(`!!document.querySelector('.board-preview__img--loaded')`)
-            out[`${key}PreviewMs`] = performance.now() - t
+            const msg = `([...document.querySelectorAll('.board-preview__msg')].map((m) => m.textContent).find((m) => m !== 'Loading preview…') ?? null)`
+            await page.waitFor(`!!document.querySelector('.board-preview__img--loaded') || ${msg} !== null`, 60_000)
+            // A preview that ends in a message ("Preview unavailable") has no picture time: logged, not counted.
+            const said = await page.ev(msg)
+            if (said === null) out[`${key}PreviewMs`] = performance.now() - t
+            else console.error(`${name}: preview said "${said}"`)
             await sleep(500)
           })
           Object.assign(out, frames)
