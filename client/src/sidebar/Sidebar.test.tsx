@@ -1254,17 +1254,24 @@ describe('search-row context menu (Docs YAZ-2050, YAZ-2056 D5/D6)', () => {
 
   it('items that need no tree act in place and keep the search (YAZ-2056 D6)', async () => {
     const writeText = vi.fn(async () => undefined)
+    const original = Object.getOwnPropertyDescriptor(navigator, 'clipboard')
     Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true })
-    const { el, input, props, bridge, v } = await search('plan')
-    rightClick(result(el))
-    act(() => itemByLabel(el, 'Copy path')?.click())
-    expect(writeText).toHaveBeenCalledExactlyOnceWith(`${v}/Projects/Roadmap/plan.excalidraw`)
-    rightClick(result(el))
-    await clickSubAsync(el, 'Reveal in Finder')
-    expect(bridge.shell.reveal).toHaveBeenCalledExactlyOnceWith({ path: `${v}/Projects/Roadmap/plan.excalidraw` })
-    expect(props.onRevealInFiles).not.toHaveBeenCalled()
-    expect(input.value).toBe('plan')
-    expect(el.querySelector('.search-results')).not.toBeNull()
+    try {
+      const { el, input, props, bridge, v } = await search('plan')
+      rightClick(result(el))
+      act(() => itemByLabel(el, 'Copy path')?.click())
+      expect(writeText).toHaveBeenCalledExactlyOnceWith(`${v}/Projects/Roadmap/plan.excalidraw`)
+      rightClick(result(el))
+      await clickSubAsync(el, 'Reveal in Finder')
+      expect(bridge.shell.reveal).toHaveBeenCalledExactlyOnceWith({ path: `${v}/Projects/Roadmap/plan.excalidraw` })
+      expect(props.onRevealInFiles).not.toHaveBeenCalled()
+      expect(input.value).toBe('plan')
+      expect(el.querySelector('.search-results')).not.toBeNull()
+    } finally {
+      // Put the real clipboard back, so no later test writes through this spy.
+      if (original === undefined) delete (navigator as unknown as Record<string, unknown>).clipboard
+      else Object.defineProperty(navigator, 'clipboard', original)
+    }
   })
 
   it('"No matches" offers no menu either — not even the OS one', async () => {

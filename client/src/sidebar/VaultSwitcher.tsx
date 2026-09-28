@@ -26,19 +26,21 @@
  * then substring; an empty query is MRU order). One highlighted row;
  * with an EMPTY query it starts on the first row that is NOT the current vault — so ⌘O ⏎ jumps to
  * the last-used OTHER vault, like ⌘Tab — with a typed query on the top match, and with no match on
- * Open folder…. ↑/↓ clamp at both ends (the `[[` picker's no-wrap rule), hover moves it too, ⏎
+ * Open folder…. ↑/↓ clamp at both ends (Docs' `[[` picker's no-wrap rule), hover moves it too, ⏎
  * activates it — ⇧⏎ / ⇧-click open it IN this window instead, the menu's verb (Docs YAZ-1974 D8), and
  * while ⇧ is held the highlighted row says so: "Open here" in its time slot (D9) — Esc
- * closes (the menu convention — not the search bar's two-press rule). Typing never leaves the input: rows swallow their own mousedown. "Open folder…" is not a candidate, so
- * it is visible whatever the query; a query with no vault match shows "No matching vaults" above it.
+ * closes (the menu convention — not the search bar's two-press rule). Typing never leaves the input:
+ * rows swallow their own mousedown. "Open folder…" is not a candidate, so it is visible whatever
+ * the query; a query with no vault match shows "No matching vaults" above it.
  *
  * ⌘O (D8): App bumps `openRequest`; each new value toggles the panel — opens it with the filter focused, or closes it.
  * Rows are read fresh from `storage.getRecentRoots()` on every open, never cached across opens.
  *
  * Right-click (YAZ-1941, a port of Docs YAZ-1798 — the D-numbers below are 1798's): the trigger
  * (= the current vault) and every live row open the vault menu — `buildVaultMenuSections` drawn by
- * the sidebar's own `ContextMenu`. "Open in this window" is the ONE deliberate in-place switch
- * (D8/D11); a `false` from it greys the row exactly like a click's. The menu is the top layer
+ * the sidebar's own `ContextMenu`. "Open in this window" (D8/D11) — or ⇧⏎ / ⇧-click on a row
+ * (Docs YAZ-1974 D8) — is the deliberate in-place switch; a `false` from it greys the row exactly
+ * like a click's. The menu is the top layer
  * while it stands (D4): Esc and click-away close it alone, and the filter ignores ↑/↓/⏎/Esc until
  * it is gone. Right-click never moves the highlight.
  *
@@ -68,7 +70,7 @@ export interface VaultSwitcherProps {
   pickDisabled: boolean
   /** ⌘O (D8): a counter App bumps per request; 0 = nothing requested. Each new value TOGGLES the panel — open with the filter focused, or close. */
   openRequest: number
-  /** The menu's "Open in this window" (YAZ-1798 D8): App's in-place switch; `false` = the folder is gone (MRU already pruned). */
+  /** The menu's "Open in this window" (YAZ-1798 D8) and a row's ⇧⏎ / ⇧-click (Docs YAZ-1974 D8): App's in-place switch; `false` = the folder is gone (MRU already pruned). */
   onOpenHere: (path: string) => Promise<boolean>
   /** The menu's OS verbs (D9): the Sidebar's own, stale-path notice included. */
   onReveal: (path: string) => void
@@ -104,7 +106,7 @@ export const OPEN_HERE_TEXT = 'Open here'
 /**
  * The rows `query` keeps, ranked (D7): an empty query is MRU order untouched; otherwise the app's
  * one ranking, uncapped, over one candidate per name a row answers to — its display name and,
- * when it differs, its folder name (Docs YAZ-1974 D6, the `[[` picker's alias idea) — each row once, at its best rank.
+ * when it differs, its folder name (Docs YAZ-1974 D6, Docs' `[[` picker's alias idea) — each row once, at its best rank.
  */
 export function rankVaultRows(rows: readonly VaultRow[], query: string): VaultRow[] {
   if (query.trim() === '') return [...rows]
@@ -207,9 +209,10 @@ export function VaultSwitcher({ root, onPickFolder, pickDisabled, openRequest, o
   }, [matches, query, root])
 
   /**
-   * One rule for both ways a row opens — a click (beside, `openRecent`) and the menu's "Open in
-   * this window" (in place, D8): `true` closes the panel; `false` or a rejection greys the row with
-   * "Folder not found" and keeps the panel up, the filter focused (D5).
+   * One rule for every way a row opens — a click or ⏎ (beside, `openRecent`), ⇧⏎ / ⇧-click (in
+   * place, Docs YAZ-1974 D8) and the menu's "Open in this window" (in place, D8): `true` closes the
+   * panel; `false` or a rejection greys the row with "Folder not found" and keeps the panel up, the
+   * filter focused (D5).
    */
   const settle = (path: string, opening: Promise<boolean>, what: string): void => {
     void opening
@@ -263,8 +266,8 @@ export function VaultSwitcher({ root, onPickFolder, pickDisabled, openRequest, o
 
   /** The vault menu's target (Docs YAZ-1974 D4/D5): what the app calls it, and whether that is a display name at all. */
   const menuTarget = (path: string) => {
-    const name = storage.vaultName(path)
-    return { path, name, isCurrent: path === root, renamed: name !== basename(path) }
+    const display = storage.vaultName(path)
+    return { path, name: display, isCurrent: path === root, renamed: display !== basename(path) }
   }
 
   /** Right-click (D1): ALWAYS swallow the native text menu (G1); a dead row gets no vault menu — its MRU entry is already gone. */

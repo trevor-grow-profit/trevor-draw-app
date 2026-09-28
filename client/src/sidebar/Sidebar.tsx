@@ -53,7 +53,7 @@ interface SidebarProps {
    * another vault never replays it).
    */
   switcherOpenRequest: number
-  /** The vault menu's "Open in this window" (YAZ-1941; decided on Docs YAZ-1798 D8): App's in-place switch, threaded to the `VaultSwitcher`. */
+  /** The vault menu's "Open in this window" (YAZ-1941; decided on Docs YAZ-1798 D8) and the switcher's ⇧⏎ / ⇧-click (Docs YAZ-1974 D8): App's in-place switch, threaded to the `VaultSwitcher`. */
   onOpenVaultHere: (path: string) => Promise<boolean>
   /** Hide the sidebar (GRO-2023); TabBar leads its nav row with the Show-sidebar button while hidden (YAZ-1759). */
   onCollapse: () => void
@@ -1197,7 +1197,7 @@ export function Sidebar({
           onPickFolder={onPickFolder}
           pickDisabled={pickDisabled}
           openRequest={switcherOpenRequest}
-          // The right-click menu (YAZ-1941, Docs YAZ-1798): the file menu's own OS verbs and notice, App's in-place switch.
+          // The right-click menu (YAZ-1941, Docs YAZ-1798): the file menu's own OS verbs and notice; App's in-place switch, for the menu and ⇧⏎ / ⇧-click (Docs YAZ-1974 D8).
           onOpenHere={onOpenVaultHere}
           onReveal={reveal}
           onOpenVsCode={openVsCode}

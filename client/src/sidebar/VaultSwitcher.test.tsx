@@ -5,7 +5,8 @@
  * highlight skipping the current vault, clamp, Enter, Esc, focus never leaving the input), D8 the
  * ⌘O request. Every CLICK goes through the mocked `window.yaseenDraw.window.openRecent` — the one
  * back-end door (D1). The right-click menu (YAZ-1941, ported from Docs YAZ-1798) is pinned below:
- * its "Open in this window" is the only in-place open, through the `onOpenHere` prop. Display
+ * its "Open in this window" and a row's ⇧⏎ / ⇧-click (Docs YAZ-1974 D8) are the in-place opens, both
+ * through the `onOpenHere` prop. Display
  * names, their inline field and the one-line rows' ⓘ path tooltip (YAZ-2056, ported from Docs
  * YAZ-1974) are pinned last, over the REAL `storage` on a fake bridge, so a name set in one test
  * never leaks into the next.
@@ -146,7 +147,7 @@ const pick = (label: string) => act(() => menuItem(label).click())
 const settle = () => act(async () => {})
 
 describe('VaultSwitcher: the trigger (D6)', () => {
-  it('is one line — the bold basename and a chevron, no "change" — with the full path as its tooltip', () => {
+  it('is one line — the bold vault name and a chevron, no "change" — with the full path as its tooltip', () => {
     const { el } = render()
     const t = trigger(el)
     expect(t.querySelector('.sidebar__root-name')?.textContent).toBe('Notes')
@@ -292,7 +293,7 @@ describe('VaultSwitcher: filter + keyboard (D7)', () => {
     expect(filter(el).value).toBe('')
   })
 
-  it('ranks like the [[ picker over basenames: exact, then prefix, then substring; an empty query is MRU order', async () => {
+  it('ranks over display and folder names: exact, then prefix, then substring; an empty query is MRU order', async () => {
     const { el } = render()
     openPanel(el)
     await type(el, 'notes')
@@ -400,6 +401,18 @@ describe('VaultSwitcher: filter + keyboard (D7)', () => {
     await settle()
     expect(openRecent).toHaveBeenCalledExactlyOnceWith(ROOT)
     expect(props.onOpenHere).toHaveBeenCalledTimes(2)
+  })
+
+  it('⇧⏎ on a folder that is gone (onOpenHere → false) greys the row like a click does; the panel stays with the filter focused', async () => {
+    const { el, props } = render({ onOpenHere: vi.fn(async () => false) })
+    openPanel(el)
+    act(() => void filter(el).dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', shiftKey: true, bubbles: true, cancelable: true })))
+    await settle()
+    expect(props.onOpenHere).toHaveBeenCalledExactlyOnceWith('/w/Notes')
+    expect(rows(el)[1].disabled).toBe(true)
+    expect(rows(el)[1].querySelector('.vault-switcher__when')?.textContent).toBe(MISSING_TEXT)
+    expect(panel(el)).not.toBeNull()
+    expect(document.activeElement).toBe(filter(el))
   })
 
   it('holding ⇧ says so on the highlighted row (Docs YAZ-1974 D9): "Open here" in its time slot, never on the current vault; released, the time is back', () => {
@@ -523,7 +536,7 @@ describe('VaultSwitcher: pure helpers', () => {
     const list = rowsOf('/a/Notes', '/b/Old Notes', '/c/Notes Archive', '/d/Other', '/e/n1', '/f/n2', '/g/n3', '/h/n4', '/i/n5', '/j/n6')
     expect(rankVaultRows(list, '  ').map((r) => r.path)).toEqual(list.map((r) => r.path))
     expect(rankVaultRows(list, 'notes').map((r) => r.path)).toEqual(['/a/Notes', '/c/Notes Archive', '/b/Old Notes'])
-    // The [[ picker caps at 8; the switcher shows every match.
+    // Uncapped: Docs' [[ picker stops at 8; the switcher shows every match.
     expect(rankVaultRows(list, 'n')).toHaveLength(9)
   })
 
@@ -560,7 +573,7 @@ describe('VaultSwitcher: the right-click menu (YAZ-1798)', () => {
     expect(panel(el)).toBeNull()
   })
 
-  it('the current vault\'s own row gets the same five; another row gets all eight — and the highlight never moves', () => {
+  it('the current vault\'s own row gets the same five; another row gets seven (Reset only once it has a display name) — and the highlight never moves', () => {
     const { el } = render()
     openPanel(el)
     const before = activeRow(el)

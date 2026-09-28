@@ -20,7 +20,7 @@ import { useEffect, useState } from 'react'
 import { SHARE_SETUP_LABELS, SHARE_SETUP_STEPS, type ShareListEntry, type ShareSetupProgress, type ShareSetupStep } from '@shared/types'
 import { api } from '../api'
 import { basename, stripExt } from '../lib/paths'
-import { storage } from '../lib/storage'
+import { useVaultName } from '../lib/useVaultName'
 import type { SettingsCtx, SettingsSection } from '../settings/registry'
 import { isPending } from './liveShare'
 import { errorText, liveLine, type Line } from './shareText'
@@ -174,6 +174,8 @@ function boardLine(row: ShareListEntry, ready: boolean, now: number): Line | nul
 function SharedBoards({ sharing }: SettingsCtx) {
   const [copied, setCopied] = useState<string | null>(null)
   const [problem, setProblem] = useState<string | null>(null)
+  // Live (Docs YAZ-1974 D4): another window's rename lands here too. Called before any early return.
+  const vaultName = useVaultName(sharing?.root ?? null)
   if (sharing === undefined) return null
   const { root, rows, now } = sharing
   if (root === null) return <p className="sharing__muted">Open a vault to see its shared boards.</p>
@@ -198,7 +200,7 @@ function SharedBoards({ sharing }: SettingsCtx) {
   return (
     <>
       {rows.length === 0 ? (
-        <p className="sharing__muted">Nothing in {storage.vaultName(root)} is shared. Right-click a board › Share, or File › Share Link (⌘⇧L).</p>
+        <p className="sharing__muted">Nothing in {vaultName} is shared. Right-click a board › Share, or File › Share Link (⌘⇧L).</p>
       ) : (
         <ul className="sharing__boards">
           {rows.map((row) => {

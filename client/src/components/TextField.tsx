@@ -4,8 +4,8 @@ interface TextFieldProps {
   value: string
   /** The new text, once per edit (Enter or blur) and only when it differs from `value`. */
   onCommit: (next: string) => void
-  /** Canonicalizes a committed draft; null rejects it and visibly restores `value`. */
-  normalize?: (draft: string) => string | null
+  /** Canonicalizes a committed draft before the comparison; the field then shows the result. */
+  normalize?: (draft: string) => string
   /** After Enter, blur or Escape, whether or not anything was committed. */
   onDone?: () => void
   className?: string
@@ -31,11 +31,8 @@ export function TextField({ value, onCommit, normalize, onDone, selectOnMount, .
     done.current = true
     if (commit && draft !== value) {
       const next = normalize === undefined ? draft : normalize(draft)
-      if (next === null) setDraft(value)
-      else {
-        setDraft(next)
-        if (next !== value) onCommit(next)
-      }
+      setDraft(next)
+      if (next !== value) onCommit(next)
     } else if (!commit) setDraft(value)
     onDone?.()
   }

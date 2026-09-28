@@ -1,9 +1,10 @@
 import { errorText, type MenuAction, type MenuSection } from './menuSections'
 
 /**
- * The vault right-click menu AS DATA (YAZ-1941, a port of Docs YAZ-1798 — D2/D7 are 1798's): GitHub Desktop's repository menu, kept to
- * what means something for a vault. Drawn by the sidebar's own `ContextMenu`, which skips empty
- * groups — so the CURRENT vault simply returns three of the five. Five groups, in this order:
+ * The vault right-click menu AS DATA (YAZ-1941, a port of Docs YAZ-1798 — D2/D7 are 1798's):
+ * GitHub Desktop's repository menu, kept to what means something for a vault. Drawn by the
+ * sidebar's own `ContextMenu`, which skips empty groups — so the CURRENT vault simply returns
+ * three of the five. Five groups, in this order:
  *
  *   Open in this window · Set display name, Reset to folder name · Copy vault name, Copy path ·
  *   Reveal in Finder, Open in VS Code · Remove from recent vaults
@@ -23,7 +24,7 @@ export interface VaultMenuTarget {
 }
 
 export interface VaultMenuHandlers {
-  /** Switch THIS window to the vault in place (D8, D11) — the one deliberate overwrite; every plain gesture opens beside. */
+  /** Switch THIS window to the vault in place (D8, D11) — the deliberate overwrite, with the switcher's ⇧⏎ / ⇧-click (Docs YAZ-1974 D8); every plain gesture opens beside. */
   onOpenHere: (path: string) => void
   /** Turn the vault's name into an inline field where it stands (Docs YAZ-1974 D5). */
   onRename: (path: string) => void

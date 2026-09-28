@@ -517,6 +517,14 @@ describe('App window title (C3, GRO-2165)', () => {
     await act(async () => emitOpenRoot('/vaults/empty'))
     expect(document.title).toBe('empty')
   })
+
+  it('names the vault by its display name, live: a rename from another window retitles it (Docs YAZ-1974 D4)', async () => {
+    const named = (name: string): AppState => ({ ...defaultAppState(), folders: { '/vaults/w': { ...defaultFolderState(), name } } })
+    const { emitStateChanged } = await mount(named('Wiki'), { id: 'w1', root: '/vaults/w', file: '/vaults/w/Note.excalidraw', tabs: ['/vaults/w/Note.excalidraw'] })
+    expect(document.title).toBe('Note — Wiki')
+    await act(async () => emitStateChanged(named('Team Wiki')))
+    expect(document.title).toBe('Note — Team Wiki')
+  })
 })
 
 describe('App deep links (E1, GRO-2171)', () => {

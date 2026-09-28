@@ -36,6 +36,8 @@ afterEach(() => {
   root = null
   container?.remove()
   container = null
+  // The display-name test's fake bridge — dropped here so a failing expectation cannot leak it.
+  delete (window as unknown as Record<string, unknown>).yaseenDraw
 })
 
 describe('relativeTime', () => {
@@ -108,7 +110,6 @@ describe('Welcome', () => {
     const { el } = mount({ recents: [{ path: '/vaults/business-wiki-MASTER', lastOpened: Date.now() }, { path: '/vaults/work', lastOpened: Date.now() }] })
     expect(rows(el).map((b) => b.querySelector('.welcome__recent-name')?.textContent)).toEqual(['🚀 Business Wiki', 'work'])
     expect(rows(el)[0]?.querySelector('.welcome__recent-path')?.textContent).toBe('/vaults/business-wiki-MASTER')
-    delete (window as unknown as Record<string, unknown>).yaseenDraw
   })
 
   it('disables the Open folder… button while the dialog is open', () => {

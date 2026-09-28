@@ -26,9 +26,11 @@ describe('HOTKEYS source of truth', () => {
     expect(byKeys('Right-click file')?.label).toMatch(/new window/i)
     // The context menu's create group leads on the two board births (🔒 YAZ-1802 D13).
     expect(byKeys('Right-click file')?.label).toMatch(/New Excalidraw drawing \/ New draw\.io diagram/)
-    // The vault menu (YAZ-1941): the one in-place open lives there, so the tip names it — and the display name (Docs YAZ-1974 D5).
+    // The vault menu (YAZ-1941): its in-place open (the switcher's ⇧⏎ is the other, Docs YAZ-1974 D8) and the display name (Docs YAZ-1974 D5).
     expect(byKeys('Right-click vault')?.label).toMatch(/Open in this window/)
     expect(byKeys('Right-click vault')?.label).toMatch(/Set display name/)
+    // A search result's right-click is its tree row's menu (Docs YAZ-2050).
+    expect(byKeys('Right-click a search result')?.label).toMatch(/same menu as its row in the tree/)
     // Multi-select (YAZ-1336 🔒 YAZ-1775 D2 → YAZ-1337): ⇧-click toggles rows, and the tip has to say what
     // that is FOR — the two plural items a right-click then offers.
     expect(byKeys('⇧-click file or folder')?.label).toMatch(/multi-selection/i)

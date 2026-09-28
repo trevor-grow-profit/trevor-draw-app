@@ -137,9 +137,9 @@ export interface WindowEntry {
   sidebarCollapsed: boolean
   /**
    * Which sidebar lens THIS window shows (YAZ-847; per window since YAZ-1628, `sidebarCollapsed`'s
-   * rule): independent from every other window — a duplicate inherits it and then diverges — and
-   * kept across a root change, being a view preference rather than vault content. A pre-1628
-   * file's retired global value seeds every window that has none of its own.
+   * rule): independent from every other window — a duplicate inherits it and then diverges. A
+   * DIFFERENT root resets it to Files; the same root keeps it (YAZ-2056 D1, Docs YAZ-1846 D2). A
+   * pre-1628 file's retired global value seeds every window that has none of its own.
    */
   sidebarLens: SidebarLens
   /**

@@ -320,11 +320,14 @@ describe('Settings › Sharing (YAZ-1889)', () => {
 
   it('an empty list names the vault by its display name (YAZ-2056 D4)', async () => {
     const vaultName = vi.spyOn(storage, 'vaultName').mockReturnValue('Draw Vault')
-    share.status.mockResolvedValue(READY)
-    await mount()
-    expect(vaultName).toHaveBeenCalledWith(ROOT)
-    expect(row('sharingBoards').textContent).toContain('Nothing in Draw Vault is shared')
-    vaultName.mockRestore()
+    try {
+      share.status.mockResolvedValue(READY)
+      await mount()
+      expect(vaultName).toHaveBeenCalledWith(ROOT)
+      expect(row('sharingBoards').textContent).toContain('Nothing in Draw Vault is shared')
+    } finally {
+      vaultName.mockRestore() // restored even when an expectation fails, so no later test sees the spy
+    }
   })
 
   it('no vault open: the list says to open one', async () => {
