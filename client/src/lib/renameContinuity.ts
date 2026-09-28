@@ -18,7 +18,7 @@
 
 import { isWithin } from '@shared/paths'
 
-/** What a mounted editor exposes to the rename/delete flows (registered by `DrawingEditor`). */
+/** What a mounted editor exposes to the rename/delete flows (registered by `useBoardDocument`). */
 export interface RenameContinuityHandle {
   /** Push the live scene through autosave and resolve once it is on disk (or blocked). */
   flush(): Promise<void>
