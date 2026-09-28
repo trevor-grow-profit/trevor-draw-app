@@ -44,9 +44,9 @@ const listFiles = async (bin: string, root: string, args: readonly string[]): Pr
 }
 
 /**
- * Keep the OS's droppings out of the commit `add -A` is about to make (YAZ-1829). `add -A` stages
- * everything, so Finder's `.DS_Store` ends up committed, pushed, and in the commit SUBJECT — which
- * is what this vault's history shows. Two steps, both idempotent and both no-ops until one of
+ * Keep the OS's droppings (and a crashed write's tmp file) out of the commit `add -A` is about to
+ * make (YAZ-1829). `add -A` stages everything, so Finder's `.DS_Store` ends up committed, pushed, and
+ * in the commit SUBJECT — which is what this vault's history shows. Two steps, both idempotent and both no-ops until one of
  * these files actually exists:
  *  - the vault's `.gitignore` gains the entry (APPEND-ONLY; the user's own file is not ours to
  *    reorganise, and a vault that already ignores it is not touched at all);

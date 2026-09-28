@@ -109,6 +109,19 @@ describe('syncPass', { timeout: REAL_GIT_TIMEOUT_MS }, () => {
     expect(existsSync(path.join(repo.root, '.DS_Store'))).toBe(true)
   })
 
+  it('never commits the tmp file a crashed atomic write left behind, at any depth', async () => {
+    const { repo } = await pushedRepo()
+    await repo.write('a.excalidraw', '{}\n')
+    await repo.write('a.excalidraw.tmp-0123456789ab', '{')
+    await repo.write('assets/f.png.tmp-abcdef012345', 'png')
+
+    expect((await syncPass(repo.root)).state).toBe('synced')
+
+    const tracked = await repo.run(['ls-files'])
+    expect(tracked.split('\n')).toContain('a.excalidraw')
+    expect(tracked).not.toContain('.tmp-')
+  })
+
   it('UNTRACKS a `.DS_Store` an older version already committed, and leaves it on disk', async () => {
     const { repo } = await pushedRepo()
     await repo.write('.DS_Store', 'finder\n')

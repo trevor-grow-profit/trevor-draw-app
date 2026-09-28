@@ -2,7 +2,8 @@ import { describe, expect, it, vi } from 'vitest'
 import { mkdir, mkdtemp, open, readdir, readFile, rename, rm, stat, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
-import { atomicWrite, BridgeFailure, buildTree, isAtomicTmp, isSkipped, requireAbsPath, requireDrawingFile, tmpSibling, toBridgeFailure, writeDurable } from './fsUtils'
+import { isAtomicTmp } from '@shared/fileKind'
+import { atomicWrite, BridgeFailure, buildTree, isSkipped, requireAbsPath, requireDrawingFile, tmpSibling, toBridgeFailure, writeDurable } from './fsUtils'
 
 // Pass-through spies: the durability tests watch the handle's `sync` and the rename that follows it.
 vi.mock('node:fs/promises', async (importOriginal) => {
@@ -111,6 +112,17 @@ describe('buildTree', () => {
 
       expect(tree.map((n) => n.name)).toEqual(['alpha', 'Zeta', 'A.txt', 'b.excalidraw'])
       expect(tree.filter((n) => n.type === 'dir').map((n) => (n.type === 'dir' ? n.children : []))).toEqual([[], []])
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
+  it('leaves out the tmp file a crashed atomic write left behind', async () => {
+    const root = await mkdtemp(path.join(tmpdir(), 'yaseendraw-tree-'))
+    try {
+      await writeFile(path.join(root, 'b.excalidraw'), '{}')
+      await writeFile(path.join(root, 'b.excalidraw.tmp-0123456789ab'), '{')
+      expect((await buildTree(root)).map((n) => n.name)).toEqual(['b.excalidraw'])
     } finally {
       await rm(root, { recursive: true, force: true })
     }

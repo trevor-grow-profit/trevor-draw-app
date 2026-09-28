@@ -2,7 +2,7 @@ import { randomBytes } from 'node:crypto'
 import { open, readdir, rename, stat, unlink } from 'node:fs/promises'
 import path from 'node:path'
 import type { BoardMeta, BridgeError, TreeNode } from '@shared/types'
-import { fileKind, isBoard, isDrawing } from '@shared/fileKind'
+import { ATOMIC_TMP_HEX_LEN, fileKind, isAtomicTmp, isBoard, isDrawing } from '@shared/fileKind'
 import { byName } from '@shared/treeSort'
 import { ASSETS_DIR } from '@shared/drawingAssets'
 import { readBoardHead } from './boardHead'
@@ -143,7 +143,7 @@ export async function buildTree(dir: string): Promise<TreeNode[]> {
   const files: TreeNode[] = []
   await Promise.all(
     entries.map(async (e) => {
-      if (isSkipped(e.name)) return
+      if (isSkipped(e.name) || isAtomicTmp(e.name)) return
       const full = path.join(dir, e.name)
       if (e.isDirectory()) {
         const children = await buildTree(full).catch(() => null)
@@ -176,7 +176,7 @@ export async function writeDurable(file: string, content: string | Uint8Array, f
 
 /** The sibling a write lands in before it takes `file`'s name — same dir, so a rename or link is atomic. */
 export function tmpSibling(file: string): string {
-  return `${file}.tmp-${randomBytes(6).toString('hex')}`
+  return `${file}.tmp-${randomBytes(ATOMIC_TMP_HEX_LEN / 2).toString('hex')}`
 }
 
 /** Writes `content` durably to `tmpSibling(file)` then renames over `file`. Parent dir must exist. */
@@ -192,6 +192,3 @@ export async function atomicWrite(file: string, content: string | Uint8Array, mo
   const st = await stat(file)
   return { mtime: st.mtimeMs, size: st.size }
 }
-
-/** Whether `name` is a `tmpSibling` — `atomicWrite`'s or `landAssets`' own tmp file, which no watcher ever announces (YAZ-2073 5F). */
-export const isAtomicTmp = (name: string): boolean => /\.tmp-[0-9a-f]{12}$/.test(name)

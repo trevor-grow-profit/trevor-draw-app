@@ -1,4 +1,5 @@
 import type { BoardMeta } from './types/files'
+import { isAtomicTmp } from './fileKind'
 import { isFiniteNumber as isEpochMs, isRecord as isPlainObject } from './guards'
 
 /**
@@ -261,13 +262,18 @@ export interface AssetListingEntry {
 /**
  * The orphan sweep's DECISION (🔒 YAZ-1775 D3). An `assets/` entry goes to the trash when all three hold:
  * it is an image asset by extension, NO `.excalidraw` anywhere in the vault references its id,
- * AND it is older than `ORPHAN_MAX_AGE_MS`. Dot-entries, sub-folders and foreign files are never
- * candidates — the store is the app's, but the folder is the user's.
+ * AND it is older than `ORPHAN_MAX_AGE_MS`. An atomic write's tmp file that old is a crash's
+ * leftover and goes too, whatever it is named after. Dot-entries, sub-folders and foreign files are
+ * never candidates — the store is the app's, but the folder is the user's.
  */
 export function planOrphanSweep(listing: readonly AssetListingEntry[], referenced: ReadonlySet<string>, now: number, maxAgeMs = ORPHAN_MAX_AGE_MS): string[] {
   const out: string[] = []
   for (const entry of listing) {
     if (entry.isDir === true || entry.name.startsWith('.')) continue
+    if (isAtomicTmp(entry.name)) {
+      if (now - entry.mtime > maxAgeMs) out.push(entry.name)
+      continue
+    }
     const dot = entry.name.lastIndexOf('.')
     if (dot <= 0 || mimeForAssetExt(entry.name.slice(dot + 1)) === null) continue
     const id = fileIdOfAssetName(entry.name)

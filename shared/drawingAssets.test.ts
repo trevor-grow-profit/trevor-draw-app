@@ -199,6 +199,15 @@ describe('planOrphanSweep', () => {
     expect(planOrphanSweep(listing, new Set(), NOW).sort()).toEqual(['kept.png', 'orphan.png'])
   })
 
+  it("sweeps the tmp file a crashed write left behind once it is past the age guard, even under a referenced asset's name", () => {
+    const tmps = [
+      { name: 'kept.png.tmp-0123456789ab', mtime: old },
+      { name: 'gone.png.tmp-abcdef012345', mtime: old },
+      { name: 'writing.png.tmp-00112233aabb', mtime: NOW },
+    ]
+    expect(planOrphanSweep(tmps, new Set(['kept']), NOW)).toEqual(['kept.png.tmp-0123456789ab', 'gone.png.tmp-abcdef012345'])
+  })
+
   it('takes a caller-supplied age so a test does not have to wait a day', () => {
     expect(planOrphanSweep([{ name: 'a.png', mtime: NOW - 10 }], new Set(), NOW, 5)).toEqual(['a.png'])
   })

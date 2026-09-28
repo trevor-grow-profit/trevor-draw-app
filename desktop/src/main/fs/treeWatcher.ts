@@ -3,7 +3,7 @@ import { EventEmitter } from 'node:events'
 import { existsSync, watch as fsWatch, type FSWatcher, type Stats } from 'node:fs'
 import { lstat, readdir, realpath } from 'node:fs/promises'
 import path from 'node:path'
-import { isAtomicTmp } from './fsUtils'
+import { isAtomicTmp } from '@shared/fileKind'
 
 /**
  * THE WATCHER ENGINE (YAZ-2073 5F, 🔒 D9): one recursive `fs.watch` per watched folder — FSEvents

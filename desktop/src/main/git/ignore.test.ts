@@ -38,7 +38,7 @@ describe('ensureVaultIgnores on a real folder', () => {
       await writeFile(path.join(root, '.gitignore'), 'secrets/\n')
       expect(await ensureVaultIgnores(root)).toBe(true)
       const first = await readFile(path.join(root, '.gitignore'), 'utf8')
-      expect(first).toBe('secrets/\n.DS_Store\n')
+      expect(first).toBe('secrets/\n.DS_Store\n*.tmp-????????????\n')
       // Idempotent: a second pass writes nothing at all.
       expect(await ensureVaultIgnores(root)).toBe(false)
       expect(await readFile(path.join(root, '.gitignore'), 'utf8')).toBe(first)

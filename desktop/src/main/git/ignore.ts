@@ -1,5 +1,6 @@
 import { readFile } from 'node:fs/promises'
 import path from 'node:path'
+import { ATOMIC_TMP_HEX_LEN } from '@shared/fileKind'
 import { atomicWrite } from '../fs/fsUtils'
 
 /**
@@ -12,8 +13,8 @@ import { atomicWrite } from '../fs/fsUtils'
  * ignores the entry is not touched at all.
  */
 
-/** What every vault this app syncs ignores. */
-export const VAULT_IGNORED = ['.DS_Store'] as const
+/** What every vault this app syncs ignores: Finder's droppings, and the tmp file a crashed atomic write left (`isAtomicTmp`). */
+export const VAULT_IGNORED = ['.DS_Store', `*.tmp-${'?'.repeat(ATOMIC_TMP_HEX_LEN)}`] as const
 
 /**
  * The file's new contents, or null when it already covers every entry. Pure, so the whole rule is
