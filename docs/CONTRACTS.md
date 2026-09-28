@@ -37,7 +37,8 @@ nothing to do with each other. A bare `D3` would be unresolvable, so there are n
 | `desktop/` | the Electron shell: `src/main` (files, state, windows, menu, git sync), `src/preload` (the bridge) |
 | `shared/` | types and pure helpers imported by BOTH sides (`@shared/*`); the contracts are grouped by domain under `shared/types/` behind the `@shared/types` barrel, so no consumer depends on the grouping |
 | `tools/` | `packEngine.mjs` (bump the vendored engine), `packDesktop.mjs` (electron-builder), `seedDemoVault.mjs` (the stress-test vault the behaviour checks run against), `seedSortDemoVault.mjs` / `seedPreviewDemoVault.mjs` (the demo vaults behind YAZ-1835 and YAZ-1800, each proved by an integration test); the pure halves of `packEngine` and `seedDemoVault` live in `tools/lib/` beside their tests; `perf/` is the size gate and the perf harness (YAZ-2073, below) |
-| `docs/` | this file |
+| `e2e/` | the Playwright E2E suite (🔒 YAZ-2073 D17): `*.spec.ts` by feature area, `support/` for the launcher fixture, vault builders and the main-process hook that keeps OS hand-offs inside the test's sandbox |
+| `docs/` | this file, and `REGRESSION.md` — the hand-scenario list (stable IDs, ★ core) |
 | `thoughts/ledgers/` | continuity ledgers for in-flight work |
 
 ### Scripts
@@ -54,10 +55,15 @@ nothing to do with each other. A bare `D3` would be unresolvable, so there are n
 | `npm run desktop:build` | build + electron-builder → `desktop/dist-app` (`--win` variant for Windows) |
 | `npm run perf:budget` | `tools/perf/measureBudget.mjs`, the size and integrity gate (YAZ-2073 1A): bytes of the `.app`, DMG, asar, share viewer, Chromium locales and renderer against `tools/perf/budget.json`, plus what no unit test sees — Info.plist types and scheme, the ad-hoc seal, every lazily imported chunk shipped, the 13 Excalidraw font families, the draw.io files, the storage worker — and the bytes shipped twice. `perf:budget:ci` (`--out-only`) checks `desktop/out` alone; CI runs it after the build |
 | `npm run perf -- <scenario…\|all>` | `tools/perf/run.mjs`, the perf harness (YAZ-2073 1B): launches the packaged app (`--dev`: `desktop/out`) on seeded fixtures in an isolated profile, drives it over the DevTools protocol, and prints per-metric medians / p95 / noise as JSON against the `perf` ceilings. Scenarios: `launch`, `drawio`, `canvas-1k` / `-4k` (and `-dark`), `canvas-images`, `canvas-legacy`, `hover`, `drawers`, `storm`, `idle`, `heavy-tabs`, `quit-flush`. Local only — it opens windows |
+| `npm run e2e` | build, then the Playwright suite in `e2e/` against the BUILT app (`desktop/out`): every test launches it on its own throwaway profile and sandboxed vaults under the OS temp dir; `E2E_WORKERS` (default 3) sets parallelism, `E2E_SHOW=1` shows the windows, `E2E_KEEP=1` keeps passing tests' sandboxes, `E2E_PACKAGED=1` runs against `desktop/dist-app` from `desktop:build` instead (share specs skip: their endpoint overrides are unpackaged-only); extra args go to `playwright test` after `--` |
 
-There is no e2e script. 🔒 (OD1 on YAZ-1805, resolved by Yasin at execution start): behaviour is
-verified by launching the dev app in an isolated profile against a test vault and running a
-scenario list by hand — never by a UI driver, by an agent or in CI.
+⚡ YAZ-2073 D17 amends 🔒 OD1 on YAZ-1805 ("no UI driver"): Yasin turned Playwright ON as the
+no-feature-loss guarantee for the speed project. `npm run e2e` is a local command, not a CI step.
+It never touches the real profile or a real vault, and `e2e/support/mainHook.cjs` keeps the OS out
+of it: Trash, Finder, default-app and browser hand-offs are recorded in the sandbox instead of run,
+and the `yaseendraw://` registration is skipped. What it cannot see — the packaged app, the OS, how
+things look, a real browser, Windows — is the hand pass in [`docs/REGRESSION.md`](REGRESSION.md),
+which every bundle/shell PR runs (★ core + the areas it touched) and cites by ID.
 
 ## Supported file capabilities
 
@@ -1400,4 +1406,4 @@ see `client/vendor/README.md` for the two traps that script exists to defuse.
 
 No browser mode — the app runs only inside Electron. No path jail in the file layer. No
 Developer-ID signing or notarization, no auto-update, no Intel or universal builds. No end-to-end
-UI-driver suite, by agents or in CI.
+suite in CI (the Playwright suite is local — ⚡ YAZ-2073 D17, "Scripts" above).

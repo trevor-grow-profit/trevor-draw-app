@@ -7,3 +7,5 @@ desktop/dist-app/
 share/dist/
 desktop/.cache/
 desktop/.maps/
+e2e/test-results/
+e2e/playwright-report/

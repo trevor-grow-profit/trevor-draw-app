@@ -1,5 +1,5 @@
 # CI (YAZ-1775 🔒 D7): every pull request gets a typecheck and the unit-test suite.
-# No Playwright/e2e here — behaviour is verified by launching the dev app against a test vault.
+# The Playwright suite (`npm run e2e`, YAZ-2073 D17) is local, not run here: it drives the app's windows.
 name: ci
 
 on:
