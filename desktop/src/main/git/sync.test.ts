@@ -7,7 +7,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { GIT_TIMEOUT_CODE, git, type GitResult } from './exec'
 import { makeBareRemote, makeGitRepo, REAL_GIT_TIMEOUT_MS, requireGit, wireOrigin, type BareRemote, type GitRepo } from './gitFixture'
 import { GITHUB_FILE_LIMIT_BYTES } from '@shared/types'
-import { classifyGitFailure, commitMessage, remoteMoved, syncPass, TRANSFER_TIMEOUT_MS } from './sync'
+import { classifyGitFailure, commitMessage, lookAtRemote, syncPass, TRANSFER_TIMEOUT_MS } from './sync'
 
 /** A file's SHA-1, streamed (the D12 test's file is 95 MiB). */
 async function sha1(file: string): Promise<string> {
@@ -385,44 +385,48 @@ describe('syncPass', { timeout: REAL_GIT_TIMEOUT_MS }, () => {
 
 /**
  * The idle pull's cheap look (YAZ-2073 5H): `fetch` + `rev-list`, two spawns where a full pass
- * makes nine. It answers false ONLY when both sides are provably level; anything else — news on
- * the remote, an unpushed commit, a look that failed — hands the root to the full pass.
+ * makes nine. It answers `level` ONLY when both sides are provably level; news or an unpushed
+ * commit is `moved` (fetched — the full pass need not fetch again), and a look that failed is
+ * `unknown`, left to the full pass to fetch and classify.
  */
-describe('remoteMoved', { timeout: REAL_GIT_TIMEOUT_MS }, () => {
+describe('lookAtRemote', { timeout: REAL_GIT_TIMEOUT_MS }, () => {
   const spawns = (root: string) => vi.mocked(git).mock.calls.filter(([, r]) => r === root).map(([, , args]) => args[0])
 
-  it('level with the remote: false, from a fetch and one rev-list and nothing else', async () => {
+  it('level with the remote: level, from a fetch and one rev-list and nothing else', async () => {
     const { repo } = await pushedRepo()
     vi.mocked(git).mockClear()
-    expect(await remoteMoved(repo.root)).toBe(false)
+    expect(await lookAtRemote(repo.root)).toBe('level')
     expect(spawns(repo.root)).toEqual(['fetch', 'rev-list'])
   })
 
-  it('the other machine pushed: true, and the full pass then brings it in', async () => {
+  it('the other machine pushed: moved, and the full pass told so brings it in without fetching again', async () => {
     const { repo, remote } = await pushedRepo()
     const other = await secondClone(remote)
     const bin = await requireGit()
     await writeFile(path.join(other, 'theirs.md'), 'from the other machine\n', 'utf8')
     for (const args of [['add', '-A'], ['commit', '-m', 'other'], ['push']]) expect((await git(bin, other, args)).code).toBe(0)
-    expect(await remoteMoved(repo.root)).toBe(true)
-    expect((await syncPass(repo.root)).state).toBe('synced')
-    expect(await remoteMoved(repo.root)).toBe(false)
+    expect(await lookAtRemote(repo.root)).toBe('moved')
+    vi.mocked(git).mockClear()
+    expect((await syncPass(repo.root, { fetched: true })).state).toBe('synced')
+    expect(spawns(repo.root)).not.toContain('fetch')
+    expect(existsSync(path.join(repo.root, 'theirs.md'))).toBe(true)
+    expect(await lookAtRemote(repo.root)).toBe('level')
   })
 
-  it('a local commit nobody pushed yet (made outside the app): true', async () => {
+  it('a local commit nobody pushed yet (made outside the app), or no upstream yet: moved', async () => {
     const { repo } = await pushedRepo()
     await repo.write('by-hand.md', '# committed in a terminal\n')
     await repo.run(['add', '-A'])
     await repo.run(['commit', '-m', 'by hand'])
-    expect(await remoteMoved(repo.root)).toBe(true)
+    expect(await lookAtRemote(repo.root)).toBe('moved')
+    await repo.run(['branch', '--unset-upstream'])
+    expect(await lookAtRemote(repo.root)).toBe('moved')
   })
 
-  it('a look that cannot tell — no upstream yet, or an unreachable remote — is true, so the full pass classifies it', async () => {
+  it('an unreachable remote: unknown, so the full pass fetches and classifies it', async () => {
     const { repo } = await pushedRepo()
-    await repo.run(['branch', '--unset-upstream'])
-    expect(await remoteMoved(repo.root)).toBe(true)
     await repo.run(['remote', 'set-url', 'origin', path.join(tmpdir(), 'yaseendraw-no-such-remote')])
-    expect(await remoteMoved(repo.root)).toBe(true)
+    expect(await lookAtRemote(repo.root)).toBe('unknown')
   })
 })
 
