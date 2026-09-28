@@ -18,7 +18,7 @@
     "rendererReachableChunks": { "max": 125 },
     "rendererTotalBytes": { "max": 23026234 },
     "rendererMapBytes": { "max": 0 },
-    "mainBundleBytes": { "max": 356335, "$comment": "Raised from 285442 (v0.1.11) with YAZ-2073 7A, pending Yasin's OK: chokidar is bundled into main instead of shipped as asar node_modules (asarNodeModulesFiles 12 → 0), plus the IPC CONTRACT table (6A)." }
+    "mainBundleBytes": { "max": 357727, "$comment": "Raised from 285442 (v0.1.11) with YAZ-2073, pending Yasin's OK: chokidar is bundled into main instead of shipped as asar node_modules (asarNodeModulesFiles 12 → 0), plus the IPC CONTRACT table (6A) and the FSEvents ready probe (5F1)." }
   },
   "perfTolerance": 0.15,
   "perf": {
