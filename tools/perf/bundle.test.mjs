@@ -136,7 +136,7 @@ function fakeApp(plist) {
   execFileSync('plutil', ['-convert', 'xml1', path.join(app, 'Contents/Info.plist')])
   const files = Object.fromEntries([...REQUIRED_OUT, 'drawio/img/a.png', 'drawio/math4/b.js', 'main/storageWorker-D.js', ...EXCALIDRAW_FONT_FAMILIES.map((f) => `renderer/excalidraw-assets/fonts/${f}/a.woff2`)].map((p) => [`out/${p}`, 'x']))
   asar('Fake.app/Contents/Resources/app.asar', files)
-  for (const p of ['viewer.js', 'fonts/a.woff2', 'drawio/config.js', 'drawio/fonts.css']) put(`Fake.app/Contents/Resources/share-viewer/${p}`)
+  for (const p of ['viewer.js', 'drawio/config.js', 'drawio/fonts.css']) put(`Fake.app/Contents/Resources/share-viewer/${p}`)
   return app
 }
 const docType = (ext) => ({ CFBundleTypeExtensions: [ext], CFBundleTypeRole: 'Editor', LSHandlerRank: 'Owner' })
@@ -151,6 +151,12 @@ describe('checkApp', () => {
     const fails = checkApp(fakeApp({ ...PLIST, CFBundleURLTypes: [], CFBundleDocumentTypes: [docType('excalidraw'), { ...docType('drawio'), LSHandlerRank: 'Alternate' }] }))
     expect(fails).toContain('Info.plist: CFBundleURLSchemes lacks yaseendraw')
     expect(fails).toContain('Info.plist: .drawio is not an Owner/Editor document type')
+  })
+
+  it('fails a share viewer that ships its own fonts/ again: setup publishes the asar copy (YAZ-2073 3C)', () => {
+    const app = fakeApp(PLIST)
+    put('Fake.app/Contents/Resources/share-viewer/fonts/Virgil/a.woff2')
+    expect(checkApp(app)).toContain('share-viewer: ships its own fonts/ (share setup publishes the app’s one copy, YAZ-2073 3C)')
   })
 })
 

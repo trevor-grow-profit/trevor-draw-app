@@ -216,7 +216,8 @@ export function checkApp(app) {
   const sv = join(app, 'Contents/Resources/share-viewer')
   if (!existsSync(sv)) return [...fails, 'share-viewer: missing from Contents/Resources']
   const files = walk(sv)
-  if (!files.some((f) => f.startsWith('fonts/'))) fails.push('share-viewer: no fonts/ (viewer text would hit a CDN)')
+  // Its text fonts are the asar's (checked above), which share setup publishes as /assets/fonts/ (YAZ-2073 3C).
+  if (files.some((f) => f.startsWith('fonts/'))) fails.push('share-viewer: ships its own fonts/ (share setup publishes the app’s one copy, YAZ-2073 3C)')
   if (!files.includes('drawio/config.js') || !files.includes('drawio/fonts.css')) fails.push('share-viewer: drawio/config.js or fonts.css missing (shared diagrams)')
   for (const f of chunkGraph(sv, files.filter((f) => /^[^/]+\.js$/.test(f))).missing) fails.push(`share-viewer: chunk ${f} is imported but not shipped`)
   return fails
