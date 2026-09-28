@@ -4,6 +4,7 @@ import type { PasteResponse, RenameFileResponse } from '@shared/types'
 import { isWithin } from '@shared/paths'
 import type { FileClip } from '../fileClip'
 import { BridgeFailure, fsCall, isSkipped, requireAbsPath, requireDir, toBridgeFailure } from './fsUtils'
+import { requireObject } from './validate'
 
 /** One entry that landed: the shape `PasteResponse.pasted` carries. */
 type PastedEntry = PasteResponse['pasted'][number]
@@ -105,8 +106,7 @@ function failureOf(from: string, err: unknown): PasteResponse['failed'][number] 
  * "cannot move across disks; copy it instead" rather than a copy-then-delete the user did not ask for.
  */
 export async function pasteEntries(clip: FileClip, req: unknown, ops: PasteOps): Promise<PasteResponse> {
-  if (typeof req !== 'object' || req === null) throw new BridgeFailure('BAD_REQUEST', 'request must be an object')
-  const targetDir = requireAbsPath((req as Record<string, unknown>).targetDir, 'targetDir')
+  const targetDir = requireAbsPath(requireObject(req).targetDir, 'targetDir')
   await requireDir(targetDir)
   const pasted: PasteResponse['pasted'] = []
   const failed: PasteResponse['failed'] = []

@@ -2,6 +2,7 @@ import { shell } from 'electron'
 import { stat } from 'node:fs/promises'
 import type { RevealResponse } from '@shared/types'
 import { BridgeFailure, fsCall, requireAbsPath } from './fsUtils'
+import { requireObject } from './validate'
 
 /**
  * Open in default app (YAZ-1577) — the third read-only OS verb beside `reveal` and `openInVsCode`,
@@ -14,8 +15,7 @@ import { BridgeFailure, fsCall, requireAbsPath } from './fsUtils'
  * RETURNS the OS' message (`''` on success). That string is the whole error contract.
  */
 export async function openInDefaultApp(req: unknown): Promise<RevealResponse> {
-  if (typeof req !== 'object' || req === null) throw new BridgeFailure('BAD_REQUEST', 'request must be an object')
-  const p = requireAbsPath((req as Record<string, unknown>).path, 'path')
+  const p = requireAbsPath(requireObject(req).path, 'path')
   return fsCall(p, async () => {
     await stat(p) // missing → ENOENT → NOT_FOUND, so a stale row can be reported
     const error = await shell.openPath(p)

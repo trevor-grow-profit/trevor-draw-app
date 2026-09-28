@@ -14,38 +14,33 @@
 import { shell } from 'electron'
 import type { AppState, ComponentRenameRequest, ComponentSaveRequest, ComponentSlugRequest } from '@shared/types'
 import { CH } from '../../channels'
-import { BridgeFailure } from '../fs/fsUtils'
+import { requireObject, str } from '../fs/validate'
 import { resolveLibraryFolder } from '../library/folder'
 import { createComponentStore, type ComponentStore } from '../library/componentStore'
-import { isRecord } from '@shared/guards'
 import type { Store } from '../store'
 import { broadcastAll } from './broadcast'
 import { handle } from './envelope'
 
 /**
- * The SHAPE guard only — "is this field a non-empty string" — because the request crosses IPC
+ * The SHAPE guards only — "is this field a non-empty string" — because the request crosses IPC
  * from a sandboxed renderer and arrives as `unknown`. What the value MEANS (a real slug, a usable
  * name, a PNG dataURL) is the store's, which is the only layer that can answer it; the messages
  * agree on purpose, so a caller cannot tell which layer refused.
  */
-function requireString(v: unknown, field: string): string {
-  if (typeof v !== 'string' || v === '') throw new BridgeFailure('BAD_REQUEST', `'${field}' must be a non-empty string`)
-  return v
-}
+const requireRequest = (v: unknown): Record<string, unknown> => requireObject(v, 'missing request')
 
 function requireSlugRequest(v: unknown): ComponentSlugRequest {
-  if (!isRecord(v)) throw new BridgeFailure('BAD_REQUEST', 'missing request')
-  return { slug: requireString(v.slug, 'slug') }
+  return { slug: str(requireRequest(v).slug, 'slug') }
 }
 
 function requireSaveRequest(v: unknown): ComponentSaveRequest {
-  if (!isRecord(v)) throw new BridgeFailure('BAD_REQUEST', 'missing request')
-  return { name: requireString(v.name, 'name'), fragmentJson: requireString(v.fragmentJson, 'fragmentJson'), previewPng: requireString(v.previewPng, 'previewPng') }
+  const r = requireRequest(v)
+  return { name: str(r.name, 'name'), fragmentJson: str(r.fragmentJson, 'fragmentJson'), previewPng: str(r.previewPng, 'previewPng') }
 }
 
 function requireRenameRequest(v: unknown): ComponentRenameRequest {
-  if (!isRecord(v)) throw new BridgeFailure('BAD_REQUEST', 'missing request')
-  return { slug: requireString(v.slug, 'slug'), name: requireString(v.name, 'name') }
+  const r = requireRequest(v)
+  return { slug: str(r.slug, 'slug'), name: str(r.name, 'name') }
 }
 
 /** Returns the store so a test can close its watcher; `main/index.ts` lets the process end take it. */

@@ -3,8 +3,7 @@ import path from 'node:path'
 import { MAX_FAVORITES, VAULT_CONFIG_DIR, type FavoritesConfig } from '@shared/types'
 import { isWithin } from '@shared/paths'
 import { BridgeFailure, requireAbsPath } from './fs/fsUtils'
-import { isRecord } from '@shared/guards'
-import { isStringArray } from './store'
+import { isRecord, isStringArray } from '@shared/guards'
 import { readConfigDetailed, subscribeConfig, writeConfig } from './vaultConfig'
 
 /**

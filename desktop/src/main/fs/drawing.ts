@@ -61,6 +61,7 @@ import type { Thumbs } from '../drawings/thumbs'
 import { readBoardHead } from './boardHead'
 import { readBoundedRegularFile } from './boundedRead'
 import { atomicWrite, BridgeFailure, fsCall, requireAbsPath, requireDir, tmpSibling, writeDurable } from './fsUtils'
+import { requireObject } from './validate'
 
 const TOO_LARGE = `drawing exceeds ${MAX_DRAWING_BYTES} bytes`
 
@@ -75,8 +76,7 @@ export function resolveDocument(dir: string, rel: unknown): string {
 
 /** The request's `{ root, path }` pair, validated once for both doors. */
 function target(raw: unknown): { dir: string; file: string; body: Record<string, unknown> } {
-  if (typeof raw !== 'object' || raw === null) throw new BridgeFailure('BAD_REQUEST', 'request must be an object')
-  const body = raw as Record<string, unknown>
+  const body = requireObject(raw)
   const dir = requireAbsPath(body.root, 'root')
   return { dir, file: resolveDocument(dir, body.path), body }
 }

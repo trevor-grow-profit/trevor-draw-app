@@ -1,6 +1,7 @@
 import type { AppState, GithubSyncStatus } from '@shared/types'
 import { CH } from '../../channels'
-import { BridgeFailure, requireAbsPath } from '../fs/fsUtils'
+import { requireAbsPath } from '../fs/fsUtils'
+import { bool } from '../fs/validate'
 import { subscribe } from '../fs/watchers'
 import { detectRepo } from '../git/detect'
 import { resolveGit } from '../git/exec'
@@ -65,8 +66,7 @@ export function registerGithubIpc(store: Store): GitSyncManager {
     const dir = requireAbsPath(root, 'root')
     // Off-by-default fails closed everywhere else too (`manager.ts` reads `{ enabled: true }` exactly);
     // here the boolean is a hard requirement, because this call WRITES the switch.
-    if (typeof enabled !== 'boolean') throw new BridgeFailure('BAD_REQUEST', "'enabled' must be a boolean")
-    return manager.setEnabled(dir, enabled)
+    return manager.setEnabled(dir, bool(enabled, 'enabled'))
   })
 
   // Version history (YAZ-1897 D4): every argument is validated in `history.ts`, like `drawing:load`'s.

@@ -13,6 +13,7 @@ import { isWithin } from '@shared/paths'
 import { readBoardHead } from './boardHead'
 import { readBoundedRegularFile } from './boundedRead'
 import { atomicWrite, BridgeFailure, fsCall, requireAbsPath, requireDir } from './fsUtils'
+import { requireObject } from './validate'
 
 const TOO_LARGE = `diagram exceeds ${MAX_DIAGRAM_BYTES} bytes`
 
@@ -27,8 +28,7 @@ export function resolveDiagram(dir: string, rel: unknown): string {
 
 /** The request's `{ root, path }` pair, validated once for both doors. */
 function target(raw: unknown): { dir: string; file: string; body: Record<string, unknown> } {
-  if (typeof raw !== 'object' || raw === null) throw new BridgeFailure('BAD_REQUEST', 'request must be an object')
-  const body = raw as Record<string, unknown>
+  const body = requireObject(raw)
   const dir = requireAbsPath(body.root, 'root')
   return { dir, file: resolveDiagram(dir, body.path), body }
 }
