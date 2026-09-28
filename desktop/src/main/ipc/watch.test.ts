@@ -125,6 +125,21 @@ describe('watch IPC', () => {
     await until(() => activeWatcherRoots().length === 0)
   })
 
+  it('an unsubscribe that lands while the subscribe is still checking the root leaks nothing (YAZ-2073 2C)', async () => {
+    const s = makeSender()
+    senders.push(s)
+    // A quick root switch or a StrictMode remount: `watch:unsubscribe` arrives before `requireDir` settles.
+    const pending = listener(CH.watchSubscribe)({ sender: s }, { id: 'raced', root })
+    unsubscribeAs(s, 'raced')
+    await pending
+    expect(activeWatcherRoots()).toEqual([])
+    expect(sent(s)).toEqual([])
+    // The same window's next subscription still works.
+    await subscribeAs(s, 'next', root)
+    await until(() => sent(s).length >= 1)
+    expect(sent(s)).toEqual([{ id: 'next', ev: { type: 'ready', root } }])
+  })
+
   it('a bad root answers one error event and subscribes nothing', async () => {
     const s = makeSender()
     await subscribeAs(s, 'rel', root.slice(1))
