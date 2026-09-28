@@ -213,6 +213,34 @@ describe('🔒 YAZ-1775 D3 — the image store on load', () => {
     expect(await readdir(root)).toEqual(['Legacy.excalidraw'])
   })
 
+  it('a PREVIEW load (`imageMaxPx`) hands the pictures, the live elements and the size to the thumbnail cache (🔒 YAZ-2073 D6)', async () => {
+    await seedAsset('pic.png', 'stored')
+    await seed('Board.excalidraw', scene([imageEl('pic')]))
+    const small = { pic: { mimeType: 'image/png', dataURL: dataUrl('c21hbGw=') } }
+    const thumbs = { fit: vi.fn(async () => small) }
+    const res = await loadDrawing({ root, path: 'Board.excalidraw', imageMaxPx: 1200 }, thumbs)
+    expect(thumbs.fit).toHaveBeenCalledWith({ pic: { mimeType: 'image/png', dataURL: `data:image/png;base64,${Buffer.from('stored').toString('base64')}` } }, [imageEl('pic')], 1200)
+    expect(res.files).toBe(small)
+    expect(res.stored).toEqual(['pic']) // still the store's answer: a preview never saves
+  })
+
+  it('an editor load (no `imageMaxPx`) never touches the thumbnail cache', async () => {
+    await seedAsset('pic.png', 'stored')
+    await seed('Board.excalidraw', scene([imageEl('pic')]))
+    const thumbs = { fit: vi.fn() }
+    const res = await loadDrawing({ root, path: 'Board.excalidraw' }, thumbs)
+    expect(thumbs.fit).not.toHaveBeenCalled()
+    expect(Buffer.from(res.files.pic.dataURL.split(',')[1], 'base64').toString()).toBe('stored')
+  })
+
+  it('refuses an `imageMaxPx` that is not a positive integer', async () => {
+    const file = await seed('Board.excalidraw', scene())
+    for (const imageMaxPx of [0, -5, 1.5, '1200', null, Number.NaN]) {
+      const err = await failure(loadDrawing({ root, path: file, imageMaxPx } as never))
+      expect(err.code, String(imageMaxPx)).toBe('BAD_REQUEST')
+    }
+  })
+
   it('answers a board with nothing embedded exactly as it sits on disk — spacing, key order and all', async () => {
     await seedAsset('pic.png', 'stored')
     const body = `{"elements":[${JSON.stringify(imageEl('pic'))}],   "files":{} ,"appState":{}}`

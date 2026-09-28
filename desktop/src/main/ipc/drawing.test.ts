@@ -1,14 +1,15 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { mkdir, mkdtemp, readFile, rm, stat, utimes, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readdir, readFile, rm, stat, utimes, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { ipcMain } from 'electron'
 import { CH, type Envelope } from '../../channels'
 import { createStore, type Store } from '../store'
+import { encodePng } from '../drawings/png'
 import { blockOf, withoutBlock } from '../fs/testFixture'
 import { _resetSweeps, registerDrawingIpc, sweepVaultOnce } from './drawing'
 
-vi.mock('electron', () => ({ ipcMain: { handle: vi.fn(), on: vi.fn() }, shell: { trashItem: vi.fn(async () => undefined) } }))
+vi.mock('electron', async () => ({ ipcMain: { handle: vi.fn(), on: vi.fn() }, shell: { trashItem: vi.fn(async () => undefined) }, nativeImage: (await import('../drawings/fakeNativeImage')).fakeNativeImage }))
 
 type Handler = (event: unknown, ...args: unknown[]) => Promise<Envelope<unknown>>
 
@@ -55,6 +56,18 @@ describe('drawing IPC', () => {
     await writeFile(file, SCENE)
     const res = (await registered(CH.drawingLoad)({}, { root, path: 'Board.excalidraw' })) as Envelope<{ json: string }>
     expect(res).toMatchObject({ ok: true, value: { json: SCENE } })
+  })
+
+  it('a preview`s drawing:load (`imageMaxPx`) keeps its thumbnails under <userData>/thumbs, never in the vault (🔒 YAZ-2073 D6)', async () => {
+    const png = await encodePng(new Uint8Array(1440 * 822 * 4), 1440, 822)
+    await mkdir(path.join(root, 'assets'))
+    await writeFile(path.join(root, 'assets', 'shot.png'), png)
+    const row = Array.from({ length: 11 }, (_, i) => ({ id: `i${i}`, type: 'image', fileId: 'shot', x: i * 1500, y: 0, width: 1440, height: 822 }))
+    await writeFile(path.join(root, 'Board.excalidraw'), JSON.stringify({ elements: row, appState: {}, files: {} }))
+    const res = (await registered(CH.drawingLoad)({}, { root, path: 'Board.excalidraw', imageMaxPx: 1200 })) as Envelope<{ files: Record<string, { dataURL: string }> }>
+    expect(res.ok && Buffer.from(res.value.files.shot.dataURL.split(',')[1], 'base64')).toEqual(await readFile(path.join(userData, 'thumbs', 'shot-128.png')))
+    expect((await readdir(root)).sort()).toEqual(['Board.excalidraw', 'assets', 'userData'])
+    expect(await readdir(path.join(root, 'assets'))).toEqual(['shot.png'])
   })
 
   it('answers drawing:save in the standard envelope and writes the bytes', async () => {

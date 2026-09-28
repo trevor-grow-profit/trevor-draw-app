@@ -1,12 +1,16 @@
-import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 import { execFile } from 'node:child_process'
-import { chmod, mkdtemp, rm } from 'node:fs/promises'
+import { chmod, mkdtemp, readdir, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { promisify } from 'node:util'
 import type { TreeNode } from '@shared/types'
+import { plainPngSize } from '../drawings/png'
+import { createThumbs } from '../drawings/thumbs'
 import { loadDrawing } from './drawing'
 import { tree } from './tree'
+
+vi.mock('electron', async () => ({ nativeImage: (await import('../drawings/fakeNativeImage')).fakeNativeImage }))
 
 /**
  * 1800E — the hover preview's scenarios against the REAL main-process doors and the vault
@@ -75,6 +79,26 @@ describe('1800E — what drawing:load hands the renderer for each seeded board',
     const missing = await load('11 Missing image — its asset file is not on disk.excalidraw')
     expect(missing.files).toEqual({})
     expect(visible(missing.json)).toBe(2)
+  })
+
+  it('the PREVIEW load (`imageMaxPx`, 🔒 YAZ-2073 D6): the 2400 × 1600 picture comes back preview-sized from userData, small ones as they are, and the vault is untouched', async () => {
+    const listing = async (dir: string): Promise<string[]> => (await readdir(dir, { recursive: true })).sort()
+    const before = await listing(vault)
+    const thumbs = createThumbs(path.join(work, 'userData', 'thumbs'))
+    const preview = (name: string) => loadDrawing({ root: vault, path: path.join(vault, name), imageMaxPx: 1200 }, thumbs)
+    const [id, entry] = Object.entries((await preview('10 Large image — 2400×1600 picture.excalidraw')).files)[0]
+    // Drawn 1200 × 800 at most in a 1200 px picture: the thumbnail is the next power of two up, still under the original.
+    expect(plainPngSize(Buffer.from(entry.dataURL.split(',')[1], 'base64'))).toEqual({ width: 2048, height: 1365 })
+    expect(await readdir(path.join(work, 'userData', 'thumbs'))).toEqual([`${id}-2048.png`])
+    // 09: the 240 × 240 picture is drawn at its own size and keeps its bytes; the 800 × 300 one is drawn at 400 × 150.
+    const full = (await load('09 Images — three pictures from assets.excalidraw')).files
+    const shown = (await preview('09 Images — three pictures from assets.excalidraw')).files
+    const sizeOf = (e: { dataURL: string }) => plainPngSize(Buffer.from(e.dataURL.split(',')[1], 'base64'))
+    const small = Object.keys(full).find((k) => sizeOf(full[k])?.width === 240)!
+    const wide = Object.keys(full).find((k) => sizeOf(full[k])?.width === 800)!
+    expect(shown[small]).toEqual(full[small])
+    expect(sizeOf(shown[wide])).toEqual({ width: 512, height: 192 })
+    expect(await listing(vault)).toEqual(before)
   })
 
   it('an empty board and a deleted-only board load with nothing visible — the renderer answers "Empty board"', async () => {

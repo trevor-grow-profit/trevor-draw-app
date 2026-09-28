@@ -56,6 +56,7 @@ import { MAX_DRAWING_BYTES } from '@shared/types'
 import { isDrawing } from '@shared/fileKind'
 import { isWithin } from '@shared/paths'
 import { ASSETS_DIR, assetFileName, extForMime, fileIdOfAssetName, isValidFileId, mimeForAssetExt, parseDataUrl, referencedFileIds, serializeBoard, stampBoardMetaScene, stripEmbeddedFiles, stripEmbeddedScene } from '@shared/drawingAssets'
+import type { Thumbs } from '../drawings/thumbs'
 import { readBoardHead } from './boardHead'
 import { readBoundedRegularFile } from './boundedRead'
 import { atomicWrite, BridgeFailure, fsCall, requireAbsPath, requireDir, writeDurable } from './fsUtils'
@@ -118,8 +119,14 @@ async function listStore(dir: string): Promise<Map<string, string>> {
   return store
 }
 
-export async function loadDrawing(req: DrawingLoadRequest): Promise<DrawingLoadResponse> {
-  const { dir, file } = target(req)
+/**
+ * `thumbs` is the preview cache (`ipc/drawing.ts` binds it to userData); only a request carrying
+ * `imageMaxPx` — a picture of the scene, never an editor — uses it (🔒 YAZ-2073 D6).
+ */
+export async function loadDrawing(req: DrawingLoadRequest, thumbs?: Thumbs): Promise<DrawingLoadResponse> {
+  const { dir, file, body } = target(req)
+  const { imageMaxPx } = body
+  if (imageMaxPx !== undefined && (typeof imageMaxPx !== 'number' || !Number.isInteger(imageMaxPx) || imageMaxPx <= 0)) throw new BridgeFailure('BAD_REQUEST', "'imageMaxPx' must be a positive integer", { path: file })
   await requireDir(dir)
   const snapshot = await readBoundedRegularFile(file, MAX_DRAWING_BYTES, TOO_LARGE)
   const text = snapshot.data.toString('utf8')
@@ -130,7 +137,8 @@ export async function loadDrawing(req: DrawingLoadRequest): Promise<DrawingLoadR
   // 🔒 YAZ-2073 D7: a legacy scene's pictures travel once, in `files` — the renderer replaces the
   // scene's own map with them anyway. Every other board's text is sent exactly as it sits on disk.
   const json = Object.keys(embedded).length === 0 ? text : serializeBoard(lean)
-  return { path: file, json, mtime: snapshot.mtime, size: snapshot.size, files, stored }
+  const pictures = imageMaxPx === undefined || thumbs === undefined ? files : await thumbs.fit(files, elements, imageMaxPx)
+  return { path: file, json, mtime: snapshot.mtime, size: snapshot.size, files: pictures, stored }
 }
 
 /**

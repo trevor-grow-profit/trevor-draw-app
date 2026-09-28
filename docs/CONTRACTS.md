@@ -145,7 +145,7 @@ calls that go through it; `state`, `window`, `menu`, `link` and `watch` are call
 | `tree(root)` | `fs:tree` | the folder tree; dot-entries and `node_modules` are invisible; a board carries `meta` (its dates) when its head has a trustworthy block or `<mxfile>` attributes (🔒 YAZ-1834 D6, 🔒 YAZ-1802 D7) |
 | `createDir(path)` | `fs:create-dir` | never overwrites (`ALREADY_EXISTS`) |
 | `createFile(req)` | `fs:create-file` | `.excalidraw` or `.drawio` only; `{ path, content }`, content-at-create under `wx`; a drawing's content must be a JSON object, a diagram's a whole `<mxfile>` (else `BAD_REQUEST`), and either is born stamped with `createdAt = updatedAt = now` (🔒 YAZ-1834 D3, 🔒 YAZ-1802 D7) |
-| `drawing.load(req)` | `drawing:load` | one `.excalidraw` AS A DOCUMENT: its bytes, its mtime, and the images it names |
+| `drawing.load(req)` | `drawing:load` | one `.excalidraw` AS A DOCUMENT: its bytes, its mtime, and the images it names; with `imageMaxPx` (a picture of it, never an editor) the images come back preview-sized (🔒 YAZ-2073 D6) |
 | `drawing.save(req)` | `drawing:save` | images first, then the scene, atomically; `expectedMtime` → `CONFLICT` with NOTHING written; the scene lands with its `yaseendraw` block first, `createdAt` carried from the file, `updatedAt` = now (🔒 YAZ-1834 D3) |
 | `diagram.load(req)` / `diagram.save(req)` | `diagram:load` / `diagram:save` | 🔒 YAZ-1802 D6: one `.drawio` AS A DOCUMENT — `{ root, path }` → `{ path, xml, mtime, size }`; a file that is empty, not XML, not draw.io or cut short is `IO_ERROR` with the reason. `{ root, path, xml, expectedMtime }` → `{ path, mtime, size }`, atomic, `CONFLICT` with NOTHING written, `yaseendraw-created` / `-updated` stamped on the root `<mxfile>` (D7); any other extension is `UNSUPPORTED_EXTENSION` |
 | `drawing.libraryFolder()` | `drawing:library-folder` | the RESOLVED library folder — the setting, or `<userData>/library` (🔒 YAZ-1775 D5) |
@@ -866,8 +866,13 @@ save" for the two dates (🔒 YAZ-1834 D7). No new IPC. The demo vault behind th
 **🔒 D1 — drawn on the first hover, in the renderer, kept in memory.** No new IPC: the picture is
 `drawing:load` → `parseSceneText` → `restoreElements` → `visibleElements` → `createScenePreviewPng`
 (`lib/scenePreview.ts`) fit to 1200 × 800 with 16 px padding. Nothing visible answers `''` ("Empty
-board"); a refused load or a failed draw is the cache's `null` ("Preview unavailable"). Nothing is
-written to the vault or to userData; a relaunch redraws. The key is `root \n path \n mtime \n
+board"); a refused load or a failed draw is the cache's `null` ("Preview unavailable"). The load
+passes `imageMaxPx` (the picture's longest side, 1200): main answers each plain PNG at the next
+power of two at or above the size it is drawn in the picture — never smaller, never upscaled; a
+cropped, colour-profiled, EXIF-rotated or animated PNG and every other type keep their bytes —
+cached per immutable asset as `<userData>/thumbs/<fileId>-<px>.png`, reused across launches, the
+least recently used dropped past 256 MiB (🔒 YAZ-2073 D6). Nothing is written to the vault and no
+board's picture is stored; a relaunch redraws. The key is `root \n path \n mtime \n
 theme \n diagramDarkColors` — mtime, not the `updatedAt` block, because every write moves it and
 the block's one advantage (surviving a clone) means nothing to a memory cache. A draw.io diagram
 is `diagram:load` → the D9 renderer instead (🔒 YAZ-1802 D9), same bounds, `''` and `null`.

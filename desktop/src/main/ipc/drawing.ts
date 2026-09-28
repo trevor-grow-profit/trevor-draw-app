@@ -15,16 +15,21 @@
  * requesting window's existing passive notice channel ("Cleaned N unused images"), and only when
  * it actually did something. Silence is the right report for a sweep that found nothing.
  */
+import path from 'node:path'
 import { shell, type WebContents } from 'electron'
+import type { DrawingLoadRequest } from '@shared/types'
 import { CH } from '../../channels'
 import { sweepOrphanAssets } from '../drawings/orphanSweep'
+import { createThumbs, THUMBS_DIR } from '../drawings/thumbs'
 import { loadDrawing, saveDrawing } from '../fs/drawing'
 import { resolveLibraryFolder } from '../library/folder'
 import type { Store } from '../store'
 import { handle } from './envelope'
 
 export function registerDrawingIpc(store: Store, userData: string): void {
-  handle(CH.drawingLoad, loadDrawing)
+  // A preview's pictures come back preview-sized, cached under userData — never in the vault (🔒 YAZ-2073 D6).
+  const thumbs = createThumbs(path.join(userData, THUMBS_DIR))
+  handle(CH.drawingLoad, (req: DrawingLoadRequest) => loadDrawing(req, thumbs))
   handle(CH.drawingSave, saveDrawing)
   // 🔒 YAZ-1775 D5: read-only and store-backed — the setting is the renderer's to WRITE (through
   // `state:set-settings`, like every other setting); this only says where it points.

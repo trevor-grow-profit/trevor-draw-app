@@ -102,6 +102,7 @@ describe('YAZ-2073 D7 — legacy board: open, edit, save with the lean load', ()
   it('opening alone writes nothing: the file keeps its bytes and mtime, and no assets/ appears', async () => {
     const root = await vaultWithLegacyBoard('open-only')
     await loadDrawing({ root, path: 'Legacy.excalidraw' })
+    await loadDrawing({ root, path: 'Legacy.excalidraw', imageMaxPx: 1200 })
     expect(await readFile(path.join(root, 'Legacy.excalidraw'), 'utf8')).toBe(LEGACY)
     expect((await stat(path.join(root, 'Legacy.excalidraw'))).mtimeMs).toBe(OPENED_AT.getTime())
     expect(await readdir(root)).toEqual(['Legacy.excalidraw'])
