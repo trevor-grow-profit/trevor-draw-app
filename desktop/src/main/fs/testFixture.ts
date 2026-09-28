@@ -71,3 +71,14 @@ export async function until(pred: () => boolean, ms = 3000): Promise<void> {
     await new Promise((r) => setTimeout(r, 20))
   }
 }
+
+export const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms))
+
+/** Resolves once `count()` has not moved for `quietMs`: a watcher recording that has gone still. */
+export async function settled(count: () => number, quietMs: number): Promise<void> {
+  let seen = -1
+  while (seen !== count()) {
+    seen = count()
+    await sleep(quietMs)
+  }
+}

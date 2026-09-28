@@ -3,7 +3,7 @@ import { mkdir, mkdtemp, rename, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { isNetworkMount, watchTree, type TreeWatcher } from './treeWatcher'
-import { until } from './testFixture'
+import { settled, sleep, until } from './testFixture'
 
 /**
  * The engine's own rules (YAZ-2073 5F). What consumers see through it is pinned by
@@ -11,11 +11,13 @@ import { until } from './testFixture'
  * that is not there yet, the watched folder itself going and coming back, tmp files that linger,
  * reading `mount`, and the polling fallback.
  */
-const nativeWatch = vi.hoisted(() => ({ fail: false }))
+/** `fail`: every `fs.watch` throws, as on a platform without it; `refuse`: only a watch of that one path does (EACCES). */
+const nativeWatch = vi.hoisted(() => ({ fail: false, refuse: null as string | null }))
 vi.mock('node:fs', async (importOriginal) => {
   const fs = await importOriginal<typeof import('node:fs')>()
   const watch = ((...args: Parameters<typeof fs.watch>) => {
     if (nativeWatch.fail) throw Object.assign(new Error('not here'), { code: 'ERR_FEATURE_UNAVAILABLE_ON_PLATFORM' })
+    if (args[0] === nativeWatch.refuse) throw Object.assign(new Error('permission denied'), { code: 'EACCES' })
     return fs.watch(...args)
   }) as typeof fs.watch
   return { ...fs, default: { ...fs, watch }, watch }
@@ -25,6 +27,7 @@ const dirs: string[] = []
 const watchers: TreeWatcher[] = []
 afterEach(async () => {
   nativeWatch.fail = false
+  nativeWatch.refuse = null
   await Promise.all(watchers.splice(0).map((w) => w.close()))
   await Promise.all(dirs.splice(0).map((d) => rm(d, { recursive: true, force: true })))
 })
@@ -44,19 +47,12 @@ function record(dir: string, opts: Parameters<typeof watchTree>[1] = {}) {
   const note = (type: string) => (p: string) => lines.push(`${type} ${path.relative(dir, p)}`)
   w.on('add', note('add')).on('change', note('change')).on('unlink', note('unlink')).on('addDir', note('addDir')).on('unlinkDir', note('unlinkDir'))
   w.on('ready', () => (ready = true))
-  const quiet = async () => {
-    let seen = -1
-    while (seen !== lines.length) {
-      seen = lines.length
-      await new Promise((r) => setTimeout(r, 500))
-    }
-    return [...lines].sort()
-  }
+  const quiet = () => settled(() => lines.length, 500).then(() => [...lines].sort())
   return { lines, ready: () => until(() => ready, 10_000), quiet, watcher: w }
 }
 
 describe('treeWatcher', { timeout: 20_000 }, () => {
-  it('depth 0 announces the folder`s own entries and nothing deeper', async () => {
+  it("depth 0 announces the folder's own entries and nothing deeper", async () => {
     const dir = await tempDir()
     await mkdir(path.join(dir, 'sub'))
     const r = record(dir, { depth: 0 })
@@ -73,7 +69,7 @@ describe('treeWatcher', { timeout: 20_000 }, () => {
     const r = record(dir)
     await r.ready()
     await mkdir(path.join(parent, 'a'))
-    await new Promise((r) => setTimeout(r, 200))
+    await sleep(200)
     await mkdir(dir, { recursive: true })
     await writeFile(path.join(dir, 'media.json'), '{}')
     expect(await r.quiet()).toEqual(['add media.json'])
@@ -84,7 +80,7 @@ describe('treeWatcher', { timeout: 20_000 }, () => {
     const dir = path.join(parent, 'vault')
     await mkdir(path.join(dir, 'sub'), { recursive: true })
     await writeFile(path.join(dir, 'sub', 'x.excalidraw'), 'x')
-    await new Promise((r) => setTimeout(r, 300))
+    await sleep(300)
     const r = record(dir)
     await r.ready()
     await rename(dir, path.join(parent, 'elsewhere'))
@@ -101,7 +97,7 @@ describe('treeWatcher', { timeout: 20_000 }, () => {
     await r.ready()
     const tmp = path.join(dir, 'big.excalidraw.tmp-0123456789ab')
     await writeFile(tmp, 'a large save, still being written')
-    await new Promise((r) => setTimeout(r, 400))
+    await sleep(400)
     await rename(tmp, path.join(dir, 'big.excalidraw'))
     expect(await r.quiet()).toEqual(['add big.excalidraw'])
   })
@@ -112,8 +108,23 @@ describe('treeWatcher', { timeout: 20_000 }, () => {
     await r.ready()
     await writeFile(path.join(dir, 'late.json'), '{}')
     await r.watcher.close()
-    await new Promise((r) => setTimeout(r, 400))
+    await sleep(400)
     expect(r.lines).toEqual([])
+  })
+
+  it('a folder that arrives but cannot be watched falls back to polling: what it holds still arrives, nothing throws', async () => {
+    const parent = await tempDir()
+    const dir = path.join(parent, 'library')
+    nativeWatch.refuse = dir
+    const r = record(dir)
+    await r.ready()
+    await mkdir(dir)
+    await writeFile(path.join(dir, 'media.json'), '{}')
+    await until(() => r.lines.length > 0, 10_000)
+    expect(await r.quiet()).toEqual(['add media.json'])
+    await writeFile(path.join(dir, 'later.json'), '{}')
+    await until(() => r.lines.length > 1, 10_000)
+    expect(r.lines).toEqual(['add media.json', 'add later.json'])
   })
 
   it('falls back to chokidar polling when fs.watch cannot serve, and still announces', async () => {
