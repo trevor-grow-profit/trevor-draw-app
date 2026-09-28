@@ -24,7 +24,7 @@ npm run dev
 npm run desktop:build
 ```
 
-- Builds `desktop/out` (electron-vite) and then packages with electron-builder: `desktop/dist-app/mac-arm64/Yaseen Draw.app` (~375 MB, ~47 MB of it the bundled draw.io webapp, pruned to what the app loads — YAZ-1973) and `desktop/dist-app/Yaseen Draw-0.1.0-arm64.dmg` (~175 MB) — arm64 only, and the version in the dmg name is the ROOT `package.json` version that `tools/packDesktop.mjs` stamps in. The filenames contain spaces, so quote every path.
+- Builds `desktop/out` (electron-vite) and then packages with electron-builder: `desktop/dist-app/mac-arm64/Yaseen Draw.app` (~351 MB, ~47 MB of it the bundled draw.io webapp, pruned to what the app loads — YAZ-1973) and `desktop/dist-app/Yaseen Draw-0.1.0-arm64.dmg` (~125 MB, lzma — `tools/packDesktop.mjs` converts electron-builder's zlib image, mounts it and checks the app's seal; YAZ-2073 3A) — arm64 only, and the version in the dmg name is the ROOT `package.json` version that `tools/packDesktop.mjs` stamps in. The filenames contain spaces, so quote every path.
 - The renderer ships minified; its hidden sourcemaps land in the gitignored `desktop/.maps/<version>/`, never in the app (🔒 YAZ-2073 D14) — keep that folder for a release whose stack traces you may need to read. A stack frame such as `app://yaseen/assets/index-CUvbLYUM.js:23:53960` maps back with `source-map-js` (installed with Vite; it counts columns from 0, a stack from 1):
 
 ```bash

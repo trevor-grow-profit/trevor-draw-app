@@ -1313,7 +1313,10 @@ but for two config hooks, inside an iframe on its OWN origin.
 - appId `com.yasinarshad.yaseendraw`, productName **Yaseen Draw**, icon from `desktop/build/`
   (one 1024² `icon.png`; electron-builder derives `Contents/Resources/icon.icns`).
 - macOS: arm64 `dmg` + `dir`, `identity: null` — ad-hoc signed by `desktop/build/adhocSign.cjs`,
-  never Developer-ID signed or notarized (out of scope). `codesign -dv` on the packed bundle reads
+  never Developer-ID signed or notarized (out of scope). The dmg is lzma-compressed (ULMO, macOS
+  10.15+): electron-builder's own zlib image is converted by `packDesktop.mjs --mac`
+  (`tools/lib/dmg.mjs`, YAZ-2073 3A), which mounts the new image and verifies the app's seal before
+  replacing the old one, and drops the `.blockmap` (nothing reads it — no auto-update). `codesign -dv` on the packed bundle reads
   `Signature=adhoc` with `TeamIdentifier=not set`; `spctl -a -t install` therefore REJECTS it, and
   that rejection is the expected result, not a defect — it is what the one-time **Open Anyway**
   below answers.
@@ -1349,7 +1352,8 @@ but for two config hooks, inside an iframe on its OWN origin.
   `LICENSE-drawio.txt` (jgraph/drawio's `LICENSE` at the pinned tag) at its root, and no `LICENSE`
   anywhere in the war is ever pruned (`stencils/`, `shapes/`, `templates/`, `img/`,
   `js/libavoid-js/`).
-- Size (v0.1.8, YAZ-1973): the `.app` is ~375 MB and the dmg ~175 MB (from ~528 MB / ~208 MB).
+- Size (v0.1.11, YAZ-2073): the `.app` is ~351 MB and the dmg ~125 MB (from ~370 MB / ~172 MB;
+  v0.1.8's YAZ-1973 prune had taken them from ~528 MB / ~208 MB).
 - `.github/workflows/release.yml` builds both on a `v*` tag (node 22, `CSC_IDENTITY_AUTO_DISCOVERY:
   false`, `fail_on_unmatched_files: true`) and attaches them to that tag's release.
 - 🔒 **Releases are Yasin's call.** No tag, no GitHub release and no `npm version` without him
