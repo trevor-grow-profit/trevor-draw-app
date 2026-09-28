@@ -15,23 +15,12 @@
  */
 import fs from 'node:fs'
 import path from 'node:path'
+import { flag, json as pretty, refuseExisting, required, scene as sceneOf, wipe, write } from './lib/seedKit.mjs'
 
 const USAGE = 'usage: node tools/seedSortDemoVault.mjs --vault <dir> [--force]'
-const args = process.argv.slice(2)
-const flag = (name) => {
-  const i = args.indexOf(name)
-  return i === -1 ? undefined : (args[i + 1] ?? '')
-}
-const VAULT = flag('--vault')
-if (VAULT === undefined || VAULT === '') {
-  console.error(USAGE)
-  process.exit(2)
-}
-if (fs.existsSync(VAULT) && !args.includes('--force')) {
-  console.error(`refusing to wipe an existing vault: ${VAULT}\npass --force if that is really what you want\n${USAGE}`)
-  process.exit(2)
-}
-fs.rmSync(VAULT, { recursive: true, force: true })
+const VAULT = required(flag('--vault'), USAGE)
+refuseExisting(VAULT, USAGE, { what: 'vault' })
+wipe(VAULT)
 fs.mkdirSync(VAULT, { recursive: true })
 
 const DAY = 86_400_000
@@ -41,32 +30,17 @@ const el = (id, x, y, text) => [
   { id: `r-${id}`, type: 'rectangle', x, y, width: 260, height: 90, strokeColor: '#1e1e1e', backgroundColor: '#ffec99', fillStyle: 'solid', strokeWidth: 2, roughness: 0, opacity: 100, angle: 0, seed: 1, version: 1, versionNonce: 1, isDeleted: false, groupIds: [], frameId: null, roundness: { type: 3 }, boundElements: [{ id: `t-${id}`, type: 'text' }], updated: 1, link: null, locked: false, index: 'a0' },
   { id: `t-${id}`, type: 'text', x: x + 12, y: y + 30, width: 236, height: 25, strokeColor: '#1e1e1e', backgroundColor: 'transparent', fillStyle: 'solid', strokeWidth: 2, roughness: 0, opacity: 100, angle: 0, seed: 2, version: 1, versionNonce: 2, isDeleted: false, groupIds: [], frameId: null, roundness: null, boundElements: null, updated: 1, link: null, locked: false, index: 'a1', text, fontSize: 20, fontFamily: 5, textAlign: 'center', verticalAlign: 'middle', containerId: `r-${id}`, originalText: text, autoResize: true, lineHeight: 1.25 },
 ]
-const scene = (label) => ({ type: 'excalidraw', version: 2, source: 'yaz-1835-demo', elements: el(label.replace(/\W+/g, '-'), 100, 100, label), appState: { viewBackgroundColor: '#ffffff', gridSize: 20 }, files: {} })
-const pretty = (obj) => `${JSON.stringify(obj, null, 2)}\n`
+const scene = (label) => sceneOf('yaz-1835-demo', el(label.replace(/\W+/g, '-'), 100, 100, label))
 
-/** A stamped board: the block FIRST. mtime is set separately so the three dates can disagree on purpose. */
-function stamped(rel, { created, updated, mtime, extra = {} }) {
-  const file = path.join(VAULT, rel)
-  fs.mkdirSync(path.dirname(file), { recursive: true })
-  fs.writeFileSync(file, pretty({ yaseendraw: { createdAt: created, updatedAt: updated, ...extra }, ...scene(path.basename(rel, '.excalidraw')) }))
-  const t = new Date(mtime ?? updated)
-  fs.utimesSync(file, t, t)
-}
-/** A legacy board: no block; only mtime carries its age. */
-function legacy(rel, mtime) {
-  const file = path.join(VAULT, rel)
-  fs.mkdirSync(path.dirname(file), { recursive: true })
-  fs.writeFileSync(file, pretty(scene(path.basename(rel, '.excalidraw'))))
-  const t = new Date(mtime)
-  fs.utimesSync(file, t, t)
-}
+/** Any file, with its mtime set. */
 function raw(rel, text, mtime = now) {
-  const file = path.join(VAULT, rel)
-  fs.mkdirSync(path.dirname(file), { recursive: true })
-  fs.writeFileSync(file, text)
   const t = new Date(mtime)
-  fs.utimesSync(file, t, t)
+  fs.utimesSync(write(VAULT, rel, text), t, t)
 }
+/** A stamped board: the block FIRST. mtime is set separately so the three dates can disagree on purpose. */
+const stamped = (rel, { created, updated, mtime, extra = {} }) => raw(rel, pretty({ yaseendraw: { createdAt: created, updatedAt: updated, ...extra }, ...scene(path.basename(rel, '.excalidraw')) }), mtime ?? updated)
+/** A legacy board: no block; only mtime carries its age. */
+const legacy = (rel, mtime) => raw(rel, pretty(scene(path.basename(rel, '.excalidraw'))), mtime)
 
 // ---- Root: the three orders must all disagree. Names are chosen so alphabetical ≠ updated ≠ created.
 stamped('Apple — old, edited yesterday.excalidraw', { created: ago(400), updated: ago(1) })

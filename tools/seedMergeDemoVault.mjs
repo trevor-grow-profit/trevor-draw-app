@@ -14,38 +14,16 @@
  * `seedDemoVault.mjs` rule. `--profile` also writes an isolated Electron profile whose one window
  * is already on the vault (LAUNCH.md "Behaviour checks"), so no dialog is needed.
  */
-import { execFileSync } from 'node:child_process'
-import fs from 'node:fs'
-import path from 'node:path'
+import { cloneAs, dirFlag, git, json, publish, refuseExisting, required, scene as sceneOf, wipe, write, writeProfile } from './lib/seedKit.mjs'
 
 const USAGE = 'usage: node tools/seedMergeDemoVault.mjs --vault <dir> [--profile <dir>] [--force]'
-const args = process.argv.slice(2)
-const flag = (name) => {
-  const i = args.indexOf(name)
-  return i === -1 ? undefined : (args[i + 1] ?? '')
-}
-const VAULT = flag('--vault') && path.resolve(flag('--vault'))
-const PROFILE = flag('--profile') && path.resolve(flag('--profile'))
-if (!VAULT) {
-  console.error(USAGE)
-  process.exit(2)
-}
+const VAULT = required(dirFlag('--vault'), USAGE)
+const PROFILE = dirFlag('--profile')
 const ORIGIN = `${VAULT} (origin).git`
 const SAM = `${VAULT} (Sam)`
-for (const dir of [VAULT, ORIGIN, SAM, PROFILE].filter(Boolean)) {
-  if (fs.existsSync(dir) && !args.includes('--force')) {
-    console.error(`refusing to wipe an existing folder: ${dir}\npass --force if that is really what you want\n${USAGE}`)
-    process.exit(2)
-  }
-  fs.rmSync(dir, { recursive: true, force: true })
-}
-
-const git = (cwd, ...a) => execFileSync('git', a, { cwd, stdio: ['ignore', 'pipe', 'pipe'] }).toString().trim()
-const identity = (cwd, name) => {
-  git(cwd, 'config', 'user.name', name)
-  git(cwd, 'config', 'user.email', `${name.toLowerCase()}@example.invalid`)
-  git(cwd, 'config', 'commit.gpgsign', 'false')
-}
+const targets = [VAULT, ORIGIN, SAM, PROFILE].filter(Boolean)
+for (const dir of targets) refuseExisting(dir, USAGE)
+wipe(...targets)
 
 // ---------------------------------------------------------------- elements, as the engine saves them
 let serial = 0
@@ -58,11 +36,7 @@ const shape = (id, type, x, y, w, h, extra = {}) => ({
 const box = (id, x, y, bg, extra) => shape(id, 'rectangle', x, y, 200, 110, { backgroundColor: bg, ...extra })
 const words = (id, x, y, str, extra = {}) => shape(id, 'text', x, y, Math.ceil(str.length * (extra.fontSize ?? 20) * 0.6), Math.ceil((extra.fontSize ?? 20) * 1.25), { text: str, originalText: str, fontSize: 20, fontFamily: 5, textAlign: 'left', verticalAlign: 'top', autoResize: true, lineHeight: 1.25, containerId: null, strokeWidth: 1, roughness: 0, ...extra })
 const edit = (e, change, updated) => ({ ...e, ...change, version: e.version + 1, versionNonce: e.versionNonce + 100, updated })
-const scene = (elements) => `${JSON.stringify({ type: 'excalidraw', version: 2, source: 'yaz-1897-demo', elements, appState: { viewBackgroundColor: '#ffffff', gridSize: 20 }, files: {} }, null, 2)}\n`
-const write = (dir, rel, content) => {
-  fs.mkdirSync(path.dirname(path.join(dir, rel)), { recursive: true })
-  fs.writeFileSync(path.join(dir, rel), content)
-}
+const scene = (elements) => json(sceneOf('yaz-1897-demo', elements))
 
 // ---------------------------------------------------------------- the common starting point
 const title = (id, str) => words(id, 0, -70, str, { fontSize: 28 })
@@ -84,31 +58,23 @@ const readme = [
   ].join('\n'), { height: 220, width: 900 }),
 ]
 
-fs.mkdirSync(VAULT, { recursive: true })
-execFileSync('git', ['init', '--bare', '-b', 'main', ORIGIN], { stdio: 'ignore' })
-git(VAULT, 'init', '-b', 'main')
-identity(VAULT, 'You')
 write(VAULT, '00 READ ME — what to try.excalidraw', scene(readme))
 write(VAULT, '01 Both added a shape.excalidraw', scene(b1))
 write(VAULT, '02 Same box moved on both.excalidraw', scene(b2))
 write(VAULT, '03 Card deleted vs text edited.excalidraw', scene(b3))
 write(VAULT, 'Notes.md', '# Notes\n\nThe plan for Monday.\n')
-write(VAULT, '.yaseendraw/github.json', `${JSON.stringify({ enabled: true }, null, 2)}\n`)
-git(VAULT, 'add', '-A')
-git(VAULT, 'commit', '-m', 'Start the demo')
-git(VAULT, 'remote', 'add', 'origin', ORIGIN)
-git(VAULT, 'push', '-u', 'origin', 'main')
+write(VAULT, '.yaseendraw/github.json', { enabled: true })
+publish(VAULT, ORIGIN, 'Start the demo')
 
 // ---------------------------------------------------------------- Sam, on the other computer
-execFileSync('git', ['clone', ORIGIN, SAM], { stdio: 'ignore' })
-identity(SAM, 'Sam')
+cloneAs(ORIGIN, SAM, 'Sam')
 write(SAM, '01 Both added a shape.excalidraw', scene([...b1, box('sams', 260, 160, '#ffc9c9'), words('samsLabel', 280, 200, "Sam's idea")]))
 write(SAM, '02 Same box moved on both.excalidraw', scene([b2[0], edit(b2[1], { x: 0, y: 220 }, 3_000), b2[2]]))
 write(SAM, '03 Card deleted vs text edited.excalidraw', scene([b3[0], edit(container, { isDeleted: true }, 3_000), edit(inside, { isDeleted: true }, 3_000)]))
 write(SAM, 'Notes.md', '# Notes\n\nThe plan for Monday — Sam: move it to Tuesday.\n')
-git(SAM, 'add', '-A')
-git(SAM, 'commit', '-m', 'sync: Sam edits')
-git(SAM, 'push')
+git(SAM, ['add', '-A'])
+git(SAM, ['commit', '-m', 'sync: Sam edits'])
+git(SAM, ['push'])
 
 // ---------------------------------------------------------------- your edits, not yet synced
 write(VAULT, '01 Both added a shape.excalidraw', scene([...b1, box('yours', -260, 160, '#b2f2bb'), words('yoursLabel', -240, 200, 'Your idea')]))
@@ -116,12 +82,7 @@ write(VAULT, '02 Same box moved on both.excalidraw', scene([b2[0], edit(b2[1], {
 write(VAULT, '03 Card deleted vs text edited.excalidraw', scene([b3[0], container, edit(inside, { text: 'Card text — edited by you', originalText: 'Card text — edited by you', width: 300 }, 2_000)]))
 write(VAULT, 'Notes.md', '# Notes\n\nThe plan for Monday — me: keep Monday, add a demo.\n')
 
-if (PROFILE) {
-  fs.mkdirSync(PROFILE, { recursive: true })
-  const window = { id: 'w1', root: VAULT, file: null, tabs: [], sidebarCollapsed: false, sidebarLens: 'files', focusDirs: [], focusFavorites: [], bounds: { x: 80, y: 80, width: 1280, height: 820 } }
-  const state = { version: 1, settings: { theme: 'system', confirmDelete: true }, sidebarWidth: 280, recents: [{ path: VAULT, lastOpened: 0 }], windows: [window], folders: {} }
-  fs.writeFileSync(path.join(PROFILE, 'yaseendraw.json'), `${JSON.stringify(state, null, 2)}\n`)
-}
+if (PROFILE) writeProfile(PROFILE, VAULT, { sidebarWidth: 280, lastOpened: 0, bounds: { x: 80, y: 80, width: 1280, height: 820 } })
 
 console.log(`vault:  ${VAULT}\norigin: ${ORIGIN}\nSam:    ${SAM}`)
 if (PROFILE) console.log(`launch: cd desktop && YASEEN_DRAW_USER_DATA_DIR="${PROFILE}" npx electron-vite dev`)
