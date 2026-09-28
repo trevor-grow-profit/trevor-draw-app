@@ -1321,7 +1321,10 @@ but for two config hooks, inside an iframe on its OWN origin.
   both with role `Editor` and `LSHandlerRank` `Owner`, so Finder hands both to this app (🔒 YAZ-1775 D1).
 - Windows: unsigned x64 NSIS installer.
 - `files: ["out/**"]` is the whole app payload: the main bundle carries its dependencies (chokidar is
-  pure JS and gets bundled), so the packaged app ships no `node_modules`. The one `extraResources`
+  pure JS and gets bundled), so the packaged app ships no `node_modules`. That holds because
+  `desktop/package.json` has no `dependencies` (electron-builder packs those; chokidar is a
+  devDependency) and `externalizeDeps` is off for main and preload; `tools/mainBundle.test.mjs`
+  builds both and fails on any `require` but Node built-ins and electron (YAZ-2073 3E). The one `extraResources`
   entry is the share viewer's built assets (`share/dist/assets` → `Contents/Resources/share-viewer`,
   YAZ-1883), which main uploads at share setup; `viewerAssetsDir` in `ipc/share.ts` reads there when
   packaged and from the repo checkout in dev.
