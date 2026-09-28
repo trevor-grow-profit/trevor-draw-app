@@ -15,7 +15,7 @@ import { openableFileArgs } from './fileArgs'
 import { createLinkQueue } from './linkQueue'
 import { openLink } from './fs/openLink'
 import { buildContextMenuTemplate, buildMenuTemplate, createMenuHandlers, pickMenuTargetWindow, subscribeMenuRebuild, subscribeMenuRebuildOnActiveFile } from './menu'
-import { runQuitSequence } from './quit'
+import { runQuitSequence } from './quitSequence'
 import { createStore } from './store'
 import { subscribeNativeTheme, windowBackgroundColor } from './theme'
 import { applyUserDataOverride } from './userData'
@@ -231,8 +231,9 @@ app.whenReady().then(() => {
   links.flush()
 })
 
-// Quit: renderers, then the pending state and the last sync commit, then exit for real — `app.exit`
-// re-runs no quit events. The order and every step live in quit.ts, pinned by its test (YAZ-2073 D11).
+// Quit: renderers, then the pending state and the last sync commit (YAZ-1111), then exit for real —
+// `app.exit` re-runs no quit events. The order and every step live in quitSequence.ts, pinned by its
+// tests; index.test.ts pins that this handler goes through it (YAZ-2073 D11).
 let quitting = false
 app.on('before-quit', (event) => {
   event.preventDefault()

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { runQuitSequence, type QuitDeps } from './quit'
+import { runQuitSequence, type QuitDeps } from './quitSequence'
 
 // YAZ-2073 D11: renderers → (state file ∥ last sync pass) → exit. Each step is a deferred the test
 // resolves by hand, so a missing, reordered or un-awaited step fails here, not on a user's ⌘Q.
