@@ -2,7 +2,7 @@
  * Settings (⌘,) and dark mode: every setting is global, applies live in every window and survives a
  * relaunch; secrets never reach the state file (docs/CONTRACTS.md "Settings", 🔒 YAZ-1775 D4 / D9).
  */
-import { readFileSync, statSync } from 'node:fs'
+import { existsSync, readFileSync, statSync } from 'node:fs'
 import type { Locator, Page } from '@playwright/test'
 import { test, expect } from './support/fixtures'
 import { canvasChanged, canvasReady, staticCanvasShot } from './support/canvas'
@@ -174,7 +174,10 @@ test('Sync › GitHub on a git vault writes the vault’s switch and the chip tu
   await expect(page.getByRole('button', { name: 'Sync off' })).toBeVisible()
   await openSettings(page)
   await segment(page, 'Sync this vault to GitHub', 'On').click()
-  await expect.poll(() => readFileSync(`${vault}/.yaseendraw/github.json`, 'utf8')).toContain('"enabled": true')
+  // The switch lands a few ms after the click (an fsynced write, YAZ-2073 D12), and `expect.poll`
+  // gives up on a callback that THROWS instead of retrying it: a file not written yet reads as ''.
+  const stored = () => (existsSync(`${vault}/.yaseendraw/github.json`) ? readFileSync(`${vault}/.yaseendraw/github.json`, 'utf8') : '')
+  await expect.poll(stored).toContain('"enabled": true')
   await settings(page).getByRole('button', { name: 'Close settings' }).click()
   await expect(page.getByRole('button', { name: 'Synced' })).toBeVisible()
 })
