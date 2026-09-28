@@ -109,10 +109,13 @@ describe('the shared drawing viewer', () => {
     // The script rethrows after saying so (the browser logs it); here that is an unhandled rejection to absorb.
     const rejected = vi.fn()
     process.on('unhandledRejection', rejected)
-    const { el } = await open({ scene: new Error('offline') })
-    await vi.waitFor(() => expect(el('note').textContent).toBe('This drawing could not be loaded. The link may have just been stopped.'))
-    expect(render).not.toHaveBeenCalled()
-    await vi.waitFor(() => expect(rejected).toHaveBeenCalled())
-    process.off('unhandledRejection', rejected)
+    try {
+      const { el } = await open({ scene: new Error('offline') })
+      await vi.waitFor(() => expect(el('note').textContent).toBe('This drawing could not be loaded. The link may have just been stopped.'))
+      expect(render).not.toHaveBeenCalled()
+      await vi.waitFor(() => expect(rejected).toHaveBeenCalled())
+    } finally {
+      process.off('unhandledRejection', rejected)
+    }
   })
 })

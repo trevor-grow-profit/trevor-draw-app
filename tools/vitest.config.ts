@@ -2,9 +2,9 @@ import { fileURLToPath } from 'node:url'
 import { defineConfig } from 'vitest/config'
 
 /**
- * The `tools/` project. Both scripts are plain ESM run straight by node, so their suites are
- * `.mjs` too and drive the real code against real temp dirs — no jsdom, nothing mocked. `@shared`
- * resolves for the renderer module the overlay suite imports (`drawioProtocol.ts`).
+ * The `tools/` project: the build, pack, seed and perf scripts are plain ESM run straight by node,
+ * so their suites are `.mjs` too and drive the real code against real temp dirs and the real
+ * `git` / `hdiutil`. `@shared` resolves for the app modules some suites import (`drawioProtocol.ts`).
  */
 export default defineConfig({
   resolve: {
