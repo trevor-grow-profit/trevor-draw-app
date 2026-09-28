@@ -16,6 +16,7 @@
     "typecheck": "tsc -p client/tsconfig.json --noEmit && tsc -p shared/tsconfig.json --noEmit && tsc -p desktop/tsconfig.json --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
+    "perf": "node tools/perf/run.mjs",
     "perf:budget": "node tools/perf/budget.mjs"
   },
   "devDependencies": {

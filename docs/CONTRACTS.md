@@ -36,7 +36,7 @@ nothing to do with each other. A bare `D3` would be unresolvable, so there are n
 | `client/vendor/` | the five vendored `yaseendraw-*-<forkCommit>.tgz` engine tarballs (🔒 YAZ-1775 D2) |
 | `desktop/` | the Electron shell: `src/main` (files, state, windows, menu, git sync), `src/preload` (the bridge) |
 | `shared/` | types and pure helpers imported by BOTH sides (`@shared/*`); the contracts are grouped by domain under `shared/types/` behind the `@shared/types` barrel, so no consumer depends on the grouping |
-| `tools/` | `packEngine.mjs` (bump the vendored engine), `packDesktop.mjs` (electron-builder), `seedDemoVault.mjs` (the stress-test vault the behaviour checks run against), `seedSortDemoVault.mjs` / `seedPreviewDemoVault.mjs` (the demo vaults behind YAZ-1835 and YAZ-1800, each proved by an integration test); the pure halves of `packEngine` and `seedDemoVault` live in `tools/lib/` beside their tests |
+| `tools/` | `packEngine.mjs` (bump the vendored engine), `packDesktop.mjs` (electron-builder), `seedDemoVault.mjs` (the stress-test vault the behaviour checks run against), `seedSortDemoVault.mjs` / `seedPreviewDemoVault.mjs` (the demo vaults behind YAZ-1835 and YAZ-1800, each proved by an integration test); the pure halves of `packEngine` and `seedDemoVault` live in `tools/lib/` beside their tests; `perf/` is the size gate and the perf harness (YAZ-2073, below) |
 | `docs/` | this file |
 | `thoughts/ledgers/` | continuity ledgers for in-flight work |
 
@@ -52,6 +52,8 @@ nothing to do with each other. A bare `D3` would be unresolvable, so there are n
 | `npm run drawio:pack` | `tools/packDrawio.mjs`: download the pinned draw.io release once (sha256-checked), unpack it into `desktop/.cache/drawio/<tag>/` (gitignored) and lay the overlay over it — idempotent; `desktop`'s `dev` and `build` run it first |
 | `npm run build` | `electron-vite build` into `desktop/out`, then `tools/buildShareViewer.mjs` into `share/dist/assets` (wiped first, gitignored) |
 | `npm run desktop:build` | build + electron-builder → `desktop/dist-app` (`--win` variant for Windows) |
+| `npm run perf:budget` | `tools/perf/budget.mjs`, the size and integrity gate (YAZ-2073 1A): bytes of the `.app`, DMG, asar, share viewer, Chromium locales and renderer against `tools/perf/budget.json`, plus what no unit test sees — Info.plist types and scheme, the ad-hoc seal, every lazily imported chunk shipped, the 13 Excalidraw font families, the draw.io files, the storage worker. `-- --out-only` checks `desktop/out` alone (CI runs it after the build) |
+| `npm run perf -- <scenario…\|all>` | `tools/perf/run.mjs`, the perf harness (YAZ-2073 1B): launches the packaged app (`--dev`: `desktop/out`) on seeded fixtures in an isolated profile, drives it over the DevTools protocol, and prints per-metric medians / p95 / noise as JSON against the `perf` ceilings. Scenarios: `launch`, `drawio`, `canvas-1k`, `canvas-4k`, `canvas-images`, `hover`, `storm`, `idle`. Local only — it opens windows |
 
 There is no e2e script. 🔒 (OD1 on YAZ-1805, resolved by Yasin at execution start): behaviour is
 verified by launching the dev app in an isolated profile against a test vault and running a
@@ -1340,7 +1342,9 @@ but for two config hooks, inside an iframe on its OWN origin.
   `LICENSE-drawio.txt` (jgraph/drawio's `LICENSE` at the pinned tag) at its root, and no `LICENSE`
   anywhere in the war is ever pruned (`stencils/`, `shapes/`, `templates/`, `img/`,
   `js/libavoid-js/`).
-- Size (v0.1.8, YAZ-1973): the `.app` is ~375 MB and the dmg ~175 MB (from ~528 MB / ~208 MB).
+- Size (v0.1.11, YAZ-2073 1A): the `.app` is 387 MB and the dmg 172 MB. `npm run perf:budget` measures a
+  build against the ceilings in `tools/perf/budget.json`; 🔒 the ratchet (YAZ-2073 D17): a change that
+  shrinks a metric lowers its ceiling in the same PR, and raising one needs Yasin's OK.
 - `.github/workflows/release.yml` builds both on a `v*` tag (node 22, `CSC_IDENTITY_AUTO_DISCOVERY:
   false`, `fail_on_unmatched_files: true`) and attaches them to that tag's release.
 - 🔒 **Releases are Yasin's call.** No tag, no GitHub release and no `npm version` without him
