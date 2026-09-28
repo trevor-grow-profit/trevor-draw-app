@@ -29,7 +29,6 @@ vi.mock('./boardPreviewCache', async (importActual) => ({
   boardPreviews: { load: previewLoad, clear: () => undefined, Preview: () => null },
 }))
 
-
 const TREE: TreeNode[] = [
   { type: 'dir', name: 'sub', path: '/v/sub', children: [] },
   { type: 'file', name: 'a.excalidraw', path: '/v/a.excalidraw', size: 1, mtime: 1, kind: 'drawing' },
@@ -2584,7 +2583,6 @@ describe('Sidebar multi-select: folded rows (YAZ-1338)', () => {
     act(() => itemByLabel(el, 'Copy 2 paths')?.click())
     expect(writeText).toHaveBeenCalledExactlyOnceWith('/v/a.excalidraw\n/v/sub/b.excalidraw')
   })
-
 })
 
 describe('settings cog (YAZ-1679)', () => {
