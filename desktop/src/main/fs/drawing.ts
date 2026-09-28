@@ -47,29 +47,25 @@
  * this save, aged by its pre-save mtime. This happens after the conflict guard and the assets, so
  * a refused save stamps nothing and a stamped scene never names bytes that are not there.
  *
- * Pure rules (`referencedFileIds`, `stripEmbeddedFiles`, `stampBoardMeta`, …) live in
+ * Pure rules (`referencedFileIds`, `stripEmbeddedScene`, `stampBoardMetaScene`, …) live in
  * `shared/drawingAssets.ts`; this file is the fs around them.
  */
 import { link, mkdir, readdir, readFile, rename, unlink } from 'node:fs/promises'
 import path from 'node:path'
 import type { DrawingFileEntry, DrawingLoadResponse, DrawingSaveResponse } from '@shared/types'
-import { ASSETS_DIR, assetFileName, extForMime, fileIdOfAssetName, isValidFileId, mimeForAssetExt, parseDataUrl, referencedFileIds, serializeBoard, stampBoardMetaScene, stripEmbeddedFiles, stripEmbeddedScene } from '@shared/drawingAssets'
+import { isRecord } from '@shared/guards'
+import { ASSETS_DIR, assetFileName, extForMime, fileIdOfAssetName, isValidFileId, mimeForAssetExt, parseDataUrl, referencedFileIds, serializeBoard, stampBoardMetaScene, stripEmbeddedScene } from '@shared/drawingAssets'
 import type { Thumbs } from '../drawings/thumbs'
 import { BOARDS, boardTarget, guardedStamp } from './boardDocument'
 import { readBoundedRegularFile } from './boundedRead'
 import { atomicWrite, BridgeFailure, fsCall, requireDir, tmpSibling, writeDurable } from './fsUtils'
 
 /**
- * The scene's elements, or a failure. The OUTLINE only (see the module doc): an object carrying
- * an `elements` array. `code` differs by door — a bad file is the disk's fault (`IO_ERROR`), a
- * bad `json` argument is the caller's (`BAD_REQUEST`).
+ * THE ONE PARSE of a scene (YAZ-2073 5G), and its check: the OUTLINE only (see the module doc), an
+ * object carrying an `elements` array. `code` differs by door — a bad file is the disk's fault
+ * (`IO_ERROR`), a bad `json` argument is the caller's (`BAD_REQUEST`).
  */
-export function sceneElements(json: string, file: string, code: 'IO_ERROR' | 'BAD_REQUEST'): readonly unknown[] {
-  return parseScene(json, file, code).elements
-}
-
-/** `sceneElements` with the parsed scene beside them, for the save that works on the object (YAZ-2073 5G). */
-function parseScene(json: string, file: string, code: 'IO_ERROR' | 'BAD_REQUEST'): { scene: Record<string, unknown>; elements: readonly unknown[] } {
+export function parseScene(json: string, file: string, code: 'IO_ERROR' | 'BAD_REQUEST'): { scene: Record<string, unknown>; elements: readonly unknown[] } {
   const bad = (): never => {
     throw new BridgeFailure(code, code === 'IO_ERROR' ? 'file is not an Excalidraw scene' : "'json' is not an Excalidraw scene", { path: file })
   }
@@ -79,9 +75,8 @@ function parseScene(json: string, file: string, code: 'IO_ERROR' | 'BAD_REQUEST'
   } catch {
     return bad()
   }
-  if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) return bad()
-  const scene = parsed as Record<string, unknown>
-  return Array.isArray(scene.elements) ? { scene, elements: scene.elements } : bad()
+  if (!isRecord(parsed)) return bad()
+  return Array.isArray(parsed.elements) ? { scene: parsed, elements: parsed.elements } : bad()
 }
 
 /** `assets/` as a map fileId → file name (first match wins); an absent folder is an empty store. */
@@ -122,15 +117,10 @@ export async function loadDrawing(req: unknown, thumbs?: Thumbs): Promise<Drawin
 
 /**
  * The pictures a scene references, from the vault's `assets/` store — with a legacy scene's own
- * embedded entries as the fallback. Shared by `drawing:load` and Version history's old versions
+ * `embedded` entries as the fallback. Shared by `drawing:load` and Version history's old versions
  * (YAZ-1897 D4), so an old version draws its pictures exactly the way the open board does.
  */
-export async function sceneFiles(dir: string, json: string, elements: readonly unknown[]): Promise<{ files: Record<string, DrawingFileEntry>; stored: string[] }> {
-  return resolveFiles(dir, stripEmbeddedFiles(json).embedded, elements)
-}
-
-/** `sceneFiles` over a scene's embedded entries already in hand. */
-async function resolveFiles(dir: string, embedded: Record<string, DrawingFileEntry>, elements: readonly unknown[]): Promise<{ files: Record<string, DrawingFileEntry>; stored: string[] }> {
+export async function resolveFiles(dir: string, embedded: Record<string, DrawingFileEntry>, elements: readonly unknown[]): Promise<{ files: Record<string, DrawingFileEntry>; stored: string[] }> {
   const store = await listStore(dir)
   const files: Record<string, DrawingFileEntry> = {}
   const stored: string[] = []
@@ -194,8 +184,9 @@ export function liftEmbedded(scene: Record<string, unknown>, elements: readonly 
  *
  * The name IS the content hash, so a torn file under it would pass for valid forever. The bytes land
  * on a tmp sibling, are fsynced, and only then `link`ed to the name (YAZ-2073 2B1): a crash at any
- * point leaves at most a tmp file. `link` never replaces — EEXIST means identical bytes already
- * landed, which is success. A volume without hard links (exFAT, FAT: ENOTSUP) renames instead;
+ * point leaves at most a tmp file (`isAtomicTmp`: never listed, never committed, swept once a day
+ * old). `link` never replaces — EEXIST means identical bytes already landed, which is success. Any
+ * other refusal (a volume without hard links, exFAT or FAT, says ENOTSUP) renames instead;
  * replacing identical bytes is harmless there.
  */
 export async function landAssets(dir: string, pending: readonly PendingAsset[]): Promise<string[]> {
@@ -223,8 +214,8 @@ export async function landAssets(dir: string, pending: readonly PendingAsset[]):
 
 /** One `newFiles` entry, checked like a request body — it names a file the renderer wants created. */
 function checkAsset(entry: unknown, file: string): PendingAsset {
-  if (typeof entry !== 'object' || entry === null) throw new BridgeFailure('BAD_REQUEST', 'newFiles entries must be objects', { path: file })
-  const { fileId, mimeType, dataURL } = entry as Record<string, unknown>
+  if (!isRecord(entry)) throw new BridgeFailure('BAD_REQUEST', 'newFiles entries must be objects', { path: file })
+  const { fileId, mimeType, dataURL } = entry
   if (!isValidFileId(fileId)) throw new BridgeFailure('BAD_REQUEST', "'fileId' must be a plain id", { path: file })
   if (typeof mimeType !== 'string' || extForMime(mimeType) === null) throw new BridgeFailure('BAD_REQUEST', `unsupported image type for ${fileId}`, { path: file })
   const data = typeof dataURL === 'string' ? parseDataUrl(dataURL) : null

@@ -194,23 +194,21 @@ describe('🔒 YAZ-1775 D3 — the image store on load', () => {
     expect(res.json).toContain('gone') // the scene is untouched; only the bytes are absent
   })
 
-  it('falls back to a LEGACY scene`s own embedded bytes, and does NOT call them stored', async () => {
+  it("falls back to a LEGACY scene's own embedded bytes, and does NOT call them stored", async () => {
     await seed('Legacy.excalidraw', scene([imageEl('emb')], { files: { emb: { mimeType: 'image/png', dataURL: dataUrl() } } }))
     const res = await loadDrawing({ root, path: 'Legacy.excalidraw' })
     expect(res.files.emb).toEqual({ mimeType: 'image/png', dataURL: dataUrl() })
     expect(res.stored).toEqual([])
   })
 
-  it('sends a LEGACY scene`s bytes once: `json` comes back with an empty files map, every other key as on disk (🔒 YAZ-2073 D7)', async () => {
+  it("sends a LEGACY scene's bytes once: `json` comes back with an empty files map, every other key as on disk (🔒 YAZ-2073 D7)", async () => {
     const onDisk = { [BOARD_META_KEY]: { createdAt: 1, updatedAt: 2 }, type: 'excalidraw', version: 2, elements: [imageEl('emb')], appState: { viewBackgroundColor: '#123456' }, files: { emb: { mimeType: 'image/png', dataURL: dataUrl() } } }
-    const file = await seed('Legacy.excalidraw', JSON.stringify(onDisk))
-    const before = await readFile(file)
+    await seed('Legacy.excalidraw', JSON.stringify(onDisk))
     const res = await loadDrawing({ root, path: 'Legacy.excalidraw' })
     expect(JSON.parse(res.json)).toEqual({ ...onDisk, files: {} })
     expect(res.json).not.toContain(PNG_B64)
     expect(res.files.emb).toEqual({ mimeType: 'image/png', dataURL: dataUrl() })
-    expect(await readFile(file)).toEqual(before) // opening writes nothing
-    expect(await readdir(root)).toEqual(['Legacy.excalidraw'])
+    // That opening writes nothing is `legacyBoard.integration.test.ts`'s.
   })
 
   it('a PREVIEW load (`imageMaxPx`) hands the pictures, the live elements and the size to the thumbnail cache (🔒 YAZ-2073 D6)', async () => {
@@ -258,7 +256,7 @@ describe('🔒 YAZ-1775 D3 — the image store on load', () => {
     expect(res.stored).toEqual(['dup'])
   })
 
-  it('hydrates nothing for a DELETED image element — an undo brings the id back, the sweep`s age guard keeps the bytes', async () => {
+  it("hydrates nothing for a DELETED image element — an undo brings the id back, the sweep's age guard keeps the bytes", async () => {
     await seedAsset('ghost.png')
     await seed('Board.excalidraw', scene([imageEl('ghost', { isDeleted: true })]))
     expect((await loadDrawing({ root, path: 'Board.excalidraw' })).files).toEqual({})
@@ -443,7 +441,7 @@ describe('🔒 YAZ-1834 — the yaseendraw block on save', () => {
     expect(block.updatedAt).toBeLessThanOrEqual(after)
   })
 
-  it('keeps createdAt and the backfill`s own keys, bumps only updatedAt (D5) — across saves that do not send the block back', async () => {
+  it("keeps createdAt and the backfill's own keys, bumps only updatedAt (D5) — across saves that do not send the block back", async () => {
     // As the importer writes it: the block FIRST (D1 — a block anywhere else is not read, and is replaced on save).
     const backfilled = `${JSON.stringify({ [BOARD_META_KEY]: { createdAt: 1600000000000, updatedAt: 1600000000001, cloudId: 'k7' }, type: 'excalidraw', elements: [], files: {} }, null, 2)}\n`
     const file = await seed('Cloud.excalidraw', backfilled)
@@ -482,20 +480,11 @@ describe('🔒 YAZ-1834 — the yaseendraw block on save', () => {
 /**
  * ONE PARSE, ONE STRINGIFY (YAZ-2073 5G). The save used to parse the scene three times and
  * stringify it twice; it now works on the parsed object. The bytes on disk must not move by one:
- * `frozenSaveBytes` is the old text pipeline (`stripEmbeddedFiles` → `stampBoardMeta`) copied
- * verbatim as the oracle, and every awkward spelling below goes through the real door.
+ * every awkward spelling below goes through the real door, and what it wrote is pinned byte for
+ * byte in `__snapshots__/drawing.test.ts.snap` — recorded from, and checked against, the old text
+ * pipeline (`stripEmbeddedFiles` → `stampBoardMeta`). Only the stamp's "now" is normalised.
  */
 describe('drawing:save writes the same bytes as the old three-parse pipeline (YAZ-2073 5G)', () => {
-  const isPlainObject = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v)
-  function frozenSaveBytes(json: string, at: { createdAt: number; updatedAt: number }, prior: Record<string, unknown> | null): string {
-    const scene = JSON.parse(json) as Record<string, unknown>
-    const lean = `${JSON.stringify({ ...scene, files: {} }, null, 2)}\n`
-    const { [BOARD_META_KEY]: own, ...rest } = JSON.parse(lean) as Record<string, unknown>
-    const existing = prior ?? own
-    const { createdAt, updatedAt: _stale, ...extras } = isPlainObject(existing) ? existing : {}
-    const block = { createdAt: typeof createdAt === 'number' && Number.isFinite(createdAt) ? createdAt : at.createdAt, updatedAt: at.updatedAt, ...extras }
-    return `${JSON.stringify({ [BOARD_META_KEY]: block, ...rest }, null, 2)}\n`
-  }
   // Not `blockOf`: an integer-like top-level key sorts before the block in ANY JS object, old path included.
   const stampOf = (written: string) => (JSON.parse(written) as Record<string, { createdAt: number; updatedAt: number }>)[BOARD_META_KEY]
   const FIXTURES: Record<string, string> = {
@@ -508,21 +497,21 @@ describe('drawing:save writes the same bytes as the old three-parse pipeline (YA
     noFilesKey: JSON.stringify({ type: 'excalidraw', elements: [], appState: {} }, null, 4),
   }
 
+  /** The written text with this save's own "now" (never a fixture's number) spelled `<now>`. */
+  const golden = (written: string) => written.replaceAll(String(stampOf(written).updatedAt), '<now>')
+
   for (const [name, json] of Object.entries(FIXTURES)) {
     it(`${name}: a new board`, async () => {
       const newFiles = name === 'legacy' ? [{ fileId: 'keep', mimeType: 'image/png', dataURL: dataUrl('a2VlcA==') }] : []
       await saveDrawing({ root, path: `${name}.excalidraw`, json, newFiles })
-      const written = await readFile(path.join(root, `${name}.excalidraw`), 'utf8')
-      const { createdAt, updatedAt } = stampOf(written)
-      expect(written).toBe(frozenSaveBytes(json, { createdAt, updatedAt }, null))
+      expect(golden(await readFile(path.join(root, `${name}.excalidraw`), 'utf8'))).toMatchSnapshot()
     })
 
     it(`${name}: over a board whose head carries a block with extras`, async () => {
       const prior = { createdAt: 1600000000000, updatedAt: 1600000000001, cloudId: 'k7' }
       const file = await seed(`${name}.excalidraw`, `${JSON.stringify({ [BOARD_META_KEY]: prior, type: 'excalidraw', elements: [], files: {} }, null, 2)}\n`)
       await saveDrawing({ root, path: file, json, newFiles: [] })
-      const written = await readFile(file, 'utf8')
-      expect(written).toBe(frozenSaveBytes(json, { createdAt: 0, updatedAt: stampOf(written).updatedAt }, prior))
+      expect(golden(await readFile(file, 'utf8'))).toMatchSnapshot()
     })
   }
 })

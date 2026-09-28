@@ -1,0 +1,299 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`drawing:save writes the same bytes as the old three-parse pipeline (YAZ-2073 5G) > awkward: a new board 1`] = `
+"{
+  "1": "one",
+  "2": "int keys sort first",
+  "yaseendraw": {
+    "createdAt": <now>,
+    "updatedAt": <now>
+  },
+  "type": "excalidraw",
+  "__proto__": {
+    "own": true
+  },
+  "elements": [
+    {
+      "id": "u",
+      "text": "café \\ud800   😀",
+      "n": 0,
+      "big": 1e+21,
+      "tiny": 5e-324,
+      "esc": "\\"\\\\\\n"
+    }
+  ],
+  "dup": 2,
+  "files": {}
+}
+"
+`;
+
+exports[`drawing:save writes the same bytes as the old three-parse pipeline (YAZ-2073 5G) > awkward: over a board whose head carries a block with extras 1`] = `
+"{
+  "1": "one",
+  "2": "int keys sort first",
+  "yaseendraw": {
+    "createdAt": 1600000000000,
+    "updatedAt": <now>,
+    "cloudId": "k7"
+  },
+  "type": "excalidraw",
+  "__proto__": {
+    "own": true
+  },
+  "elements": [
+    {
+      "id": "u",
+      "text": "café \\ud800   😀",
+      "n": 0,
+      "big": 1e+21,
+      "tiny": 5e-324,
+      "esc": "\\"\\\\\\n"
+    }
+  ],
+  "dup": 2,
+  "files": {}
+}
+"
+`;
+
+exports[`drawing:save writes the same bytes as the old three-parse pipeline (YAZ-2073 5G) > lean: a new board 1`] = `
+"{
+  "yaseendraw": {
+    "createdAt": <now>,
+    "updatedAt": <now>
+  },
+  "type": "excalidraw",
+  "version": 2,
+  "source": "yaseen-draw",
+  "elements": [
+    {
+      "id": "a",
+      "type": "rectangle",
+      "x": 1.5
+    }
+  ],
+  "appState": {},
+  "files": {}
+}
+"
+`;
+
+exports[`drawing:save writes the same bytes as the old three-parse pipeline (YAZ-2073 5G) > lean: over a board whose head carries a block with extras 1`] = `
+"{
+  "yaseendraw": {
+    "createdAt": 1600000000000,
+    "updatedAt": <now>,
+    "cloudId": "k7"
+  },
+  "type": "excalidraw",
+  "version": 2,
+  "source": "yaseen-draw",
+  "elements": [
+    {
+      "id": "a",
+      "type": "rectangle",
+      "x": 1.5
+    }
+  ],
+  "appState": {},
+  "files": {}
+}
+"
+`;
+
+exports[`drawing:save writes the same bytes as the old three-parse pipeline (YAZ-2073 5G) > legacy: a new board 1`] = `
+"{
+  "yaseendraw": {
+    "createdAt": <now>,
+    "updatedAt": <now>
+  },
+  "type": "excalidraw",
+  "version": 2,
+  "source": "yaseen-draw",
+  "elements": [
+    {
+      "id": "el-abc",
+      "type": "image",
+      "fileId": "abc"
+    },
+    {
+      "id": "el-keep",
+      "type": "image",
+      "fileId": "keep"
+    }
+  ],
+  "appState": {},
+  "files": {}
+}
+"
+`;
+
+exports[`drawing:save writes the same bytes as the old three-parse pipeline (YAZ-2073 5G) > legacy: over a board whose head carries a block with extras 1`] = `
+"{
+  "yaseendraw": {
+    "createdAt": 1600000000000,
+    "updatedAt": <now>,
+    "cloudId": "k7"
+  },
+  "type": "excalidraw",
+  "version": 2,
+  "source": "yaseen-draw",
+  "elements": [
+    {
+      "id": "el-abc",
+      "type": "image",
+      "fileId": "abc"
+    },
+    {
+      "id": "el-keep",
+      "type": "image",
+      "fileId": "keep"
+    }
+  ],
+  "appState": {},
+  "files": {}
+}
+"
+`;
+
+exports[`drawing:save writes the same bytes as the old three-parse pipeline (YAZ-2073 5G) > minified: a new board 1`] = `
+"{
+  "yaseendraw": {
+    "createdAt": <now>,
+    "updatedAt": <now>
+  },
+  "files": {},
+  "elements": [
+    {
+      "id": "m"
+    }
+  ],
+  "type": "excalidraw",
+  "appState": {
+    "zoom": {
+      "value": 1
+    }
+  }
+}
+"
+`;
+
+exports[`drawing:save writes the same bytes as the old three-parse pipeline (YAZ-2073 5G) > minified: over a board whose head carries a block with extras 1`] = `
+"{
+  "yaseendraw": {
+    "createdAt": 1600000000000,
+    "updatedAt": <now>,
+    "cloudId": "k7"
+  },
+  "files": {},
+  "elements": [
+    {
+      "id": "m"
+    }
+  ],
+  "type": "excalidraw",
+  "appState": {
+    "zoom": {
+      "value": 1
+    }
+  }
+}
+"
+`;
+
+exports[`drawing:save writes the same bytes as the old three-parse pipeline (YAZ-2073 5G) > noFilesKey: a new board 1`] = `
+"{
+  "yaseendraw": {
+    "createdAt": <now>,
+    "updatedAt": <now>
+  },
+  "type": "excalidraw",
+  "elements": [],
+  "appState": {},
+  "files": {}
+}
+"
+`;
+
+exports[`drawing:save writes the same bytes as the old three-parse pipeline (YAZ-2073 5G) > noFilesKey: over a board whose head carries a block with extras 1`] = `
+"{
+  "yaseendraw": {
+    "createdAt": 1600000000000,
+    "updatedAt": <now>,
+    "cloudId": "k7"
+  },
+  "type": "excalidraw",
+  "elements": [],
+  "appState": {},
+  "files": {}
+}
+"
+`;
+
+exports[`drawing:save writes the same bytes as the old three-parse pipeline (YAZ-2073 5G) > ownBlockNotAnObject: a new board 1`] = `
+"{
+  "yaseendraw": {
+    "createdAt": <now>,
+    "updatedAt": <now>
+  },
+  "type": "excalidraw",
+  "version": 2,
+  "source": "yaseen-draw",
+  "elements": [],
+  "appState": {},
+  "files": {}
+}
+"
+`;
+
+exports[`drawing:save writes the same bytes as the old three-parse pipeline (YAZ-2073 5G) > ownBlockNotAnObject: over a board whose head carries a block with extras 1`] = `
+"{
+  "yaseendraw": {
+    "createdAt": 1600000000000,
+    "updatedAt": <now>,
+    "cloudId": "k7"
+  },
+  "type": "excalidraw",
+  "version": 2,
+  "source": "yaseen-draw",
+  "elements": [],
+  "appState": {},
+  "files": {}
+}
+"
+`;
+
+exports[`drawing:save writes the same bytes as the old three-parse pipeline (YAZ-2073 5G) > ownBlockNotFirst: a new board 1`] = `
+"{
+  "yaseendraw": {
+    "createdAt": 2,
+    "updatedAt": <now>,
+    "cloudId": "z"
+  },
+  "type": "excalidraw",
+  "version": 2,
+  "source": "yaseen-draw",
+  "elements": [],
+  "appState": {},
+  "files": {}
+}
+"
+`;
+
+exports[`drawing:save writes the same bytes as the old three-parse pipeline (YAZ-2073 5G) > ownBlockNotFirst: over a board whose head carries a block with extras 1`] = `
+"{
+  "yaseendraw": {
+    "createdAt": 1600000000000,
+    "updatedAt": <now>,
+    "cloudId": "k7"
+  },
+  "type": "excalidraw",
+  "version": 2,
+  "source": "yaseen-draw",
+  "elements": [],
+  "appState": {},
+  "files": {}
+}
+"
+`;
