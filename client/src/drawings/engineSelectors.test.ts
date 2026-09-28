@@ -8,21 +8,24 @@ import { describe, expect, it } from 'vitest'
  * CSS and code depend on them, and a rename in an engine bump would fail silently — a panel restyled
  * back, presenting chrome left showing, a focus handoff going nowhere. This pins both ends: the
  * vendored engine still renders every one, and every engine class our CSS selects is listed here.
+ * Each pin names the ONE file of ours that depends on it, and the no-stale-pin check reads only that
+ * file: `.sidebar` and `.sidebar__header` are the app's own sidebar classes too, so a check across
+ * every file would always pass (YAZ-2073 8B).
  * `tools/packEngine.mjs` is the bump; a red test here is the re-check its header asks for.
  */
-const ENGINE_CLASSES: Record<string, string> = {
-  excalidraw: 'drawingEditor.css scopes every in-engine rule (the rail, the docked panel) under it',
-  'theme--dark': "drawingEditor.css's dark-mode parity rule",
-  'main-menu-trigger': 'drawingEditor.css: the hamburger beside the rail',
-  'default-sidebar': 'drawingEditor.css: the docked canvas panel',
-  sidebar__header: 'drawingEditor.css: the docked panel header',
-  'sidebar-triggers': 'drawingEditor.css: the panel tab triggers',
-  sidebar__header__buttons: 'drawingEditor.css: the panel header buttons',
-  sidebar: 'presentation.css hides the canvas panel while presenting',
-  'layer-ui__wrapper': 'presentation.css hides the toolbar, properties and footer while presenting',
-  'App-top-bar': 'presentation.css hides the top bar while presenting',
-  'App-bottom-bar': 'presentation.css hides the bottom bar while presenting',
-  'excalidraw-container': 'ExcalidrawSurface focuses it when a tab is revealed (focusHandoff)',
+const ENGINE_CLASSES: Record<string, [file: string, why: string]> = {
+  excalidraw: ['drawings/drawingEditor.css', 'scopes every in-engine rule (the rail, the docked panel) under it'],
+  'theme--dark': ['drawings/drawingEditor.css', 'the dark-mode parity rule'],
+  'main-menu-trigger': ['drawings/drawingEditor.css', 'the hamburger beside the rail'],
+  'default-sidebar': ['drawings/drawingEditor.css', 'the docked canvas panel'],
+  sidebar__header: ['drawings/drawingEditor.css', 'the docked panel header'],
+  'sidebar-triggers': ['drawings/drawingEditor.css', 'the panel tab triggers'],
+  sidebar__header__buttons: ['drawings/drawingEditor.css', 'the panel header buttons'],
+  sidebar: ['drawings/presentation/presentation.css', 'hides the canvas panel while presenting'],
+  'layer-ui__wrapper': ['drawings/presentation/presentation.css', 'hides the toolbar, properties and footer while presenting'],
+  'App-top-bar': ['drawings/presentation/presentation.css', 'hides the top bar while presenting'],
+  'App-bottom-bar': ['drawings/presentation/presentation.css', 'hides the bottom bar while presenting'],
+  'excalidraw-container': ['drawings/ExcalidrawSurface.tsx', 'focuses it when a tab is revealed (focusHandoff)'],
 }
 
 const walk = (dir: string): string[] => readdirSync(dir, { withFileTypes: true }).flatMap((e) => (e.isDirectory() ? walk(join(dir, e.name)) : [join(dir, e.name)]))
@@ -51,8 +54,9 @@ describe('engine-owned selectors (🔒 YAZ-2073 D16)', () => {
     expect(writes(engineJs, cls)).toBe(true)
   })
 
-  it.each(Object.keys(ENGINE_CLASSES))('the app still depends on .%s (no stale pin)', (cls) => {
-    expect(ourCss.some((f) => selectedClasses(readFileSync(f, 'utf8')).has(cls)) || ourCode.includes(`.${cls}`)).toBe(true)
+  it.each(Object.entries(ENGINE_CLASSES))('the app still depends on .%s (no stale pin)', (cls, [file]) => {
+    const text = readFileSync(join(src, file), 'utf8')
+    expect(file.endsWith('.css') ? selectedClasses(text).has(cls) : text.includes(`.${cls}`)).toBe(true)
   })
 
   it('pins every class our CSS selects that only the engine renders', () => {
