@@ -28,7 +28,7 @@ nothing to do with each other. A bare `D3` would be unresolvable, so there are n
 | `client/src/drawings/presentation/` | the canvas panel's Present tab: the slide rules, the panel and the full-pane player |
 | `client/src/image-studio/` | the canvas panel's Images tab: the Image Studio, the shapes catalog, both insert paths |
 | `client/src/components-library/` | the canvas panel's Components tab: the saved-component library, its capture, import, preview and insert (named so it is never confused with `client/src/components/`) |
-| `client/src/sidebar/` | the file tree, its context menu, rename/move/trash, favorites, vault switcher and its right-click vault menu (items as data in `vaultMenuSections.ts`) |
+| `client/src/sidebar/` | the file tree, its context menu, rename/move/trash, favorites, vault switcher (one-line rows with a hover ⓘ full path and vault display names since YAZ-2056) and its right-click vault menu (items as data in `vaultMenuSections.ts`) |
 | `client/src/tabs/` | the tab strip |
 | `client/src/workspace/` | the tab model (`tabsReducer`) and its per-tab history |
 | `client/src/settings/` | the settings dialog and its registry |
@@ -158,7 +158,7 @@ calls that go through it; `state`, `window`, `menu`, `link` and `watch` are call
 | `file.clip` / `paste` / `clipState` | `fs:clip*`, `fs:paste` | main owns the ONE app-wide file clipboard |
 | `file.onRenamed` / `onDeleted` / `onClipChanged` | `file:*`, `clip:changed` | pushes to EVERY window |
 | `shell.reveal` / `openVsCode` / `openDefault` | `shell:*` | OS hand-offs |
-| `state.get` / `setSettings` / `setSidebarWidth` / `pushRecent` / `removeRecent` / `setFolder` | `state:*` | the app state file |
+| `state.get` / `setSettings` / `setSidebarWidth` / `pushRecent` / `removeRecent` / `setFolder` | `state:*` | the app state file; `setFolder(root, patch: FolderPatch)` merges `expanded` / `lastFile` / `sortOrder` / `name`, each type-checked at the IPC boundary, `name` cleaned main-side by `cleanVaultName` |
 | `state.onChange` | `state:changed` | a change in any window replaces the cache in all of them |
 | `window.identity` / `setIdentity` | `window:*` | THIS window's `WindowEntry`, by the `?win=<id>` in its URL |
 | `window.open` / `openRecent` / `closeSelf` | `window:*` | window lifecycle |
@@ -267,8 +267,16 @@ FolderState {
   expanded: string[]                       // SESSION only: never written to disk (YAZ-1642)
   lastFile: string | null
   sortOrder: 'name' | 'updated' | 'created'   // the Files lens's order for this vault (🔒 YAZ-1835 D3); persisted, default 'name'
+  name: string | null                      // the vault's DISPLAY NAME (Docs YAZ-1974 D3); null = its folder name
 }
 ```
+
+`FolderState.name` (YAZ-2056, a port of Docs YAZ-1974 D3) is persisted, per machine — never in the
+vault's `.yaseendraw/`, which would push a personal label into a shared repo. `cleanVaultName` trims it
+and caps it at `MAX_VAULT_NAME` (80) code points on load and on every patch; empty or not a string
+is `null`, and a name equal to the folder's basename is stored as `null` (`storage.setVaultName`). It
+survives Remove from recent vaults (recents never prune `folders`), follows the vault through
+`renamePath`, and goes with it in `removePath`; a Finder rename outside the app drops it, like recents.
 
 `SettingsState.canvas` is `CanvasPrefs` (`shared/types/`, mapped by `shared/canvasPrefs.ts`) —
 the fourteen user-level canvas preferences 🔒 YAZ-1775 D9 took out of the engine's browser localStorage:
@@ -692,14 +700,51 @@ the vault switcher's Open folder… row and its vault rows, File › Open Recent
 one open-recent door, `openRecentBeside`: that vault's live windows are raised, or a new window opens
 on its remembered last file. Picked folders decide in the renderer (`App.tsx` `openPicked`, which
 knows its root); Open Recent decides in main (`menu.ts` `openRecent`, from the target window's
-entry). The one opt-in exception is the vault menu's "Open in this window" (YAZ-1941 D2), which
-says so in its label and calls App's `openRoot` directly.
+entry). The one opt-in exception is "Open in this window" — the vault menu's item (YAZ-1941 D2),
+or ⇧⏎ / ⇧-click on a switcher row (Docs YAZ-1974 D8) — which calls App's `openRoot` directly.
+
+**The vault switcher** (⌘O; YAZ-2056, a port of Yaseen Docs YAZ-1974):
+the sidebar header's trigger drops a `ContextMenuSurface` panel hung off the header's rect: a filter
+input, then every recent vault as ONE line — display name · ⓘ · relative time — the current vault
+marked `aria-current`, then Open folder…. The keyboard model is YAZ-1767's: ⌘O toggles the panel;
+an empty query highlights the last-used OTHER vault, a typed one its top match; ↑/↓ clamp; ⏎ or a
+click opens beside through `openRecent` (a `false` greys the row "Folder not found" and the panel
+stays); Esc closes. **Names** (Docs YAZ-1974 D3–D6): `storage.vaultName(root)` —
+`folders[root].name ?? basename(root)`, live through `useVaultName` — is what the trigger, the rows,
+the OS window title (`windowTitle(vault, file)` takes the NAME), Welcome's recents, "Copy vault name"
+and Settings › Sharing's "Nothing in … is shared." show (YAZ-2056 D4); File › Open Recent keeps full
+paths, and the Reveal / VS Code "no longer there" notices keep the FOLDER name, on purpose. The
+filter ranks through `matchCandidates` over each row's display name AND folder name (`VaultRow.folder`;
+one candidate per name, the second only when it differs) — each row once, at its best rank (Docs YAZ-1974 D6).
+**The path** (Docs YAZ-1974 D2) is one hover away: an ⓘ between name and time, shown while its row is hovered
+(`visibility`, so nothing shifts; a dead row too), draws the WHOLE path — `<wbr>` after every `/`,
+never truncated — in a `role="tooltip"` portalled to `<body>`, `position: fixed` at the row (below
+it, or above when there is more room there) at z-index 42, so the panel's scroll box never clips
+it; mouse-only by design; a click on the ⓘ is the row's click, a right-click the row's menu; the
+trigger keeps `title={root}`. **Width** (Docs YAZ-1974 D7): the panel is at least the header's width and grows to
+fit its longest name, capped at `min(480px, 100vw − 16px)`; past the cap a name wraps
+(`overflow-wrap: anywhere`), never "…". `ContextMenuSurface` keeps `width` — a fixed width, for the
+Info popover and the Share menu — and adds `minWidth` beside it, the floor the switcher passes
+(YAZ-2056 D2; Docs renamed `width` to `minWidth`, which Draw's two fixed-width callers rule out).
+**⇧** (Docs YAZ-1974 D8/D9): ⇧⏎ and ⇧-click open the vault IN this window — the menu's "Open in this window"
+(`onOpenHere`, a `false` greys the row) — a plain ⏎ on the current vault, ignored on Open folder…,
+inert on a dead row; while ⇧ is held (window `keydown` / `keyup`, released on window `blur`,
+listened to only while the panel is open) the highlighted row's time slot reads "Open here" in the
+accent colour — never on the current vault, a dead row or Open folder….
 
 **The vault menu** (YAZ-1941, a port of Yaseen Docs YAZ-1798): right-clicking the switcher's
 trigger (= the current vault) or any live row opens the sidebar's own `ContextMenu` with
-`buildVaultMenuSections({ path, isCurrent })` (`sidebar/vaultMenuSections.ts`, pure) — another
-vault gets [Open in this window] · [Copy vault name · Copy path] · [Reveal in Finder · Open in VS
-Code] · [Remove from recent vaults]; the current vault only the middle two groups. "Open in this
+`buildVaultMenuSections({ path, name, isCurrent, renamed })` (`sidebar/vaultMenuSections.ts`, pure) —
+five groups: another vault gets [Open in this window `⇧⏎`] · [Set display name · Reset to folder
+name] · [Copy vault name · Copy path] · [Reveal in Finder · Open in VS Code] · [Remove from recent
+vaults]; the current vault only the middle three groups; "Reset to folder name" only while a
+display name is set (Docs YAZ-1974 D5 — never labelled "Rename", which renames on disk in the file
+menu). "Set display name" turns the name into an inline `TextField` (`components/TextField.tsx`,
+YAZ-2056 D3) WHERE it was right-clicked — the header or the row, a `<div>` in place of the
+`<button>` meanwhile — the name selected, the folder name as placeholder: ⏎ or blur saves, Esc
+cancels, an empty field is the folder name again; the field is the top layer: Esc and click-away
+end only it (the panel stays), and a mousedown on another row ends it (the blur saves) and swallows
+that click, so a vault never opens by accident. "Copy vault name" copies the display name. "Open in this
 window" is `openRoot` (in place; `false` greys the row like a click's); Reveal / VS Code are the
 Sidebar's own verbs (any absolute path, `NOT_FOUND` notice); the copies confirm through the sidebar
 notice; Remove is `storage.removeRecentRoot` with no confirm (the folder is untouched) and drops the
