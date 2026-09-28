@@ -15,10 +15,10 @@
 - Done:
   - [x] 1- Scope (YAZ-2029)
   - [x] 2A-2D- Build + CONTRACTS.md (YAZ-2031..2034) — 2505 tests green, typecheck clean
-- Now: [→] 3- Hand pass S1–S18 (YAZ-2035)
-- Remaining:
-  - [ ] 4A- Audit (YAZ-2037)
-  - [ ] 4B- Apply, merge, cleanup (YAZ-2038)
+  - [x] 3- Hand pass S1–S18 (YAZ-2035) — Yasin: "all good"
+  - [x] 4A- Audit (YAZ-2037) — comment-only, 2 fixes, 2 declined
+  - [x] 4B- Apply, merge, cleanup (YAZ-2038) — comments fixed, ledger closed, rig + worktree removed
+- CLOSED 2026-09-27.
 
 ## Open Questions
 - none

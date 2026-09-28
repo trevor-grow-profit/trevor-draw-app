@@ -427,9 +427,9 @@ export function App() {
    * the sidebar's inline rename, its drag-move — arrives here as (oldPath, newPath), so the
    * behaviour is written once. Flush our own buffer(s) for the file — or every open editor under
    * the folder — then rename; the commit is the Enter, with no confirm in between (🔒 YAZ-1775:
-   * the sheet was deleted once wikilinks were gone — it warned about nothing, and every new
-   * `Untitled` board would have tripped it. Delete and move keep their confirms). All failures
-   * land in the passive notice — never a dialog, never a rejection back into the inline input.
+   * the sheet was deleted once wikilinks were gone — it warned about nothing. Delete and move
+   * keep their confirms). All failures land in the passive notice — never a dialog, never a
+   * rejection back into the inline input.
    */
   const renameFile = useCallback(
     async (oldPath: string, newPath: string): Promise<void> => {

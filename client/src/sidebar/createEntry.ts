@@ -1,8 +1,8 @@
 /**
- * Pure logic behind the sidebar's "New drawing" / "New folder" flow (GRO-2022): name validation,
- * target-directory resolution, and final path building. The UI (context menu + inline input)
- * lives in Sidebar/Tree; the main process enforces the same rules again (absolute path, vault
- * extension, no overwrite).
+ * Pure logic behind the sidebar's inline create box (GRO-2022), which every board and folder
+ * birth goes through: name validation, target-directory resolution, and final path building. The
+ * UI (context menu + inline input) lives in Sidebar/Tree; the main process enforces the same
+ * rules again (absolute path, vault extension, no overwrite).
  */
 import { BOARD_EXTENSION, fileKind } from '@shared/fileKind'
 import type { FileKind } from '@shared/types'
