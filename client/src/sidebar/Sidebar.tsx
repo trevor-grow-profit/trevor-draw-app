@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { SIDEBAR_LENSES, SORT_ORDERS, type FileClipState, type SettingsState, type SidebarLens, type SortOrder, type TreeNode, type TreeResponse } from '@shared/types'
 import { EMPTY_DIAGRAM_XML } from '@shared/diagramFile'
 import { isWithin } from '@shared/paths'
@@ -8,34 +8,36 @@ import { ContextMenuSurface } from '../components/ContextMenuSurface'
 import { ChevronsIcon, EyeIcon, HeartIcon, PreviewIcon, SearchIcon, SidebarPanelIcon, SortIcon } from '../components/icons'
 import type { WatchSource } from '../hooks/useWatch'
 import { basename } from '../lib/paths'
-import { EMPTY_SELECTION, orderedSelection, selectionReducer } from '../lib/selection'
-import { allDirs, ancestorDirs, findDirNode, findNode, treeHasFile, treeHasPath } from '../lib/treeState'
-import { sortTree, type FileNode } from '@shared/treeSort'
-import { createStore } from '../lib/store'
+import { allDirs, findDirNode, findNode, treeHasFile } from '../lib/treeState'
+import { sortTree } from '@shared/treeSort'
 import { BoardInfo } from './BoardInfo'
 import { useShareBadges } from '../share/useShareBadges'
-import { HoverPreviewHost, type HoverState } from './HoverPreviewHost'
+import { HoverPreviewHost } from './HoverPreviewHost'
 import { SearchResults } from '../search/SearchResults'
-import type { SearchCandidate } from '../search/searchCandidates'
-import { useSearchResults } from '../search/useSearchResults'
 import { ConfirmDelete, type DeleteTarget } from './ConfirmDelete'
 import { ContextMenu } from './ContextMenu'
 import { datedSeed, entryPath, renamedPath, targetDirFor, type EntryKind, type MenuRow } from './createEntry'
 import { SettingsButton } from '../settings/SettingsButton'
 import { buildMenuSections, countItems } from './menuSections'
 import type { NoticeKind } from '../lib/notice'
-import { Tree, type PendingCreate, type PendingRename, type TreeFileMove, type TreeSelection } from './Tree'
+import { Tree, type PendingCreate, type PendingRename, type TreeFileMove } from './Tree'
 import { VaultSwitcher } from './VaultSwitcher'
 import { useExpansion } from './hooks/useExpansion'
 import { useFavoritesLens } from './hooks/useFavoritesLens'
 import { useFocusMode } from './hooks/useFocusMode'
+import { useHoverPreview } from './hooks/useHoverPreview'
 import { useInfoPopover } from './hooks/useInfoPopover'
 import { useMissingFileChecks } from './hooks/useMissingFileChecks'
+import { useRevealRequest } from './hooks/useRevealRequest'
+import { useSelection } from './hooks/useSelection'
+import { useSidebarSearch } from './hooks/useSidebarSearch'
 import { useSortOrder } from './hooks/useSortOrder'
 import { useVaultTree } from './hooks/useVaultTree'
 
+import type { SidebarRevealRequest } from './revealRow'
+
+export { BOARD_PREVIEW_DWELL_MS } from './hooks/useHoverPreview'
 export { WATCH_REFRESH_MS } from './hooks/useVaultTree'
-import { flashTreeRows, revealMissingMessage, type SidebarRevealRequest } from './revealRow'
 
 interface SidebarProps {
   root: string
@@ -290,8 +292,6 @@ function isBoardRow(tree: readonly TreeNode[], path: string): boolean {
 /** The sort control's labels (🔒 YAZ-1835 D5), in `SORT_ORDERS` order. */
 const SORT_LABEL: Record<SortOrder, string> = { name: 'Name', updated: 'Last updated', created: 'Created' }
 
-/** How long the pointer (or focus) rests on a board row before its preview opens (YAZ-1800). */
-export const BOARD_PREVIEW_DWELL_MS = 400
 
 /** The Favorites tree's file move (YAZ-1766 D4): nothing on that tab drags to disk, so every callback is a no-op. */
 const INERT_MOVE: TreeFileMove = { dragging: null, dropDir: null, start: () => undefined, end: () => undefined, hover: () => undefined, drop: () => undefined }
@@ -333,12 +333,8 @@ export function Sidebar({
   const { expanded, dispatch, expandedSet, toggleDir } = useExpansion(root, activeFile)
   const { focusDirs, setFocusDirs, focusFavorites, focusNodes, focused, focusOn, exitFocus } = useFocusMode(root, tree, lens, dispatch)
   const { favorites, favoriteNodes, favoriteDirs, toggleFavorite, favoriteReorder } = useFavoritesLens(root, tree, focusFavorites, onNotice)
-  // Multi-select (YAZ-1336, 🔒 D1): the selected PATHS — files and, since YAZ-1578, folders —
-  // shared by BOTH lenses, one entry per path however many rows draw it (🔒 YAZ-1336 D3). It lives HERE
-  // and nowhere else on purpose: this component is mounted `key={root}` and only while the
-  // sidebar is open, so a selection is honestly about rows currently on screen and cannot
-  // outlive them (a collapse ends it).
-  const [selectedPaths, dispatchSelection] = useReducer(selectionReducer, EMPTY_SELECTION)
+  const bodyRef = useRef<HTMLDivElement>(null)
+  const asideRef = useRef<HTMLElement>(null)
   const [menu, setMenu] = useState<MenuTargets | null>(null)
   const [sortOrder, setSortOrder] = useSortOrder(root)
   const [sortMenu, setSortMenu] = useState<{ x: number; y: number } | null>(null)
@@ -350,17 +346,16 @@ export function Sidebar({
   // File drag-to-move (E1b, GRO-2241): the dragged file row + the highlighted drop target.
   const [dragging, setDragging] = useState<string | null>(null)
   const [dropDir, setDropDir] = useState<string | null>(null)
-  // The persistent search bar's query (YAZ-801). It lives HERE rather than in the bar because
-  // YAZ-803 swaps the BODY while it is non-empty; Sidebar is mounted `key={root}`, so it resets
-  // on unmount and on a root switch without any clearing code.
-  const [query, setQuery] = useState('')
-  const seenRevealId = useRef<number | null>(null)
-  const handledFilesRevealId = useRef<number | null>(null)
-  const [pendingReveal, setPendingReveal] = useState<SidebarRevealRequest | null>(null)
-  const searchInput = useRef<HTMLInputElement>(null)
-  const bodyRef = useRef<HTMLDivElement>(null)
-  // The highlighted result row (YAZ-803); the keyboard owns it, so it lives with the query.
-  const [selected, setSelected] = useState(0)
+  const { query, setQuery, searching, results, sel, setSelected, activate, searchInput, changeQuery, searchKeyDown } = useSidebarSearch({
+    root,
+    tree,
+    pendingSearchFocus,
+    onSearchFocusHandled,
+    onRevealInFiles,
+    onOpenFile,
+    onOpenFileBackground,
+  })
+  const { selectedPaths, dispatchSelection, selection, orderedSelectedPaths, clearOnEscape, clearOnBlankClick } = useSelection({ lens, searching, tree, bodyRef, menuOpen: menu !== null })
 
   // Every directory of the CURRENT tree, outer before inner (`allDirs`): the expand-all set
   // (⚡ YAZ-862) and, since YAZ-1491, the search list's folder rows (🔒 D1) — one memo, no second
@@ -372,86 +367,12 @@ export function Sidebar({
   const sortedNodes = useMemo(() => sortTree(focusNodes.length > 0 ? focusNodes : (tree?.tree ?? []), sortOrder), [focusNodes, tree, sortOrder])
   // What the chevrons button unfolds on the two disk-reading lenses.
   const bodyDirs = lens === 'favorites' ? favoriteDirs : shownDirs
-  // ⌘K's feed (YAZ-1814): the ONE tree this panel already holds and the watcher already keeps
-  // fresh — the catalog walk lives in `search/`, is lazy until the first query, and drops
-  // non-drawing files and (through `fs:tree`) the image store.
-  const results = useSearchResults(root, query, tree?.tree ?? null)
-  // 🔒 flat-list ruling on YAZ-739: while a query is typed the body shows a FLAT ranked list
-  // instead of the tree. A conditional render, not a teardown — every bit of tree state (data,
-  // expansion, pending create/rename, drag) lives here and is waiting untouched when it clears.
-  const searching = query.trim() !== ''
-  // A tree refresh can shrink the list under the keyboard's index (F1 finding 2, YAZ-808), so
-  // every reader of the selection clamps: the highlight lands on the last row, not on nowhere.
-  const sel = Math.min(selected, results.length - 1)
-
-  // THE HOVER PREVIEW (YAZ-1800): a board row rested on for the dwell opens a picture of the whole
-  // board beside the sidebar. `hover` is the row — pending until the dwell ends, then shown. A save to
-  // it is only a new picture key, which the panel swaps in place (🔒 D5 amendment); only the row
-  // leaving the tree closes it. Every close bumps `hoverRequest`, so an earlier row's dwell never fires late.
-  // It is a STORE only `HoverPreviewHost` reads (YAZ-2073 5D): crossing rows re-renders the panel, never this.
-  const asideRef = useRef<HTMLElement>(null)
-  const [hover] = useState(() => createStore<HoverState>({ path: null, shown: false }))
-  const hoverTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const hoverRequest = useRef(0)
-  // A menu or the Info popover owns the pointer while it stands: nothing opens under it.
-  const hoverBlocked = menu !== null || sortMenu !== null || infoPopover !== null
-  const hoverBlockedRef = useRef(hoverBlocked)
-  hoverBlockedRef.current = hoverBlocked
-  const closePreview = useCallback(() => {
-    hoverRequest.current++
-    if (hoverTimer.current !== null) clearTimeout(hoverTimer.current)
-    hoverTimer.current = null
-    hover.set({ path: null, shown: false })
-  }, [hover])
-  const hoverFile = useCallback(
-    (node: FileNode | null) => {
-      // The same row again (focus after the pointer, or back) keeps its dwell or its panel.
-      if (node !== null && hover.getState().path === node.path) return
-      closePreview()
-      if (node === null || hoverBlockedRef.current) return
-      const id = hoverRequest.current
-      const { path } = node
-      hover.set({ path, shown: false })
-      hoverTimer.current = setTimeout(() => {
-        hoverTimer.current = null
-        if (id === hoverRequest.current) hover.set({ shown: true })
-      }, BOARD_PREVIEW_DWELL_MS)
-    },
-    [hover, closePreview],
-  )
   const previewsOn = settings.hoverPreview && !searching
+  // A menu or the Info popover owns the pointer while it stands: nothing opens under it.
+  const { hover, hoverFile, closePreview } = useHoverPreview({ blocked: menu !== null || sortMenu !== null || infoPopover !== null, enabled: previewsOn, activeFile })
   // YAZ-1799: a link mark on shared boards (red when the last update failed or the link is stale).
   const shareBadges = useShareBadges(root)
-  // Everything else that ends a glance: the toggle, a search, a menu opening, another board opening.
-  useEffect(() => {
-    if (!previewsOn || hoverBlocked) closePreview()
-  }, [previewsOn, hoverBlocked, closePreview])
-  useEffect(() => closePreview(), [activeFile, closePreview])
-  useEffect(() => closePreview, [closePreview]) // unmount: no dwell timer outlives the sidebar
-
-  // One activation rule for keyboard AND click (🔒 D3, YAZ-1491): a folder reveals, a file opens.
-  // Enter PREVIEWS — focus stays in the bar, so ↑/↓ carry on walking the results.
-  const activate = (hit: SearchCandidate, background: boolean) => {
-    if (hit.kind === 'dir') onRevealInFiles(hit.path)
-    else if (background) onOpenFileBackground(hit.path)
-    else onOpenFile(hit.path)
-  }
-
-  useEffect(() => {
-    if (revealRequest === null || seenRevealId.current === revealRequest.id) return
-    seenRevealId.current = revealRequest.id
-    onRevealConsumed(revealRequest.id)
-    if (revealRequest.lens !== lens) {
-      setPendingReveal(null)
-      return
-    }
-    setQuery('')
-    setPendingReveal(revealRequest)
-  }, [lens, onRevealConsumed, revealRequest])
-
-  useEffect(() => {
-    if (pendingReveal !== null && pendingReveal.lens !== lens) setPendingReveal(null)
-  }, [lens, pendingReveal])
+  useRevealRequest({ root, lens, revealRequest, onRevealConsumed, tree, dirs, expanded, dispatch, focusDirs, setFocusDirs, setQuery, onNotice, bodyRef })
 
   // Expand / collapse the whole tree (⚡ YAZ-862). "Any open" is measured against what the CURRENT
   // tree can actually unfold (`dirs`, above), never the raw persisted list, which would leave the
@@ -460,68 +381,7 @@ export function Sidebar({
   const anyExpanded = bodyDirs.some((d) => expanded.includes(d))
   const allLabel = anyExpanded ? 'Collapse all' : 'Expand all'
 
-  // A selection is about the rows on screen (YAZ-1336), so whatever REPLACES them ends it: the
-  // other lens is a different reading of the vault, and a typed query swaps the body for the flat
-  // list entirely (🔒 the flat-list ruling on YAZ-739). `clear` on an empty selection returns the
-  // same set, so the mount pass and every ordinary render below cost nothing.
-  useEffect(() => {
-    dispatchSelection({ type: 'clear' })
-  }, [lens, searching])
-
-  // The loaded tree is the canonical disk truth for BOTH lenses —
-  // so a path it no longer has cannot stay selected. A selected path is a file OR a folder
-  // (YAZ-1578, 🔒 D1), hence `treeHasPath` here and nowhere else. Reference-stable when nothing
-  // was dropped, which is every refresh that changed something else.
-  useEffect(() => {
-    if (tree === null) return
-    dispatchSelection({ type: 'prune', exists: (path) => treeHasPath(tree.tree, path) })
-  }, [tree])
-
-  // A Files reveal targets a file — or, since a folder search row (🔒 D3, YAZ-1491), a DIR of the
-  // tree. Both questions are asked once here and read by the two steps below.
-  const revealIsDir = pendingReveal?.lens === 'files' && dirs.includes(pendingReveal.path)
-  const revealTargetPresent = tree !== null && pendingReveal?.lens === 'files' && (revealIsDir || treeHasFile(tree.tree, pendingReveal.path))
-
-  useEffect(() => {
-    if (tree === null || pendingReveal?.lens !== 'files' || handledFilesRevealId.current === pendingReveal.id) return
-    handledFilesRevealId.current = pendingReveal.id
-    if (!revealTargetPresent) {
-      onNotice(revealMissingMessage(pendingReveal.path, 'files'), 'error')
-      return
-    }
-    // A reveal is "show me THIS" (YAZ-1605): a target outside every focused folder ends the focus first.
-    if (focusDirs.length > 0 && !focusDirs.some((dir) => isWithin(dir, pendingReveal.path))) setFocusDirs([])
-    // A folder opens ITSELF too — the synthetic-child idiom the create menu already uses.
-    dispatch({ type: 'expandTo', root, file: revealIsDir ? `${pendingReveal.path}/x` : pendingReveal.path })
-  }, [focusDirs, onNotice, pendingReveal, revealIsDir, revealTargetPresent, root, tree])
-
-  const filesRevealReady = revealTargetPresent && ancestorDirs(root, pendingReveal.path).every((dir) => expanded.includes(dir))
-
-  useEffect(() => {
-    if (!filesRevealReady || pendingReveal === null || bodyRef.current === null) return
-    return flashTreeRows(bodyRef.current, pendingReveal.path) ?? undefined
-  }, [filesRevealReady, pendingReveal])
-
-  // ⌘K's focus handshake (YAZ-801). Firing on MOUNT is deliberate, not a side effect to guard
-  // against: ⌘K with the sidebar collapsed un-collapses it, so the sidebar mounts with the flag
-  // already true (0- re-scope on YAZ-800). A plain remount with the flag false focuses nothing.
-  useEffect(() => {
-    if (!pendingSearchFocus) return
-    searchInput.current?.focus()
-    onSearchFocusHandled()
-  }, [pendingSearchFocus, onSearchFocusHandled])
-
   // ---- New drawing / new folder (GRO-2022): right-click menu → inline name input ----
-
-  /**
-   * The whole selection as a list, ordered by the PANEL (YAZ-1337, as ⚡ YAZ-1338 rules it): the
-   * rows on screen first, in the order the eye reads them — never click order, which is not an
-   * order the user can see — and every still-selected path with no row appended after them, so
-   * collapsing a folder over a selected file hides the row and keeps the file. The one rule lives
-   * in `orderedSelection`, which the clipboard chords read too: the menu and the chords cannot
-   * spell one selection two ways.
-   */
-  const orderedSelectedPaths = useCallback((): string[] => orderedSelection(selectedPaths, bodyRef.current), [selectedPaths])
 
   const openMenu = useCallback(
     (node: MenuRow | null, e: React.MouseEvent) => {
@@ -873,16 +733,6 @@ export function Sidebar({
     [dragging, dropDir, dropOnDir],
   )
 
-  /** The multi-select as both trees take it (YAZ-1336): the set, plus its two gestures — toggle (shift) and set (any other click, D9). */
-  const selection = useMemo<TreeSelection>(
-    () => ({
-      paths: selectedPaths,
-      toggle: (path) => dispatchSelection({ type: 'toggle', path }),
-      set: (path) => dispatchSelection({ type: 'set', path }),
-    }),
-    [selectedPaths],
-  )
-
   const pending = useMemo<PendingCreate | null>(
     () => (creating === null ? null : { kind: creating.kind, seed: creating.seed, parentDir: creating.parentDir, onSubmit: submitCreate, onCancel: cancelCreate }),
     [creating, submitCreate, cancelCreate],
@@ -1029,37 +879,8 @@ export function Sidebar({
           title="Search (⌘K)"
           aria-label="Search boards"
           value={query}
-          onChange={(e) => {
-            setQuery(e.target.value)
-            setSelected(0) // a new query is a new ranking: the top row is the selection again
-          }}
-          onKeyDown={(e) => {
-            if (e.key === 'Escape') {
-              e.preventDefault()
-              e.stopPropagation()
-              // Esc empties a typed query first and only gives up focus on the second press.
-              if (query !== '') setQuery('')
-              else e.currentTarget.blur()
-              return
-            }
-            // The bar keeps focus while the list is driven from it (YAZ-803). ↑/↓ WRAP (YAZ-1814,
-            // YAZ-1814): the list is capped at 50 and read top-down, so falling off the end is a
-            // request for the other end — and ↑ from the top row is the cheapest way to the
-            // bottom of a full list. Opening leaves the list up.
-            if (results.length === 0) return
-            if (e.key === 'ArrowDown') {
-              e.preventDefault()
-              setSelected(sel + 1 >= results.length ? 0 : sel + 1)
-            } else if (e.key === 'ArrowUp') {
-              e.preventDefault()
-              setSelected(sel - 1 < 0 ? results.length - 1 : sel - 1)
-            } else if (e.key === 'Enter') {
-              e.preventDefault()
-              const hit = results[sel]
-              if (hit === undefined) return
-              activate(hit, e.metaKey)
-            }
-          }}
+          onChange={changeQuery}
+          onKeyDown={searchKeyDown}
         />
       </div>
       {/* The blank-space menu is the TREE's ("New drawing" here creates in the vault root); the
@@ -1070,34 +891,15 @@ export function Sidebar({
         ref={bodyRef}
         className="sidebar__body"
         onContextMenu={(e) => (searching ? e.preventDefault() : openMenu(null, e))}
-        // Escape drops the multi-select (YAZ-1336) — and ONLY when there is one: with nothing
-        // selected the key still belongs to everyone else listening for it, so this must neither
-        // swallow it nor stop it travelling. An OPEN context menu owns the key outright
-        // (YAZ-1340): its window listener is closing it on this very press, and one Escape must
-        // not also throw the selection the menu was about to act on.
-        // (⌘C/⌘X/⌘V are App's window listener, D6 — see `clipboardRef`.)
-        onKeyDown={(e) => {
-          if (e.key !== 'Escape' || selectedPaths.size === 0 || menu !== null) return
-          e.preventDefault()
-          e.stopPropagation()
-          dispatchSelection({ type: 'clear' })
-        }}
-        // A plain LEFT click on blank space ends the selection (D6 amended, YAZ-1674), so ⌘V then
-        // pastes into the vault root — the Finder rule. Rows, inputs and buttons own their own
-        // clicks (a row click SELECTS, D9), and a right-click keeps the selection standing
-        // (YAZ-1337: its menu is about the root, not a fresh pick; the menu's overlay lives
-        // outside this body, so its own mousedown never arrives here).
+        // Escape and a plain click on blank space drop the multi-select (YAZ-1336, D6 amended YAZ-1674).
+        onKeyDown={clearOnEscape}
+        onMouseDown={clearOnBlankClick}
         // A click on any row, a drag, or a right-click ends a hover preview at once (YAZ-1800).
         onClickCapture={(e) => {
           if (e.target instanceof Element && e.target.closest('.tree__row') !== null) closePreview()
         }}
         onDragStartCapture={closePreview}
         onContextMenuCapture={closePreview}
-        onMouseDown={(e) => {
-          if (e.button !== 0 || selectedPaths.size === 0) return
-          if (e.target instanceof Element && e.target.closest('button, input, textarea, a, [role="treeitem"]') !== null) return
-          dispatchSelection({ type: 'clear' })
-        }}
       >
         {searching ? (
           // A typed query replaces the ACTIVE TAB's body, whichever lens that is (🔒 YAZ-847 D5).
