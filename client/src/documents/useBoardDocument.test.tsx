@@ -216,6 +216,20 @@ describe('changes on disk', () => {
     expect(text()).not.toContain('File changed on disk.')
   })
 
+  it('an edit straight after a reload is guarded by the reloaded mtime, and its echo is ours — never a bar (YAZ-2073 2F)', async () => {
+    reload.mockImplementation(async (a) => a.reset(0, 400))
+    opened()
+    watcherSaw({ type: 'change', path: PATH, mtime: 400 })
+    await settle()
+    edit(1)
+    await after(500)
+    expect(write).toHaveBeenCalledExactlyOnceWith(400)
+    watcherSaw({ type: 'change', path: PATH, mtime: 200 })
+    await settle()
+    expect(reload).toHaveBeenCalledOnce()
+    expect(text()).not.toContain('File changed on disk.')
+  })
+
   it('a DIRTY tab gets the bar and is never reloaded under the user; Reload takes disk and clears it', async () => {
     opened()
     edit(1)

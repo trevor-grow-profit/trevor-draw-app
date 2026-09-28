@@ -266,6 +266,23 @@ describe('external changes', () => {
     expect(chips()).toContain('Saved')
   })
 
+  it('an edit straight after a reload is guarded by the reloaded mtime, not the one before it (YAZ-2073 2F)', async () => {
+    render()
+    await flush()
+    emit(5)
+    load.mockResolvedValue(loaded({ mtime: 400 }))
+    surface.nextReplaceVersion = 11
+    watcherSaw({ type: 'change', path: PATH, mtime: 400 })
+    await flush()
+    emit(11) // the engine's answer to the reload: the baseline
+    emit(12) // the user's first stroke
+    await act(async () => {
+      vi.advanceTimersByTime(500)
+    })
+    expect(save).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ expectedMtime: 400 }))
+    expect(chips()).not.toContain('File changed on disk.')
+  })
+
   it('takes whatever version the engine settled on after a reload, even if it is not the one replaceScene predicted', async () => {
     render()
     await flush()

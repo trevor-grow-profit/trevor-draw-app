@@ -30,9 +30,19 @@ export const drawRect = (page: Page, x = 200, y = 200, w = 120, h = 80): Promise
 /** The "Saved" status chip of the active editor. */
 export const savedChip = (page: Page): Locator => page.getByRole('status').filter({ hasText: /^Saved$/ }).filter({ visible: true })
 
-/** The rendered scene of the active tab as PNG bytes — for "the picture changed" assertions. */
-export const staticCanvasShot = (page: Page): Promise<Buffer> =>
-  page.locator('.excalidraw canvas.excalidraw__canvas.static').filter({ visible: true }).first().screenshot()
+/**
+ * The rendered scene of the active tab as PNG bytes — for "the picture changed" assertions. The
+ * canvas's OWN bitmap, not a screenshot of its box: the toolbar and chips float over that box, and a
+ * hover fading in the toolbar once passed for "the scene re-rendered" (YAZ-2073 2F).
+ */
+export const staticCanvasShot = async (page: Page): Promise<Buffer> => {
+  const url = await page
+    .locator('.excalidraw canvas.excalidraw__canvas.static')
+    .filter({ visible: true })
+    .first()
+    .evaluate((canvas: HTMLCanvasElement) => canvas.toDataURL('image/png'))
+  return Buffer.from(url.slice(url.indexOf(',') + 1), 'base64')
+}
 
 /** Waits until the active tab's rendered scene differs from `before`. */
 export async function canvasChanged(page: Page, before: Buffer): Promise<void> {

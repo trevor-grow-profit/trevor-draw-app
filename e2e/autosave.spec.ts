@@ -2,10 +2,10 @@
  * Autosave, the quit flush and the watcher: what reaches the disk and when (docs/CONTRACTS.md
  * "Bridge API" rules — atomic, mtime-guarded, echo-suppressed; flush-on-quit handshake).
  */
-import { readdirSync, readFileSync, statSync } from 'node:fs'
+import { readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 import { test, expect, type Fixtures, type Sandbox } from './support/fixtures'
 import { canvasChanged, canvasReady, drawRect, savedChip, staticCanvasShot } from './support/canvas'
-import { gitIn, gitVault, liveElements, readProfile, readScene, rect, scene, writeOutside } from './support/vault'
+import { gitIn, gitVault, liveElements, readProfile, readScene, rect, scene, writeOutside, writesSettled } from './support/vault'
 
 test('an edit autosaves: one more element, the dates block first, images never inline', async ({ sandbox, launch }) => {
   const vault = sandbox.vault('V', { 'Board.excalidraw': scene([rect('a'), rect('b', 300)]) })
@@ -89,27 +89,30 @@ test.describe('the quit sequence after the renderers flush (YAZ-2073 2A)', () =>
   })
 })
 
-test('an outside change to a clean board reloads it in place', async ({ sandbox, launch }) => {
-  const vault = sandbox.vault('V', { 'Board.excalidraw': scene([rect('a')]) })
-  const board = `${vault}/Board.excalidraw`
-  sandbox.writeProfile({ windows: [{ root: vault, file: board }] })
-  const app = await launch()
-  const page = await app.window()
-  await canvasReady(page)
-  const before = await staticCanvasShot(page)
-  writeOutside(board, scene([rect('a'), rect('from-outside', 50, 40, 100, 50, { backgroundColor: '#e03131' })]))
-  await canvasChanged(page, before)
-  // KNOWN RACE (found by this suite, reported on YAZ-2073 1C): an edit made within about a second of
-  // the reload can raise a spurious "File changed on disk" bar — the watcher reports the one outside
-  // write again after the reload (1 in 15 runs for an atomic write, 3 in 8 for an in-place one).
-  // A person does not edit that fast; this test waits like one, so it pins the reload, not the race.
-  await page.waitForTimeout(1_500)
-  await expect(page.getByRole('alert').filter({ hasText: 'File changed on disk.' })).toHaveCount(0)
-  // The buffer took the outside version: the next save keeps its element and adds ours.
-  await drawRect(page, 150, 300)
-  await expect.poll(() => liveElements(board)?.length).toBe(3)
-  expect(liveElements(board)?.map((el) => el.id)).toEqual(expect.arrayContaining(['a', 'from-outside']))
-})
+// An edit straight after the reload lands on the outside version, with no bar (YAZ-2073 2F). The
+// "spurious bar" 1C saw was a real conflict: its reload signal fired on a toolbar repaint, so the
+// edit began before the outside write had reached the tab (`staticCanvasShot` reads the bitmap now).
+for (const [style, write] of [
+  ['atomic', writeOutside],
+  ['in-place', (path: string, content: string) => writeFileSync(path, content)],
+] as const) {
+  test(`an outside ${style} change to a clean board reloads it in place, and an edit straight after saves on top of it`, async ({ sandbox, launch }) => {
+    const vault = sandbox.vault('V', { 'Board.excalidraw': scene([rect('a')]) })
+    const board = `${vault}/Board.excalidraw`
+    sandbox.writeProfile({ windows: [{ root: vault, file: board }] })
+    const app = await launch()
+    const page = await app.window()
+    await canvasReady(page)
+    const before = await staticCanvasShot(page)
+    write(board, scene([rect('a'), rect('from-outside', 50, 40, 100, 50, { backgroundColor: '#e03131' })]))
+    await canvasChanged(page, before)
+    await drawRect(page, 150, 300)
+    await expect.poll(() => liveElements(board)?.length).toBe(3)
+    expect(liveElements(board)?.map((el) => el.id)).toEqual(expect.arrayContaining(['a', 'from-outside']))
+    await writesSettled(board)
+    await expect(page.getByRole('alert').filter({ hasText: 'File changed on disk.' })).toHaveCount(0)
+  })
+}
 
 test.describe('an outside change to a board with unsaved edits raises the conflict bar', () => {
   const setup = async ({ sandbox, launch }: { sandbox: Sandbox; launch: Fixtures['launch'] }) => {
