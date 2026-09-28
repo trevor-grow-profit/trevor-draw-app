@@ -184,6 +184,25 @@ describe('durable writes (YAZ-2073 D12)', () => {
       expect(await readFile(file, 'utf8')).toBe('old')
     }))
 
+  it('a write that fails mid-way closes its handle and leaves no tmp file behind', () =>
+    withDir(async (dir) => {
+      const { open: realOpen } = await vi.importActual<typeof import('node:fs/promises')>('node:fs/promises')
+      let closed = false
+      vi.mocked(open).mockImplementationOnce(async (...args) => {
+        const fh = await realOpen(...args)
+        const close = fh.close.bind(fh)
+        fh.writeFile = async () => Promise.reject(new Error('ENOSPC'))
+        fh.close = () => ((closed = true), close())
+        return fh
+      })
+      const file = path.join(dir, 'a.excalidraw')
+      await writeFile(file, 'old')
+      await expect(atomicWrite(file, 'new')).rejects.toThrow('ENOSPC')
+      expect(closed).toBe(true)
+      expect(await readdir(dir)).toEqual(['a.excalidraw'])
+      expect(await readFile(file, 'utf8')).toBe('old')
+    }))
+
   it('writeDurable fsyncs before closing, and `wx` refuses an existing file', () =>
     withDir(async (dir) => {
       const log = await traceDurability()
