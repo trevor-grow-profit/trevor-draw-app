@@ -35,8 +35,8 @@ The laser (K) gets Fade / Hold / Sticky trails, colour and size, Keep (↵), Mak
   - [x] 3A: gates — fork `yarn test:all` 2980 ✓; app `npm test` 2891 ✓, typecheck ✓, build ✓, `perf:budget:ci` PASS after a +908 B / +645 B ceiling raise for the prefs (YAZ-2227)
   - [x] 3B: seed + REGRESSION 1989-1…25 + LAUNCH; Yasin: "all passed" (YAZ-2228)
   - [x] 4A/4B: audit + polish (YAZ-2230, YAZ-2231)
-- Now: [→] app PR → merge → release v0.1.13 → closeout
-- Remaining: none
+  - [x] Merged: app PR yaseenarshad/yaseen-draw-app#19 → `ca21529`; released `v0.1.13` (`2babaee`); share-viewer ceiling +12 KB (`d3c551d`); installed on Yasin's Mac; worktrees and branches removed
+- Remaining: none — YAZ-1989 closed; handoff comment on YAZ-1989
 
 ## Learnings
 
