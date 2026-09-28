@@ -284,7 +284,8 @@ export function createStore(filePath: string): Store {
   let chain: Promise<void> = Promise.resolve()
   /**
    * The text this store last wrote. A commit whose file would read the same — a session-only
-   * `expanded` toggle, a settings echo — writes nothing (YAZ-2073 5G).
+   * `expanded` toggle, a settings echo — writes nothing (YAZ-2073 5G). Null until then, so a
+   * launch's first commit always writes, whatever the file already holds.
    */
   let written: string | null = null
 
