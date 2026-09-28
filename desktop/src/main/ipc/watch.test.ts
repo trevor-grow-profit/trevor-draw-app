@@ -58,7 +58,7 @@ describe('watch IPC', () => {
     expect(channels).toEqual([CH.watchSubscribe, CH.watchUnsubscribe].sort())
   })
 
-  it('two subscriptions on one root share one chokidar instance; each gets `ready` addressed to its id', async () => {
+  it('two subscriptions on one root share one watcher; each gets `ready` addressed to its id', async () => {
     const s = makeSender()
     await subscribeAs(s, 'sub-1', root)
     await until(() => sent(s).length >= 1)
@@ -96,7 +96,7 @@ describe('watch IPC', () => {
     await until(() => activeWatcherRoots().length === 0)
   })
 
-  it('two windows on one root (GRO-2169): one chokidar, a save reaches both as `change`; one window closing leaves the other live, the last closing disposes the watcher', async () => {
+  it('two windows on one root (GRO-2169): one watcher, a save reaches both as `change`; one window closing leaves the other live, the last closing disposes the watcher', async () => {
     const a = makeSender()
     const b = makeSender()
     await subscribeAs(a, 'win-a', root)

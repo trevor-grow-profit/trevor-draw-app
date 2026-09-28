@@ -14,7 +14,7 @@ const pending = new Map<number, Set<string>>()
 
 /**
  * `window.yaseenDraw.watch(root, listener)`: the preload sends `{ id, root }`, main answers every
- * event as `watch:event { id, ev }` on that sender. One chokidar per root (see `fs/watchers.ts`)
+ * event as `watch:event { id, ev }` on that sender. One watcher per root (see `fs/watchers.ts`)
  * no matter how many windows or subscriptions; a window going away drops all of its subscriptions.
  */
 export function registerWatchIpc(): void {

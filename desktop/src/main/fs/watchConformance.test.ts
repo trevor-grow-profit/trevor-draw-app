@@ -16,13 +16,16 @@ import { makeFixture, until } from './testFixture'
  * mtime, git sync debounces on any event, and the config / library stores re-read on a relevant
  * path. Every case records until the watcher has been quiet for `QUIET_MS`, then compares.
  *
- * The desktop project runs chokidar with stat polling (`vitest.config.ts`); this suite does not,
- * because it pins what the app does in production.
+ * Written first and passed against chokidar 4 as the app ran it in production (fs.watch per
+ * folder and file, `awaitWriteFinish` 200/50), then kept green across the switch to
+ * `treeWatcher.ts`.
  */
-delete process.env.CHOKIDAR_USEPOLLING
 
 /** Longer than any engine's own settling (chokidar's `awaitWriteFinish` is 200 ms), so a late duplicate would be caught. */
 const QUIET_MS = 600
+/** Real disk and real timers under a full parallel test run: generous, and a hang still fails. */
+const CASE_TIMEOUT_MS = 20_000
+const PATIENCE_MS = 10_000
 
 let root: string
 let cleanup: () => Promise<void>
@@ -55,7 +58,7 @@ async function watching(): Promise<{ events: WatchEvent[]; settled: () => Promis
   const events: WatchEvent[] = []
   let ready = false
   offs.push(subscribe(root, (ev) => (ev.type === 'ready' ? (ready = true) : events.push(ev))))
-  await until(() => ready)
+  await until(() => ready, PATIENCE_MS)
   /** Resolves once no event has arrived for `QUIET_MS`. */
   const settled = async () => {
     let seen = -1
@@ -73,7 +76,7 @@ const mtimeOf = async (p: string) => (await stat(p)).mtimeMs
 /** Order-free view of a recording: `type path`, sorted. */
 const shape = (events: readonly WatchEvent[]) => events.map((e) => `${e.type} ${'path' in e ? path.relative(root, e.path) : ''}`).sort()
 
-describe('watcher conformance: the vault watcher', () => {
+describe('watcher conformance: the vault watcher', { timeout: CASE_TIMEOUT_MS }, () => {
   it('an atomic save over an existing board is exactly ONE `change`, carrying the file`s final mtime; the tmp file is silent', async () => {
     const file = at('alpha', 'a.excalidraw')
     const w = await watching()
@@ -95,9 +98,9 @@ describe('watcher conformance: the vault watcher', () => {
     const file = at('Zeta', 'plain.excalidraw')
     const w = await watching()
     await writeFile(file, 'one')
-    await until(() => w.events.length === 1)
+    await until(() => w.events.length === 1, PATIENCE_MS)
     await writeFile(file, 'two, longer')
-    await until(() => w.events.length === 2)
+    await until(() => w.events.length === 2, PATIENCE_MS)
     await rm(file)
     await w.settled()
     expect(w.events.map((e) => e.type)).toEqual(['add', 'change', 'unlink'])
@@ -162,6 +165,15 @@ describe('watcher conformance: the vault watcher', () => {
     await rm(at('alpha', 'new-name.excalidraw'))
   })
 
+  it('a case-only rename (Finder, a sync from a case-sensitive machine): `unlink` the old spelling, `add` the new one', async () => {
+    await writeFile(at('alpha', 'casey.excalidraw'), 'c')
+    await still()
+    const w = await watching()
+    await rename(at('alpha', 'casey.excalidraw'), at('alpha', 'Casey.excalidraw'))
+    expect(shape(await w.settled())).toEqual(['add alpha/Casey.excalidraw', 'unlink alpha/casey.excalidraw'])
+    await rm(at('alpha', 'Casey.excalidraw'))
+  })
+
   it('trash (a move out of the vault): a folder takes everything inside it along, a file is `unlink`', async () => {
     await mkdir(at('Doomed', 'inner'), { recursive: true })
     await writeFile(at('Doomed', 'x.excalidraw'), 'x')
@@ -217,7 +229,7 @@ describe('watcher conformance: the vault watcher', () => {
   })
 })
 
-describe('watcher conformance: a watched folder (config and library stores)', () => {
+describe('watcher conformance: a watched folder (config and library stores)', { timeout: CASE_TIMEOUT_MS }, () => {
   const folders: Array<{ close: () => Promise<void> }> = []
   afterEach(async () => {
     await Promise.all(folders.splice(0).map((f) => f.close()))

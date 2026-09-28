@@ -128,6 +128,6 @@ The packaged app is checked the same way — launch
 ## Gotchas
 
 - Never draw in real vault files during testing — copy the vault to a scratch dir first.
-- The vault is on NFS: saves can take 0.3–4 s and chokidar may double-fire. Echo suppression is by mtime (`Autosave.settled()`). This applies to the packaged app exactly as to dev — same main-process fs, same libuv.
+- The vault is on NFS: saves can take 0.3–4 s and the watcher may double-fire. Echo suppression is by mtime (`Autosave.settled()`). This applies to the packaged app exactly as to dev — same main-process fs, same libuv.
 - The main process has no path jail (owner's choice): any absolute path the user can read or write, the app can too.
 - Linear project: https://linear.app/growprofit/issue/YAZ-1775 — the port's decision record.

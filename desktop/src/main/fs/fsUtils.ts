@@ -174,3 +174,6 @@ export async function atomicWrite(file: string, content: string | Uint8Array): P
   const st = await stat(file)
   return { mtime: st.mtimeMs, size: st.size }
 }
+
+/** Whether `name` is one of `atomicWrite`'s own tmp files — which no watcher ever announces (YAZ-2073 5F). */
+export const isAtomicTmp = (name: string): boolean => /\.tmp-[0-9a-f]{12}$/.test(name)
