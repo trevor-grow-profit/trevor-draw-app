@@ -3129,6 +3129,18 @@ describe('hover preview (YAZ-1800)', () => {
     expect(panel()).toBeNull()
   })
 
+  it('Escape during the dwell, before any panel shows, is not the preview`s: it still clears the selection (YAZ-2073 8B)', async () => {
+    const { el } = await mount()
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    const row = fileRow(el)!
+    act(() => void row.dispatchEvent(new MouseEvent('click', { bubbles: true, shiftKey: true })))
+    expect(el.querySelectorAll('.tree__row--selected')).toHaveLength(1)
+    await enter(row)
+    const esc = new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })
+    act(() => void el.querySelector('.sidebar__body')?.dispatchEvent(esc))
+    expect(el.querySelectorAll('.tree__row--selected')).toHaveLength(0)
+  })
+
   it('says so when a board is empty or cannot be drawn', async () => {
     const { el } = await mount()
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })

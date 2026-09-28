@@ -87,11 +87,12 @@ export function HoverPreviewHost({ hover, tree, root, enabled, diagramDarkColors
   useEffect(() => {
     if (path !== null && tree !== null && node === null) onClose()
   }, [path, tree, node, onClose])
-  // Escape closes the preview — and ONLY while there is one, so the key is otherwise untouched for the
-  // selection, the menus and the canvas. Capture phase, so it wins before the body's own Escape.
-  const active = path !== null
+  // Escape closes the preview — and ONLY while one shows, so the key is otherwise untouched for the
+  // selection, the menus and the canvas; a dwell still pending has no panel to close (YAZ-2073 8B).
+  // Capture phase, so it wins before the body's own Escape.
+  const visible = shown && node !== null && enabled
   useEffect(() => {
-    if (!active) return
+    if (!visible) return
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return
       e.preventDefault()
@@ -101,7 +102,7 @@ export function HoverPreviewHost({ hover, tree, root, enabled, diagramDarkColors
     }
     document.addEventListener('keydown', onKey, true)
     return () => document.removeEventListener('keydown', onKey, true)
-  }, [active, onClose])
-  if (!shown || node === null || !enabled) return null
+  }, [visible, onClose])
+  if (!visible) return null
   return <BoardPreview key={node.path} root={root} node={node} cacheKey={boardPreviewKey(root, node, theme, diagramDarkColors)} anchor={anchor} />
 }
