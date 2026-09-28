@@ -158,9 +158,8 @@ describe('treeWatcher', { timeout: 20_000 }, () => {
     await mkdir(dir)
     await writeFile(path.join(dir, 'media.json'), '{}')
     await r.ready()
-    await writeFile(path.join(dir, 'media.json'), '{"items":[]}')
     await until(() => r.lines.length > 0)
-    expect(await r.quiet()).toEqual(['change media.json'])
+    expect(await r.quiet()).toEqual(['add media.json'])
   })
 
   // The same against the real FSEvents, made to happen every time. Opt-in (`FSEVENTS_STRESS=1`):

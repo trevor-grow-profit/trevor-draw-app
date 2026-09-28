@@ -25,7 +25,9 @@ import { isAtomicTmp } from '@shared/fileKind'
  *    is one `change` and a file written in pieces is announced when whole — the job chokidar's
  *    `awaitWriteFinish` polling did.
  *  - READY after one walk of what is already there (nothing is announced for it, `ignoreInitial`'s
- *    meaning), so `change` and `add` can be told apart from the first event on.
+ *    meaning), so `change` and `add` can be told apart from the first event on. On macOS the walk
+ *    waits until the stream demonstrably hears (`probeStream`), or a change between the two would
+ *    be neither walked nor reported.
  *  - A FOLDER THAT DOES NOT EXIST YET is waited for from its nearest existing ancestor, and its
  *    contents arrive as `add`s when it appears.
  *  - FALLBACK. Where `fs.watch` cannot serve — it throws (at the start, or on a folder that arrives
@@ -89,9 +91,8 @@ interface Probe {
  * libuv serves every FSEvents watch in the process from ONE stream, rebuilt whenever a watch opens
  * or closes, so a probe — a watch of a fresh private folder, opened after the real one — can only
  * hear from a stream that serves the real one too. It writes a file there every `PROBE_MS` until it
- * hears one, without blocking anything (closing a watch waits for a rebuild; opening does not). It
- * stays open as long as the watch it vouches for: closing it would rebuild the stream, deaf again
- * until that is done. Windows' watch is live before `fs.watch` returns.
+ * hears one, without blocking anything (closing a watch waits for a rebuild; opening does not).
+ * Windows' watch is live before `fs.watch` returns.
  */
 async function probeStream(): Promise<Probe> {
   const dir = await mkdtemp(path.join(tmpdir(), 'yaseendraw-probe-'))
@@ -159,8 +160,11 @@ class Engine extends EventEmitter implements TreeWatcher {
   private chain: Promise<void> = Promise.resolve()
   private native: FSWatcher | null = null
   private polling: TreeWatcher | null = null
-  /** macOS: the probe opened after `native`, open while it is. */
-  private probe: Promise<Probe> | null = null
+  /**
+   * macOS: a probe per watch this engine opened, all open until it closes — closing one would rebuild
+   * the stream, deaf again for a while. An awaited folder adds one per level it arrives through.
+   */
+  private readonly probes: Promise<Probe>[] = []
   /** Resolves once the stream serving `native` hears — at once off macOS; renewed with `native`. */
   private listening: Promise<void> = Promise.resolve()
   private started = false
@@ -183,21 +187,23 @@ class Engine extends EventEmitter implements TreeWatcher {
     this.native?.close()
     this.timers.forEach(clearTimeout)
     this.timers.clear()
-    await Promise.all([this.chain, this.polling?.close(), this.probe && closeProbe(this.probe)])
+    await Promise.all([this.chain, this.polling?.close(), ...this.probes.map(closeProbe)])
   }
 
   private async start(): Promise<void> {
     if (await onNetworkVolume(this.dir)) return this.poll()
     if (this.closed) return
+    const there = existsSync(this.dir)
     try {
-      if (existsSync(this.dir)) this.watchDir()
+      if (there) this.watchDir()
       else this.awaitDir()
     } catch {
       return this.poll()
     }
-    // The walk reads the folder once the stream hears, so nothing lands between the two unreported.
-    await this.heard()
-    await this.walk(this.dir, false)
+    await this.listening
+    // A folder that is there is read once its stream hears, so nothing lands between the two
+    // unreported; one that is not announces what it holds when it arrives (`arrived`).
+    if (there) await this.walk(this.dir, false)
     this.started = true
     // What moved during the walk is looked at now, against what the walk found.
     for (const [p, timer] of [...this.timers]) {
@@ -227,22 +233,14 @@ class Engine extends EventEmitter implements TreeWatcher {
     this.polling = w as unknown as TreeWatcher
   }
 
-  /** Resolves once the stream serving `native` hears, however often `native` changes meanwhile. */
-  private async heard(): Promise<void> {
-    for (let at = this.listening; ; at = this.listening) {
-      await at
-      if (at === this.listening) return
-    }
-  }
-
   /** `w` is the watch now; a new probe must vouch for it, since one opened before it vouches for nothing. */
   private listen(w: FSWatcher): void {
     this.native = w
     if (process.platform !== 'darwin') return
-    const before = this.probe
-    this.probe = before === null ? probeStream() : closeProbe(before).then(probeStream)
+    const probe = probeStream()
+    this.probes.push(probe)
     // A probe that cannot run (no temp folder) is reported, and the watch goes on unvouched.
-    this.listening = this.probe.then((p) => p.heard).catch((err: unknown) => void this.emit('error', err))
+    this.listening = probe.then((p) => p.heard).catch((err: unknown) => void this.emit('error', err))
   }
 
   private watchDir(): void {
@@ -292,7 +290,7 @@ class Engine extends EventEmitter implements TreeWatcher {
     }
   }
 
-  /** Once the folder's own watch hears, what it holds is looked at: what came before that is announced from there. */
+  /** The folder is here: watch it, and once that watch hears, look at what it holds — all of it new to consumers. */
   private arrived(anchor: FSWatcher): void {
     anchor.close()
     this.watchDir()
