@@ -1327,6 +1327,10 @@ but for two config hooks, inside an iframe on its OWN origin.
   YAZ-1883), which main uploads at share setup; `viewerAssetsDir` in `ipc/share.ts` reads there when
   packaged and from the repo checkout in dev. It carries no fonts: setup publishes the renderer's
   copy (`excalidrawFontsDir`, YAZ-2073 3C).
+- The renderer is minified (esbuild, as Vite ships it) with `sourcemap: 'hidden'`; the build moves
+  every `.map` to the gitignored `desktop/.maps/<version>/` (`renderSourcemapsAside()` in
+  `electron.vite.config.ts`, 🔒 YAZ-2073 D14), so none ships and a minified stack trace from that
+  version can still be symbolicated on the machine that built it.
 - The renderer serves from the custom `app://yaseen/` protocol, registered with `codeCache` (and
   `app://drawio/` with it: `appScheme.ts`, 🔒 YAZ-2073 D13), so V8 keeps compiled code in
   `<userData>/Code Cache` across launches — ~15 MB once draw.io has opened, Chromium's own LRU —
