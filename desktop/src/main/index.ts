@@ -15,6 +15,7 @@ import { openableFileArgs } from './fileArgs'
 import { createLinkQueue } from './linkQueue'
 import { openLink } from './fs/openLink'
 import { buildContextMenuTemplate, buildMenuTemplate, createMenuHandlers, pickMenuTargetWindow, subscribeMenuRebuild, subscribeMenuRebuildOnActiveFile } from './menu'
+import { runQuitSequence } from './quit'
 import { createStore } from './store'
 import { subscribeNativeTheme, windowBackgroundColor } from './theme'
 import { applyUserDataOverride } from './userData'
@@ -230,18 +231,14 @@ app.whenReady().then(() => {
   links.flush()
 })
 
-// Quit: flush every renderer sequentially (5s cap each, `windows[]` kept so relaunch restores them),
-// write the pending state, then exit for real — `app.exit` re-runs no quit events.
-// The ORDER is load-bearing for YAZ-1081 D2: the renderers flush FIRST, so the last sync commit
-// contains the edit the user made a second before quitting rather than leaving it for next launch.
+// Quit: renderers, then the pending state and the last sync commit, then exit for real — `app.exit`
+// re-runs no quit events. The order and every step live in quit.ts, pinned by its test (YAZ-2073 D11).
 let quitting = false
 app.on('before-quit', (event) => {
   event.preventDefault()
   if (quitting) return
   quitting = true
-  void manager
-    .flushAllForQuit()
-    .finally(() => app.exit(0))
+  void runQuitSequence({ manager, store, gitSync, exit: () => app.exit(0) })
 })
 
 // Obsidian quits when its last window closes (its main.js `window-all-closed` handler); so do we.
