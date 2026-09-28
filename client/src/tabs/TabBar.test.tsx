@@ -13,11 +13,11 @@ import { TabBar, type TabBarProps } from './TabBar'
 // The OS-action items call the bridge (YAZ-963): stub the verbs, keep BridgeRequestError real.
 vi.mock('../api', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../api')>()),
-  api: { reveal: vi.fn().mockResolvedValue({}), openVsCode: vi.fn().mockResolvedValue({}) },
+  api: { shell: { reveal: vi.fn().mockResolvedValue({}), openVsCode: vi.fn().mockResolvedValue({}) } },
 }))
 import { api, BridgeRequestError } from '../api'
-const reveal = vi.mocked(api.reveal)
-const openVsCode = vi.mocked(api.openVsCode)
+const reveal = vi.mocked(api.shell.reveal)
+const openVsCode = vi.mocked(api.shell.openVsCode)
 
 
 let root: Root | null = null

@@ -1,4 +1,5 @@
 import type { BoardMeta } from './types/files'
+import { isFiniteNumber as isEpochMs, isRecord as isPlainObject } from './guards'
 
 /**
  * THE IMAGE STORE'S PURE RULES (🔒 YAZ-1775 D3 on YAZ-1775, built in YAZ-1811).
@@ -151,8 +152,6 @@ export const BOARD_META_KEY = 'yaseendraw'
 /** How much of a board the tree walk reads to find the block: it is ~80 bytes and comes first. */
 export const BOARD_META_HEAD_BYTES = 1024
 
-const isPlainObject = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v)
-const isEpochMs = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v)
 /** The text as a scene object; throws on anything else (the callers decide what that means). */
 function parseSceneObject(json: string): Record<string, unknown> {
   const parsed: unknown = JSON.parse(json)

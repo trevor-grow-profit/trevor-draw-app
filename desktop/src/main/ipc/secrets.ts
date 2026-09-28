@@ -1,8 +1,8 @@
 import { join } from 'node:path'
-import { CH } from '../../channels'
+import { CONTRACT } from '@shared/ipc'
 import { BridgeFailure } from '../fs/fsUtils'
+import { requireObject, str } from '../fs/validate'
 import { createSecrets, SECRETS_FILE, type Secrets } from '../secrets'
-import { isRecord } from '@shared/guards'
 import { PIXABAY_SECRET } from '@shared/types/library'
 import { handle } from './envelope'
 
@@ -13,11 +13,6 @@ import { handle } from './envelope'
  * nothing here touches the store, so a key can never ride `state:changed` into a renderer.
  */
 
-const requireName = (v: unknown): string => {
-  if (typeof v !== 'string' || v === '') throw new BridgeFailure('BAD_REQUEST', "'name' must be a non-empty string")
-  return v
-}
-
 /**
  * The only names a renderer may WRITE. Sharing's Cloudflare token and upload password are stored by
  * main itself (`share:setup`), so a renderer must not be able to overwrite them and break sharing.
@@ -26,17 +21,16 @@ export const RENDERER_WRITABLE_SECRETS: readonly string[] = [PIXABAY_SECRET]
 
 export function registerSecretsIpc(userData: string): Secrets {
   const secrets = createSecrets(join(userData, SECRETS_FILE))
-  handle(CH.secretsSet, async (req: unknown) => {
-    if (!isRecord(req)) throw new BridgeFailure('BAD_REQUEST', 'missing request')
-    const name = requireName(req.name)
+  handle(CONTRACT.secrets.set, async (req: unknown) => {
+    const r = requireObject(req, 'missing request')
+    const name = str(r.name, 'name')
     if (!RENDERER_WRITABLE_SECRETS.includes(name)) throw new BridgeFailure('BAD_REQUEST', `'${name}' is not a secret this window may set`)
     // `''` is not a value: storing it would make `has` say yes to a key that is not there.
-    if (req.value !== null && (typeof req.value !== 'string' || req.value === '')) throw new BridgeFailure('BAD_REQUEST', "'value' must be a non-empty string or null")
-    await secrets.set(name, req.value)
+    if (r.value !== null && (typeof r.value !== 'string' || r.value === '')) throw new BridgeFailure('BAD_REQUEST', "'value' must be a non-empty string or null")
+    await secrets.set(name, r.value)
   })
-  handle(CH.secretsHas, async (req: unknown) => {
-    if (!isRecord(req)) throw new BridgeFailure('BAD_REQUEST', 'missing request')
-    return secrets.has(requireName(req.name))
+  handle(CONTRACT.secrets.has, async (req: unknown) => {
+    return secrets.has(str(requireObject(req, 'missing request').name, 'name'))
   })
   return secrets
 }

@@ -1,9 +1,9 @@
 import { readdir, readFile } from 'node:fs/promises'
 import { join, relative, resolve, sep } from 'node:path'
 import { shell } from 'electron'
-import { isRecord } from '@shared/guards'
-import { CH } from '../../channels'
+import { CONTRACT } from '@shared/ipc'
 import { BridgeFailure } from '../fs/fsUtils'
+import { bool, optBool, optStr, requireObject, str, strOrNull } from '../fs/validate'
 import type { Secrets } from '../secrets'
 import { DRAWIO_SHARE_DIRS, DRAWIO_SHARE_FILES } from '../drawio/assets'
 import { CLOUDFLARE_API, CLOUDFLARE_TOKEN_PAGE, type AssetFile } from '../share/cloudflare'
@@ -21,14 +21,7 @@ import { handle, handleWithEvent } from './envelope'
  *
  * The demo switches are read by `shareEndpoints` and only in an unpackaged (dev) build.
  */
-const req = (v: unknown): Record<string, unknown> => {
-  if (!isRecord(v)) throw new BridgeFailure('BAD_REQUEST', 'missing request')
-  return v
-}
-const str = (v: unknown, name: string): string => {
-  if (typeof v !== 'string' || v === '') throw new BridgeFailure('BAD_REQUEST', `'${name}' must be a non-empty string`)
-  return v
-}
+const req = (v: unknown): Record<string, unknown> => requireObject(v, 'missing request')
 
 /**
  * Where the viewer's built assets live (`tools/buildShareViewer.mjs` → `share/dist/assets/`, part of
@@ -101,51 +94,49 @@ export function registerShareIpc(userData: string, secrets: Secrets, where: { vi
     // Uploaded verbatim: the same two files `tools/fakeCloudflare.mjs` imports and runs.
     modules: { 'worker.js': workerSource, 'viewer/page.js': viewerSource },
     readAssets: () => readViewerAssets(where.viewerAssetsDir, where.drawioDir, where.fontsDir),
-    onChanged: () => broadcastAll(CH.shareChanged),
+    onChanged: () => broadcastAll(CONTRACT.share.onChanged),
   })
   // Shares follow in-app renames, moves and deletes (the fs IPC calls these beside its favorites repair).
   shareFsHooks.renamed = (roots, oldPath, newPath) => sharing.relocate(roots, oldPath, newPath)
   shareFsHooks.deleted = (roots, path) => sharing.forget(roots, path)
 
-  handle(CH.shareStatus, () => sharing.status())
-  handle(CH.shareAccounts, async (body: unknown) => sharing.accounts(str(req(body).token, 'token')))
-  handleWithEvent(CH.shareSetup, (e, body: unknown) => {
+  handle(CONTRACT.share.status, () => sharing.status())
+  handle(CONTRACT.share.accounts, async (body: unknown) => sharing.accounts(str(req(body).token, 'token')))
+  handleWithEvent(CONTRACT.share.setup, (e, body: unknown) => {
     const r = req(body)
-    if (r.accountId !== undefined && typeof r.accountId !== 'string') throw new BridgeFailure('BAD_REQUEST', "'accountId' must be a string")
-    return sharing.setup(str(r.token, 'token'), (p) => e.sender.isDestroyed() || e.sender.send(CH.shareSetupProgress, p), r.accountId)
+    const accountId = optStr(r.accountId, 'accountId')
+    return sharing.setup(str(r.token, 'token'), (p) => e.sender.isDestroyed() || e.sender.send(CONTRACT.share.onSetupProgress.channel, p), accountId)
   })
-  handle(CH.shareOpenCloudflare, async () => void (await shell.openExternal(tokenPage)))
-  handle(CH.shareGet, async (body: unknown) => {
+  handle(CONTRACT.share.openCloudflare, async () => void (await shell.openExternal(tokenPage)))
+  handle(CONTRACT.share.get, async (body: unknown) => {
     const r = req(body)
     return sharing.get(str(r.root, 'root'), str(r.path, 'path'))
   })
-  handle(CH.shareList, async (body: unknown) => {
+  handle(CONTRACT.share.list, async (body: unknown) => {
     const r = req(body)
-    if (r.check !== undefined && typeof r.check !== 'boolean') throw new BridgeFailure('BAD_REQUEST', "'check' must be a boolean")
-    return sharing.list(str(r.root, 'root'), { check: r.check !== false })
+    const check = optBool(r.check, 'check')
+    return sharing.list(str(r.root, 'root'), { check: check !== false })
   })
-  handle(CH.sharePublish, async (body: unknown) => {
+  handle(CONTRACT.share.publish, async (body: unknown) => {
     const r = req(body)
-    if (r.id !== undefined && typeof r.id !== 'string') throw new BridgeFailure('BAD_REQUEST', "'id' must be a string")
-    return sharing.publish(str(r.root, 'root'), str(r.path, 'path'), str(r.content, 'content'), r.id)
+    const id = optStr(r.id, 'id')
+    return sharing.publish(str(r.root, 'root'), str(r.path, 'path'), str(r.content, 'content'), id)
   })
-  handle(CH.shareSetPermission, async (body: unknown) => {
+  handle(CONTRACT.share.setPermission, async (body: unknown) => {
     const r = req(body)
-    if (typeof r.allowDownload !== 'boolean') throw new BridgeFailure('BAD_REQUEST', "'allowDownload' must be a boolean")
-    return sharing.setPermission(str(r.root, 'root'), str(r.path, 'path'), r.allowDownload)
+    const allowDownload = bool(r.allowDownload, 'allowDownload')
+    return sharing.setPermission(str(r.root, 'root'), str(r.path, 'path'), allowDownload)
   })
-  handle(CH.shareStop, async (body: unknown) => {
+  handle(CONTRACT.share.stop, async (body: unknown) => {
     const r = req(body)
     return sharing.stop(str(r.root, 'root'), str(r.path, 'path'))
   })
-  handle(CH.shareSetDomain, async (body: unknown) => {
-    const h = req(body).hostname
-    if (h !== null && typeof h !== 'string') throw new BridgeFailure('BAD_REQUEST', "'hostname' must be a string or null")
+  handle(CONTRACT.share.setDomain, async (body: unknown) => {
+    const h = strOrNull(req(body).hostname, 'hostname')
     return sharing.setDomain(h === null || h.trim() === '' ? null : h)
   })
-  handle(CH.shareDisconnect, async (body: unknown) => {
+  handle(CONTRACT.share.disconnect, async (body: unknown) => {
     const r = req(body)
-    if (r.root !== null && typeof r.root !== 'string') throw new BridgeFailure('BAD_REQUEST', "'root' must be a string or null")
-    return sharing.disconnect(r.root, r.deleteEverything === true)
+    return sharing.disconnect(strOrNull(r.root, 'root'), r.deleteEverything === true)
   })
 }

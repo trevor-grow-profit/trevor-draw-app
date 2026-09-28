@@ -1,8 +1,8 @@
 import { ipcMain, type IpcMainInvokeEvent } from 'electron'
 import { isSidebarLens, type SidebarLens, type WindowEntry, type WindowIdentity } from '@shared/types'
-import { CH } from '../../channels'
+import { CONTRACT, SPECIAL } from '@shared/ipc'
 import { BridgeFailure, requireAbsPath } from '../fs/fsUtils'
-import { isRecord } from '@shared/guards'
+import { absPaths, optBool, requireObject, strOrNull } from '../fs/validate'
 import { normalizeTabs, type Store } from '../store'
 import type { WindowManagerIpc } from '../windows'
 import { handle, handleWithEvent } from './envelope'
@@ -10,34 +10,12 @@ import { handle, handleWithEvent } from './envelope'
 /** `root` / `file` in the patch: absent (untouched), null, or an absolute path. */
 function optionalPath(raw: Record<string, unknown>, key: 'root' | 'file'): string | null | undefined {
   const v = raw[key]
-  if (v === undefined || v === null) return v
-  if (typeof v !== 'string') throw new BridgeFailure('BAD_REQUEST', `'${key}' must be a string or null`)
-  return requireAbsPath(v, key)
+  return v === undefined || v === null ? v : requireAbsPath(strOrNull(v, key), key)
 }
 
-/** `tabs` in the patch (GRO-2232): absent (untouched), or absolute paths only — one bad element rejects the whole call. */
-function optionalTabs(raw: Record<string, unknown>): string[] | undefined {
-  const v = raw.tabs
-  if (v === undefined) return undefined
-  if (!Array.isArray(v)) throw new BridgeFailure('BAD_REQUEST', `'tabs' must be an array of absolute paths`)
-  return v.map((t, i) => requireAbsPath(t, `tabs[${i}]`))
-}
-
-/** `focusDirs` / `focusFavorites` in the patch (YAZ-1628, YAZ-1766): `tabs`' rule — absent (untouched), or absolute paths only, one bad element rejecting the whole call. */
-function optionalFocusList(raw: Record<string, unknown>, key: 'focusDirs' | 'focusFavorites'): string[] | undefined {
-  const v = raw[key]
-  if (v === undefined) return undefined
-  if (!Array.isArray(v)) throw new BridgeFailure('BAD_REQUEST', `'${key}' must be an array of absolute paths`)
-  return v.map((p, i) => requireAbsPath(p, `${key}[${i}]`))
-}
-
-
-/** `sidebarCollapsed`: absent (untouched), or a boolean. */
-function optionalSidebarCollapsed(raw: Record<string, unknown>): boolean | undefined {
-  const v = raw.sidebarCollapsed
-  if (v === undefined) return undefined
-  if (typeof v !== 'boolean') throw new BridgeFailure('BAD_REQUEST', "'sidebarCollapsed' must be a boolean")
-  return v
+/** `tabs` (GRO-2232), `focusDirs` / `focusFavorites` (YAZ-1628, YAZ-1766) in the patch: absent (untouched), or absolute paths only — one bad element rejects the whole call. */
+function optionalPaths(raw: Record<string, unknown>, key: 'tabs' | 'focusDirs' | 'focusFavorites'): string[] | undefined {
+  return raw[key] === undefined ? undefined : absPaths(raw[key], key)
 }
 
 /** `sidebarLens` (YAZ-1628; Favorites added by YAZ-1766): absent (untouched), or one of the two lenses. */
@@ -62,20 +40,20 @@ export function registerWindowIpc(store: Store, windows: WindowManagerIpc): void
     return entry
   }
 
-  handleWithEvent(CH.windowIdentity, async (e): Promise<WindowIdentity> => {
+  handleWithEvent(CONTRACT.window.identity, async (e): Promise<WindowIdentity> => {
     const { id, root, file, tabs, sidebarCollapsed, sidebarLens, focusDirs, focusFavorites } = entryFor(e)
     return { id, root, file, tabs: [...tabs], sidebarCollapsed, sidebarLens, focusDirs: [...focusDirs], focusFavorites: [...focusFavorites] }
   })
 
-  handleWithEvent(CH.windowSetIdentity, async (e, patch: unknown) => {
-    if (!isRecord(patch)) throw new BridgeFailure('BAD_REQUEST', 'patch must be an object')
+  handleWithEvent(CONTRACT.window.setIdentity, async (e, raw: unknown) => {
+    const patch = requireObject(raw, 'patch must be an object')
     const root = optionalPath(patch, 'root')
     const file = optionalPath(patch, 'file')
-    const tabs = optionalTabs(patch)
-    const sidebarCollapsed = optionalSidebarCollapsed(patch)
+    const tabs = optionalPaths(patch, 'tabs')
+    const sidebarCollapsed = optBool(patch.sidebarCollapsed, 'sidebarCollapsed')
     const sidebarLens = optionalSidebarLens(patch)
-    const focusDirs = optionalFocusList(patch, 'focusDirs')
-    const focusFavorites = optionalFocusList(patch, 'focusFavorites')
+    const focusDirs = optionalPaths(patch, 'focusDirs')
+    const focusFavorites = optionalPaths(patch, 'focusFavorites')
     const entry = entryFor(e)
     // The tabs invariant holds on the entry AS WRITTEN (GRO-2232): the loader's repair rule,
     // applied to whichever of `file` / `tabs` the patch left untouched.
@@ -96,14 +74,14 @@ export function registerWindowIpc(store: Store, windows: WindowManagerIpc): void
   // `window:close-self` (GRO-2232): the REAL close on the caller's own window, so the
   // close/flush handshake in windows.ts runs — never a destroy. Resolved via the window lookup
   // only (no state lookup): a window mid-close can still ask.
-  handleWithEvent(CH.windowCloseSelf, async (e) => {
+  handleWithEvent(CONTRACT.window.closeSelf, async (e) => {
     const id = windows.idFor(e.sender)
     if (id === undefined) throw new BridgeFailure('BAD_REQUEST', 'sender is not a registered window')
     windows.closeWindow(id)
   })
 
-  handle(CH.windowOpen, async (opts: unknown) => {
-    if (!isRecord(opts)) throw new BridgeFailure('BAD_REQUEST', 'options must be an object')
+  handle(CONTRACT.window.open, async (raw: unknown) => {
+    const opts = requireObject(raw, 'options must be an object')
     windows.openWindow({ root: optionalPath(opts, 'root') ?? null, file: optionalPath(opts, 'file') ?? null })
   })
 
@@ -111,8 +89,8 @@ export function registerWindowIpc(store: Store, windows: WindowManagerIpc): void
   // manager's verdict out: true = the vault is in front (its windows raised, D9, or a new one
   // opened; MRU bumped), false = the folder is gone and was pruned from the MRU instead. Any
   // window may ask; the caller is not consulted.
-  handle(CH.windowOpenRecent, async (path: unknown): Promise<boolean> => windows.openRecentBeside(requireAbsPath(path, 'path')))
+  handle(CONTRACT.window.openRecent, async (path: unknown): Promise<boolean> => windows.openRecentBeside(requireAbsPath(path, 'path')))
 
   // The renderer's ack in the flush handshake (fire-and-forget send, so no envelope).
-  ipcMain.on(CH.appFlushed, (e) => windows.handleFlushed(e.sender))
+  ipcMain.on(SPECIAL.appFlushed, (e) => windows.handleFlushed(e.sender))
 }

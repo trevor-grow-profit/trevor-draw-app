@@ -1,8 +1,9 @@
 import type { AppState } from '@shared/types'
-import { CH } from '../../channels'
+import { CONTRACT } from '@shared/ipc'
+import { isStringArray } from '@shared/guards'
 import { getFavorites, setFavorites, subscribeFavorites } from '../favorites'
 import { BridgeFailure, requireAbsPath } from '../fs/fsUtils'
-import { isStringArray, type Store } from '../store'
+import type { Store } from '../store'
 import { broadcastAll } from './broadcast'
 import { handle } from './envelope'
 
@@ -10,7 +11,7 @@ import { handle } from './envelope'
 const subs = new Map<string, () => void>()
 
 /** Every live window gets the change; renderers filter by their own root and re-read (the `vaultConfig:changed` posture). */
-const broadcast = (change: { root: string }): void => broadcastAll(CH.favoritesChanged, change)
+const broadcast = (change: { root: string }): void => broadcastAll(CONTRACT.favorites.onChanged, change)
 
 /** The open-vault roots are `AppState.windows` (null = Welcome); one `subscribeFavorites` each, no more. */
 function syncSubscriptions(state: AppState): void {
@@ -28,8 +29,8 @@ function syncSubscriptions(state: AppState): void {
 
 /** The `favorites.*` half of `window.yaseenDraw` (YAZ-1766 6A). */
 export function registerFavoritesIpc(store: Store): void {
-  handle(CH.favoritesGet, async (root: unknown) => getFavorites(requireAbsPath(root, 'root')))
-  handle(CH.favoritesSet, async (root: unknown, paths: unknown) => {
+  handle(CONTRACT.favorites.get, async (root: unknown) => getFavorites(requireAbsPath(root, 'root')))
+  handle(CONTRACT.favorites.set, async (root: unknown, paths: unknown) => {
     const r = requireAbsPath(root, 'root')
     if (!isStringArray(paths)) throw new BridgeFailure('BAD_REQUEST', "'paths' must be a string array")
     await setFavorites(r, paths)

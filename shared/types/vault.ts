@@ -118,45 +118,6 @@ export interface GithubSyncMerge {
   copy?: string
 }
 
-/**
- * Per-vault GitHub sync as the renderer sees it (YAZ-1081, YAZ-1809). Four methods, because there are
- * only four things a UI ever needs: what is this vault doing, do it now, turn it on or off, and
- * tell me when it changes.
- *
- * Every call answers with the SAME `GithubSyncStatus` the push carries, so a caller never has to
- * follow a mutation with a read. `status` is the cheap one — it answers from the manager's last
- * broadcast without touching git, and for a root whose sync is OFF it falls back to a read-only
- * inspection (remote + branch) so a settings panel can show the repo it would sync to.
- */
-export interface GithubApi {
-  /** This root's current status; `off` for a vault with sync disabled, never a failure. */
-  status(root: string): Promise<GithubSyncStatus>
-  /** Run a pass NOW (the manual "sync" button). A pass already running is joined, never raced; `off` roots answer `off`. */
-  syncNow(root: string): Promise<GithubSyncStatus>
-  /**
-   * The per-vault switch (D4), written to `<root>/.yaseendraw/github.json`. Turning it ON waits
-   * for the first pass and answers with its real outcome — "synced", or what needs fixing —
-   * rather than an optimistic `syncing`; turning it OFF is immediate and total (no watcher, no
-   * timers, no passes).
-   */
-  setEnabled(root: string, enabled: boolean): Promise<GithubSyncStatus>
-  /** Fired in every window on every transition of any vault; filter by `status.root`. Returns an unsubscribe. */
-  onStatus(listener: (status: GithubSyncStatus) => void): () => void
-  /**
-   * YAZ-1897 D4 — Version history. A board's committed versions, newest first, plus "your version
-   * before the merge" when the last merge changed this board. Empty for a vault with no git history.
-   * `path` is the board (absolute, or vault-relative), exactly as `drawing.load` takes it.
-   */
-  history(root: string, path: string): Promise<BoardVersion[]>
-  /**
-   * One version: a drawing's scene and its pictures, resolved from `assets/` the way `drawing.load`
-   * does, or a diagram's XML (🔒 YAZ-1802 D10).
-   */
-  version(root: string, path: string, ref: string): Promise<BoardVersionScene>
-  /** Writes that version over the board as an ordinary edit; the watcher and sync take it from there. */
-  restore(root: string, path: string, ref: string): Promise<void>
-}
-
 /** One entry in a board's Version history (YAZ-1897 D4). */
 export interface BoardVersion {
   /** Opaque to the renderer: hand it back to `version` / `restore`. */
@@ -214,18 +175,6 @@ export interface ShrinkResult {
   bytesMoved: number
 }
 
-/** Settings › Storage's door (YAZ-1801): the numbers, and the one action. */
-export interface StorageApi {
-  /** Walks the vault and asks the local git; answers in seconds on a big vault, never touches the network. */
-  stats(root: string): Promise<VaultStorageStats>
-  /**
-   * Rewrites every legacy board lean — its pictures into `assets/`, its `yaseendraw` block kept
-   * verbatim (`updatedAt` does NOT move). `skip` = absolute paths not to touch (boards with
-   * unsaved edits in a tab). Never throws per board: an unreadable one counts as skipped.
-   */
-  shrink(root: string, skip: readonly string[]): Promise<ShrinkResult>
-}
-
 // ---------- Favorites (`<root>/.yaseendraw/favorites.json` — YAZ-1766 6A, D11) ----------
 
 /** The file on disk: VAULT-RELATIVE POSIX paths in the user's order (`MAX_FAVORITES` at most). */
@@ -234,17 +183,3 @@ export interface FavoritesConfig {
   favorites: string[]
 }
 
-/**
- * The Favorites tab's list as `window.yaseenDraw.favorites` (YAZ-1766 6A): ABSOLUTE paths over
- * `.yaseendraw/favorites.json`, so the list travels with the vault (D11). A malformed file reads
- * as `[]` and rejects every `set` with `INVALID_CONFIG`, never overwritten (D12); `set` drops
- * entries whose path is gone from disk (D14); in-app rename/delete repair the file in main (D13).
- */
-export interface FavoritesApi {
-  /** Absolute paths in stored order; `[]` when the file is absent or malformed. Never creates anything. */
-  get(root: string): Promise<string[]>
-  /** Replace the list; every path must be inside `root` (→ `BAD_REQUEST`). Creates the dotfolder and file on first write. */
-  set(root: string, paths: readonly string[]): Promise<void>
-  /** Fired in every window after any change to a vault's favorites.json, own or external; filter by `root`. Returns an unsubscribe. */
-  onChanged(listener: (change: { root: string }) => void): () => void
-}

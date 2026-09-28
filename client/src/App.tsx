@@ -254,14 +254,14 @@ export function App() {
   // open-recent door (a new window, or that vault's windows raised). Only Welcome fills in place.
   const openPicked = useCallback((path: string) => {
     if (root === null) void openRoot(path)
-    else void window.yaseenDraw.window.openRecent(path).catch((err: unknown) => console.error('[open-folder] openRecent failed:', err))
+    else void api.window.openRecent(path).catch((err: unknown) => console.error('[open-folder] openRecent failed:', err))
   }, [root, openRoot])
   const { pick, picking } = usePickFolder({ onPicked: openPicked })
 
   // ⌘W ladder (Tabs rule 7): close the active tab; with zero tabs open (incl. Welcome) close
   // the WINDOW through the real close path so the close/flush handshake runs.
   const closeTabOrWindow = useCallback(() => {
-    if (!closeActive()) void window.yaseenDraw.window.closeSelf()
+    if (!closeActive()) void api.window.closeSelf()
   }, [closeActive])
 
   // ⌘K (D4, YAZ-804): un-collapse this window through the one persisted toggle path, then ask
@@ -415,7 +415,7 @@ export function App() {
   // clobber the repaired file/tabs).
   useEffect(
     () =>
-      window.yaseenDraw.file.onRenamed(({ oldPath, newPath, kind }) => {
+      api.file.onRenamed(({ oldPath, newPath, kind }) => {
         // A shared board's pending live-link upload follows it (YAZ-1886); by prefix, so both kinds.
         noteBoardRenamed(oldPath, newPath)
         if (kind === 'dir') {
@@ -448,7 +448,7 @@ export function App() {
       await flushRenamedPath(oldPath)
       await flushRenamedDir(oldPath)
       try {
-        await api.rename({ oldPath, newPath })
+        await api.file.rename({ oldPath, newPath })
       } catch (err) {
         const exists = err instanceof BridgeRequestError && err.code === 'ALREADY_EXISTS'
         notify(exists ? `Can't rename: "${basename(newPath)}" already exists` : `Can't rename: ${err instanceof Error ? err.message : String(err)}`)
@@ -470,7 +470,7 @@ export function App() {
    */
   useEffect(
     () =>
-      window.yaseenDraw.file.onDeleted(({ path, kind }) => {
+      api.file.onDeleted(({ path, kind }) => {
         if (kind === 'dir') {
           retireDir(path)
           deleteWorkspaceDir(path)
@@ -493,7 +493,7 @@ export function App() {
    */
   const deleteFile = useCallback(async (path: string): Promise<void> => {
     try {
-      await api.delete({ path })
+      await api.file.delete({ path })
     } catch (err) {
       const name = basename(path)
       // A failed trash means NOTHING was deleted — say so, rather than a bare error string.

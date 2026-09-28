@@ -139,14 +139,18 @@ Two kinds of BOARD, one extension each (🔒 YAZ-1802 D1 / D2).
 ## Bridge API
 
 The renderer is sandboxed (`contextIsolation: true`, `nodeIntegration: false`, `sandbox: true`).
-Its ONLY door to the machine is `window.yaseenDraw`, defined by `desktop/src/preload/index.ts`
-over the channels in `desktop/src/channels.ts`, typed by `YaseenDrawApi` in `shared/types/`.
+Its ONLY door to the machine is `window.yaseenDraw`, declared once as data: `CONTRACT` in
+`shared/ipc.ts` names every channel, its kind (an invoke main answers, or a push main sends) and
+its types (YAZ-2073 🔒 D16). The preload builds the bridge from it, main registers each handler
+against its entry (so a missing or mistyped door fails `npm run typecheck`, and
+`main/ipc/index.test.ts` pins one handler per invoke), and `YaseenDrawApi` is derived from it;
+`watch` and `window.onFlush` are the two hand-written specials.
 Every `ipcMain.handle` answers with an `Envelope<T>`: `{ ok: true, value }` or
 `{ ok: false, error }` carrying a structured `BridgeError` (`code`, `message`, optional `path` /
 `mtime`), which the preload rethrows. Electron flattens a thrown Error to its message, which is
-why failure travels as data. `client/src/api.ts` re-wraps it as a `BridgeRequestError` for the
-calls that go through it; `state`, `window`, `menu`, `link` and `watch` are called straight off
-`window.yaseenDraw` and reject with the plain object. The codes are `BridgeErrorCode`
+why failure travels as data. The renderer reaches the bridge only through `api`
+(`client/src/api.ts`), the same table over `window.yaseenDraw`, which re-wraps every rejection as a
+`BridgeRequestError`. The codes are `BridgeErrorCode`
 (`shared/types/errors.ts`); sharing added `NOT_SET_UP` (Settings › Sharing has not been set up).
 
 | `window.yaseenDraw` | Channel | What it does |
@@ -1219,7 +1223,8 @@ an unpackaged (dev) build — a shipped app always sends the real token to the r
   window from a disconnected monitor comes back on screen.
 - Closing runs the flush handshake: main holds the window open, pushes `app:flush`, and waits for
   `app:flushed` (5s cap) so an in-flight autosave lands before the process lets go. ⌘Q does the
-  same for every window, then writes the state file.
+  same for every window, then writes the state file. SIGTERM and SIGINT (a logout, `kill`, ⌃C in a
+  terminal) are the same quit: Electron turns them into `app.quit()` (`e2e/autosave.spec.ts` pins it).
 - One running instance. A second launch focuses the first; a `yaseendraw://` URL in its argv
   routes instead of focusing.
 

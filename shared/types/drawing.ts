@@ -1,6 +1,4 @@
-/** The drawing DOCUMENT's two doors and the image bytes that travel with a scene (🔒 YAZ-1810). */
-
-import type { SettingsState } from './appState'
+/** The drawing DOCUMENT's two doors' shapes and the image bytes that travel with a scene (🔒 YAZ-1810). */
 
 /**
  * One image the canvas holds, as it crosses the bridge: the engine's own mime plus a base64
@@ -76,16 +74,3 @@ export interface DrawingSaveResponse {
   persisted: string[]
 }
 
-export interface DrawingApi {
-  /** Read one `.excalidraw` AS A DOCUMENT, with the bytes of the images it names. */
-  load(req: DrawingLoadRequest): Promise<DrawingLoadResponse>
-  /** Write one `.excalidraw`: assets first, then the scene, atomically. */
-  save(req: DrawingSaveRequest): Promise<DrawingSaveResponse>
-  /**
-   * The RESOLVED library folder (🔒 YAZ-1775 D5): `SettingsState.libraryFolder`, or `<userData>/library`
-   * when that is null. Only main knows where userData is, so only main can answer — the Settings
-   * row shows what comes back. Main also makes sure the folder exists at startup, so the answer
-   * always names a real directory. Its CONTENTS (`media.json`, `components/`) are YAZ-1817/YAZ-1818/YAZ-1819's.
-   */
-  libraryFolder(): Promise<string>
-}

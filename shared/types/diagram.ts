@@ -36,9 +36,3 @@ export interface DiagramSaveResponse {
   size: number
 }
 
-export interface DiagramApi {
-  /** Read one `.drawio` AS A DOCUMENT; anything that is not a draw.io diagram is refused (`IO_ERROR`). */
-  load(req: DiagramLoadRequest): Promise<DiagramLoadResponse>
-  /** Write one `.drawio` atomically, its `yaseendraw-*` dates stamped by main (🔒 YAZ-1802 D7). */
-  save(req: DiagramSaveRequest): Promise<DiagramSaveResponse>
-}

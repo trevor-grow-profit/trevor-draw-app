@@ -4,6 +4,7 @@ import type { RenameFileResponse } from '@shared/types'
 import { canRenameWithoutConversion } from '@shared/fileKind'
 import { isWithin } from '@shared/paths'
 import { BridgeFailure, fsCall, requireAbsPath } from './fsUtils'
+import { requireObject } from './validate'
 
 export async function hasExactDirectoryEntry(
   filePath: string,
@@ -41,8 +42,7 @@ export async function hasExactDirectoryEntry(
  * inode is not a collision.
  */
 export async function renameFile(req: unknown): Promise<RenameFileResponse> {
-  if (typeof req !== 'object' || req === null) throw new BridgeFailure('BAD_REQUEST', 'request must be an object')
-  const { oldPath, newPath } = req as Record<string, unknown>
+  const { oldPath, newPath } = requireObject(req)
   const oldP = requireAbsPath(oldPath, 'oldPath')
   const newP = requireAbsPath(newPath, 'newPath')
   if (oldP === newP) throw new BridgeFailure('BAD_REQUEST', 'the new path is the same as the old one', { path: newP })

@@ -3,7 +3,7 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { ipcMain } from 'electron'
-import { CH, type Envelope } from '../../channels'
+import { CONTRACT, type Envelope } from '@shared/ipc'
 import { CLOUDFLARE_API, CLOUDFLARE_TOKEN_PAGE } from '../share/cloudflare'
 import { createSecrets } from '../secrets'
 import { excalidrawFontsDir, readViewerAssets, registerShareIpc, shareEndpoints, viewerAssetsDir } from './share'
@@ -134,15 +134,15 @@ describe('registerShareIpc refuses malformed requests before sharing sees them',
   })
 
   it.each([
-    [CH.shareAccounts, [undefined, {}, { token: '' }, { token: 3 }]],
-    [CH.shareSetup, [undefined, { token: '' }, { token: 't', accountId: 3 }]],
-    [CH.shareGet, [{ root: '/v' }, { path: 'a.excalidraw' }, { root: '', path: 'a' }]],
-    [CH.shareList, [{}, { root: 1 }, { root: '/v', check: 'no' }]],
-    [CH.sharePublish, [{ root: '/v', path: 'a' }, { root: '/v', path: 'a', content: 'x', id: 7 }]],
-    [CH.shareSetPermission, [{ root: '/v', path: 'a' }, { root: '/v', path: 'a', allowDownload: 'yes' }]],
-    [CH.shareStop, [{ root: '/v' }, null]],
-    [CH.shareSetDomain, [{}, { hostname: 5 }]],
-    [CH.shareDisconnect, [{}, { root: 5, deleteEverything: true }]],
+    [CONTRACT.share.accounts.channel, [undefined, {}, { token: '' }, { token: 3 }]],
+    [CONTRACT.share.setup.channel, [undefined, { token: '' }, { token: 't', accountId: 3 }]],
+    [CONTRACT.share.get.channel, [{ root: '/v' }, { path: 'a.excalidraw' }, { root: '', path: 'a' }]],
+    [CONTRACT.share.list.channel, [{}, { root: 1 }, { root: '/v', check: 'no' }]],
+    [CONTRACT.share.publish.channel, [{ root: '/v', path: 'a' }, { root: '/v', path: 'a', content: 'x', id: 7 }]],
+    [CONTRACT.share.setPermission.channel, [{ root: '/v', path: 'a' }, { root: '/v', path: 'a', allowDownload: 'yes' }]],
+    [CONTRACT.share.stop.channel, [{ root: '/v' }, null]],
+    [CONTRACT.share.setDomain.channel, [{}, { hostname: 5 }]],
+    [CONTRACT.share.disconnect.channel, [{}, { root: 5, deleteEverything: true }]],
   ])('%s refuses %j with BAD_REQUEST', async (channel, requests) => {
     for (const r of requests) expect(await registered(channel)({ sender }, r)).toEqual(bad)
   })

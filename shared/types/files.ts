@@ -226,16 +226,6 @@ export interface SaveImageRequest {
   svg: string
 }
 
-/** Native file dialogs that answer a DOCUMENT rather than a folder (`pickFolder()` predates this namespace). */
-export interface DialogApi {
-  /** Pick one `.excalidraw` and get its bytes back; `{ cancelled: true }` when dismissed (YAZ-1833). */
-  openDrawing(): Promise<OpenDrawingResponse>
-  /** Pick a destination and write a standalone `.excalidraw` there (🔒 YAZ-1775 D3, YAZ-1821). */
-  saveDrawing(req: SaveDrawingRequest): Promise<SaveDrawingResponse>
-  /** Pick a destination and write a diagram's picture there as PNG or SVG (🔒 YAZ-1802 D9); same answer as `saveDrawing`. */
-  saveImage(req: SaveImageRequest): Promise<SaveDrawingResponse>
-}
-
 // ---------- watch(root, listener) ----------
 
 /**

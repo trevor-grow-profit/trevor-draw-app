@@ -1,10 +1,10 @@
 import type { AppState, MediaFavoritesRequest, MediaItem, MediaRecentRequest } from '@shared/types'
 import { normalizeMediaItem } from '@shared/mediaLibrary'
-import { CH } from '../../channels'
+import { CONTRACT } from '@shared/ipc'
 import { BridgeFailure } from '../fs/fsUtils'
+import { requireObject, str } from '../fs/validate'
 import { resolveLibraryFolder } from '../library/folder'
 import { createMediaStore, type MediaStore } from '../library/mediaStore'
-import { isRecord } from '@shared/guards'
 import type { Store } from '../store'
 import { broadcastAll } from './broadcast'
 import { handle } from './envelope'
@@ -26,27 +26,26 @@ function requireItem(v: unknown): MediaItem {
 }
 
 function requireFavoritesRequest(v: unknown): MediaFavoritesRequest {
-  if (!isRecord(v)) throw new BridgeFailure('BAD_REQUEST', 'missing request')
-  switch (v.op) {
+  const r = requireObject(v, 'missing request')
+  switch (r.op) {
     case 'list':
       return { op: 'list' }
     case 'add':
-      return { op: 'add', item: requireItem(v.item) }
+      return { op: 'add', item: requireItem(r.item) }
     case 'remove':
-      if (typeof v.itemKey !== 'string' || v.itemKey === '') throw new BridgeFailure('BAD_REQUEST', "'itemKey' must be a non-empty string")
-      return { op: 'remove', itemKey: v.itemKey }
+      return { op: 'remove', itemKey: str(r.itemKey, 'itemKey') }
     default:
       throw new BridgeFailure('BAD_REQUEST', "'op' must be list, add or remove")
   }
 }
 
 function requireRecentRequest(v: unknown): MediaRecentRequest {
-  if (!isRecord(v)) throw new BridgeFailure('BAD_REQUEST', 'missing request')
-  switch (v.op) {
+  const r = requireObject(v, 'missing request')
+  switch (r.op) {
     case 'list':
       return { op: 'list' }
     case 'record':
-      return { op: 'record', item: requireItem(v.item) }
+      return { op: 'record', item: requireItem(r.item) }
     default:
       throw new BridgeFailure('BAD_REQUEST', "'op' must be list or record")
   }
@@ -57,15 +56,15 @@ export function registerMediaLibraryIpc(store: Store, userData: string): MediaSt
   const folderFor = (state: AppState): string => resolveLibraryFolder(state.settings.libraryFolder, userData)
   let folder = folderFor(store.get())
   const media = createMediaStore(folder)
-  media.onChanged(() => broadcastAll(CH.mediaChanged))
+  media.onChanged(() => broadcastAll(CONTRACT.media.onChanged))
   store.onChange((state) => {
     const next = folderFor(state)
     if (next === folder) return
     folder = next
     media.setFolder(next)
-    broadcastAll(CH.mediaChanged)
+    broadcastAll(CONTRACT.media.onChanged)
   })
-  handle(CH.mediaFavorites, async (req: unknown) => media.favorites(requireFavoritesRequest(req)))
-  handle(CH.mediaRecent, async (req: unknown) => media.recent(requireRecentRequest(req)))
+  handle(CONTRACT.media.favorites, async (req: unknown) => media.favorites(requireFavoritesRequest(req)))
+  handle(CONTRACT.media.recent, async (req: unknown) => media.recent(requireRecentRequest(req)))
   return media
 }

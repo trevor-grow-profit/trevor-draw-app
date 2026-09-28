@@ -1,5 +1,6 @@
 import { shell } from 'electron'
 import { BridgeFailure } from './fsUtils'
+import { requireObject } from './validate'
 
 const EXTERNAL_PROTOCOLS = new Set(['http:', 'https:', 'mailto:', 'tel:', 'ftp:'])
 
@@ -16,8 +17,7 @@ export interface OpenLinkHost {
  * re-validates the protocol its caller already checked and trusts nothing in the request.
  */
 export async function openLink(req: unknown, host: OpenLinkHost = shell): Promise<void> {
-  if (typeof req !== 'object' || req === null || Array.isArray(req)) throw new BridgeFailure('BAD_REQUEST', 'invalid open-link request')
-  const { href } = req as { href?: unknown }
+  const { href } = requireObject(req, 'invalid open-link request')
   if (typeof href !== 'string' || href.trim() === '') throw new BridgeFailure('BAD_REQUEST', "missing 'href'")
 
   let target: URL

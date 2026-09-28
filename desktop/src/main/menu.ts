@@ -7,7 +7,7 @@
  */
 import type { MenuItemConstructorOptions } from 'electron'
 import type { FileKind, RecentRoots, ZoomStep } from '@shared/types'
-import { CH } from '../channels'
+import { CONTRACT } from '@shared/ipc'
 import type { Store } from './store'
 import type { WindowManager } from './windows'
 
@@ -284,15 +284,15 @@ export function createMenuHandlers(store: Store, windows: MenuWindows, host: Men
       if (entry !== undefined) windows.duplicateWindow(entry)
     },
     switchVault() {
-      host.focusedWebContents()?.send(CH.menuSwitchVault)
+      host.focusedWebContents()?.send(CONTRACT.menu.onSwitchVault.channel)
     },
     openFolder() {
-      host.focusedWebContents()?.send(CH.menuOpenFolder)
+      host.focusedWebContents()?.send(CONTRACT.menu.onOpenFolder.channel)
     },
     openRecent(path) {
       // A vault window never has its vault swapped (YAZ-1913 🔒 D1): only an empty Welcome window fills in place.
       if (focusedEntry()?.root === null) {
-        host.focusedWebContents()?.send(CH.menuOpenRoot, path)
+        host.focusedWebContents()?.send(CONTRACT.menu.onOpenRoot.channel, path)
         return
       }
       // A vault window goes through the one open-recent door (YAZ-1767 D1): raise that vault's
@@ -300,37 +300,37 @@ export function createMenuHandlers(store: Store, windows: MenuWindows, host: Men
       windows.openRecentBeside(path)
     },
     search() {
-      host.focusedWebContents()?.send(CH.menuSearch)
+      host.focusedWebContents()?.send(CONTRACT.menu.onSearch.channel)
     },
     settings() {
-      host.focusedWebContents()?.send(CH.menuSettings)
+      host.focusedWebContents()?.send(CONTRACT.menu.onSettings.channel)
     },
     closeTab() {
-      host.focusedWebContents()?.send(CH.menuCloseTab)
+      host.focusedWebContents()?.send(CONTRACT.menu.onCloseTab.channel)
     },
     nextTab() {
-      host.focusedWebContents()?.send(CH.menuNextTab)
+      host.focusedWebContents()?.send(CONTRACT.menu.onNextTab.channel)
     },
     prevTab() {
-      host.focusedWebContents()?.send(CH.menuPrevTab)
+      host.focusedWebContents()?.send(CONTRACT.menu.onPrevTab.channel)
     },
     toggleSidebar() {
-      host.focusedWebContents()?.send(CH.menuToggleSidebar)
+      host.focusedWebContents()?.send(CONTRACT.menu.onToggleSidebar.channel)
     },
     zoom(step) {
       host.zoom(step)
     },
     exportImage() {
-      host.focusedWebContents()?.send(CH.menuExportImage)
+      host.focusedWebContents()?.send(CONTRACT.menu.onExportImage.channel)
     },
     exportDrawing() {
-      host.focusedWebContents()?.send(CH.menuExportDrawing)
+      host.focusedWebContents()?.send(CONTRACT.menu.onExportDrawing.channel)
     },
     shareLink() {
-      host.focusedWebContents()?.send(CH.menuShareLink)
+      host.focusedWebContents()?.send(CONTRACT.menu.onShareLink.channel)
     },
     canvasBackground(color) {
-      host.focusedWebContents()?.send(CH.menuCanvasBackground, color)
+      host.focusedWebContents()?.send(CONTRACT.menu.onCanvasBackground.channel, color)
     },
     openHelp() {
       host.openExternal(HELP_URL)

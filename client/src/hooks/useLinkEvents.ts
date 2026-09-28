@@ -1,4 +1,5 @@
 import { useEffect } from 'react'
+import { api } from '../api'
 
 interface UseLinkEventsOptions {
   /** A yaseendraw:// link resolved to this window: open `path` (guaranteed inside this window's root). */
@@ -10,8 +11,8 @@ interface UseLinkEventsOptions {
 /** Deep-link pushes from the main process (E1, GRO-2171); main routes each link to the best window. */
 export function useLinkEvents({ onOpenFile, onNotice }: UseLinkEventsOptions): void {
   useEffect(() => {
-    const offOpenFile = window.yaseenDraw.link.onOpenFile(onOpenFile)
-    const offNotice = window.yaseenDraw.link.onNotice(onNotice)
+    const offOpenFile = api.link.onOpenFile(onOpenFile)
+    const offNotice = api.link.onNotice(onNotice)
     return () => {
       offOpenFile()
       offNotice()

@@ -3,7 +3,7 @@ import { mkdtemp, readFile, rm, stat } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { ipcMain } from 'electron'
-import { CH, type Envelope } from '../../channels'
+import { CONTRACT, type Envelope } from '@shared/ipc'
 import type { Secrets } from '../secrets'
 import { registerSecretsIpc } from './secrets'
 
@@ -30,12 +30,12 @@ beforeEach(async () => {
 })
 afterEach(() => rm(userData, { recursive: true, force: true }))
 
-const set = (req: unknown) => registered(CH.secretsSet)({ sender }, req)
-const has = (req: unknown) => registered(CH.secretsHas)({ sender }, req)
+const set = (req: unknown) => registered(CONTRACT.secrets.set.channel)({ sender }, req)
+const has = (req: unknown) => registered(CONTRACT.secrets.has.channel)({ sender }, req)
 
 describe('registerSecretsIpc (🔒 YAZ-1775 D4, YAZ-1817)', () => {
   it('registers set and has — and NO channel that answers a value', () => {
-    expect(vi.mocked(ipcMain.handle).mock.calls.map(([ch]) => ch).sort()).toEqual([CH.secretsHas, CH.secretsSet].sort())
+    expect(vi.mocked(ipcMain.handle).mock.calls.map(([ch]) => ch).sort()).toEqual([CONTRACT.secrets.has.channel, CONTRACT.secrets.set.channel].sort())
   })
 
   it('set stores into `<userData>/secrets.json` owner-only; has flips; null clears; main reads the value', async () => {

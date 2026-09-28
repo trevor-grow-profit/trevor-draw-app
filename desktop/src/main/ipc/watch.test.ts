@@ -3,7 +3,7 @@ import { writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { ipcMain } from 'electron'
 import type { WatchEvent } from '@shared/types'
-import { CH } from '../../channels'
+import { SPECIAL } from '@shared/ipc'
 import { makeFixture, until } from '../fs/testFixture'
 import { activeWatcherRoots } from '../fs/watchers'
 import { registerWatchIpc } from './watch'
@@ -26,7 +26,7 @@ function makeSender() {
 type Sender = ReturnType<typeof makeSender>
 
 const sent = (s: Sender): Array<{ id: string; ev: WatchEvent }> =>
-  s.send.mock.calls.filter(([ch]) => ch === CH.watchEvent).map(([, msg]) => msg as { id: string; ev: WatchEvent })
+  s.send.mock.calls.filter(([ch]) => ch === SPECIAL.watchEvent).map(([, msg]) => msg as { id: string; ev: WatchEvent })
 const destroy = (s: Sender) => {
   const hook = s.once.mock.calls.find(([name]) => name === 'destroyed')
   if (hook === undefined) throw new Error('no destroyed hook registered')
@@ -48,14 +48,14 @@ afterEach(async () => {
 
 const subscribeAs = async (s: Sender, id: string, r: string) => {
   senders.includes(s) || senders.push(s)
-  await listener(CH.watchSubscribe)({ sender: s }, { id, root: r })
+  await listener(SPECIAL.watchSubscribe)({ sender: s }, { id, root: r })
 }
-const unsubscribeAs = (s: Sender, id: string) => listener(CH.watchUnsubscribe)({ sender: s }, id)
+const unsubscribeAs = (s: Sender, id: string) => listener(SPECIAL.watchUnsubscribe)({ sender: s }, id)
 
 describe('watch IPC', () => {
   it('registers subscribe + unsubscribe listeners', () => {
     const channels = vi.mocked(ipcMain.on).mock.calls.map(([ch]) => ch).sort()
-    expect(channels).toEqual([CH.watchSubscribe, CH.watchUnsubscribe].sort())
+    expect(channels).toEqual([SPECIAL.watchSubscribe, SPECIAL.watchUnsubscribe].sort())
   })
 
   it('two subscriptions on one root share one watcher; each gets `ready` addressed to its id', async () => {
@@ -129,7 +129,7 @@ describe('watch IPC', () => {
     const s = makeSender()
     senders.push(s)
     // A quick root switch or a StrictMode remount: `watch:unsubscribe` arrives before `requireDir` settles.
-    const pending = listener(CH.watchSubscribe)({ sender: s }, { id: 'raced', root })
+    const pending = listener(SPECIAL.watchSubscribe)({ sender: s }, { id: 'raced', root })
     unsubscribeAs(s, 'raced')
     await pending
     expect(activeWatcherRoots()).toEqual([])

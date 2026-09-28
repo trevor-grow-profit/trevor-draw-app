@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef } from 'react'
 import type { WatchEvent } from '@shared/types'
+import { api } from '../api'
 
 export type WatchListener = (ev: WatchEvent) => void
 
@@ -27,7 +28,7 @@ export function useWatch(root: string | null): WatchSource {
   )
   useEffect(() => {
     if (root === null) return
-    return window.yaseenDraw.watch(root, (ev) => listeners.current.forEach((l) => l(ev)))
+    return api.watch(root, (ev) => listeners.current.forEach((l) => l(ev)))
   }, [root])
   return source
 }

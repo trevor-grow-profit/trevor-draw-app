@@ -2,8 +2,9 @@
  * The `yaseendraw://` deep-link format (E1, GRO-2171; locked decision D7): path-only,
  * absolute, percent-encoded — `yaseendraw:///Users/me/vault/My%20note.md` — no vault id.
  * An optional `?root=` (also a percent-encoded absolute path) overrides which folder the
- * link opens under. Shared so main's parser and the client's generator agree byte-for-byte
- * on one encoding.
+ * link opens under. Only main uses it today (the OS hands links to main, which parses them and
+ * turns a double-clicked file into one); it lives in shared/ because it is pure and a renderer that
+ * ever writes a link must use this one encoding.
  */
 
 const SCHEME = 'yaseendraw://'

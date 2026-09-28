@@ -10,7 +10,7 @@ import { posix, win32 } from 'node:path'
 import { fileKind } from '@shared/fileKind'
 import { isWithin, sepOf } from '@shared/paths'
 import { DEFAULT_SIDEBAR_LENS, type OpenWindowOptions, type RecentRoots, type WindowBounds, type WindowEntry } from '@shared/types'
-import { CH } from '../channels'
+import { CONTRACT, SPECIAL } from '@shared/ipc'
 import type { Store } from './store'
 
 export interface WindowLike {
@@ -237,7 +237,7 @@ export function createWindowManager(store: Store, host: WindowHost): WindowManag
       resolve()
     }
     pendingFlush.set(wcId, { done, settle })
-    win.webContents.send(CH.appFlush)
+    win.webContents.send(SPECIAL.appFlush)
     return done
   }
 
@@ -316,7 +316,7 @@ export function createWindowManager(store: Store, host: WindowHost): WindowManag
     const win = [...live.values()].find((w) => !w.isDestroyed())
     if (win === undefined) return
     focusWindow(win)
-    win.webContents.send(CH.linkNotice, message)
+    win.webContents.send(CONTRACT.link.onNotice.channel, message)
   }
 
   return {
@@ -418,7 +418,7 @@ export function createWindowManager(store: Store, host: WindowHost): WindowManag
         return
       }
       focusWindow(win)
-      win.webContents.send(CH.linkOpenFile, path)
+      win.webContents.send(CONTRACT.link.onOpenFile.channel, path)
     },
 
     linkNotice,

@@ -1,10 +1,10 @@
 import path from 'node:path'
 import { BrowserWindow, dialog, type IpcMainInvokeEvent } from 'electron'
 import { MAX_DRAWING_BYTES, type OpenDrawingResponse, type PickFolderResponse, type SaveDrawingRequest, type SaveDrawingResponse, type SaveImageRequest } from '@shared/types'
-import { CH } from '../../channels'
+import { CONTRACT } from '@shared/ipc'
 import { readBoundedRegularFile } from '../fs/boundedRead'
 import { atomicWrite, BridgeFailure, fsCall, requireDrawingFile } from '../fs/fsUtils'
-import { isRecord } from '@shared/guards'
+import { requireObject, str } from '../fs/validate'
 import { handleWithEvent } from './envelope'
 
 const OPTIONS: Electron.OpenDialogOptions = { title: 'Open folder', properties: ['openDirectory', 'createDirectory'] }
@@ -92,11 +92,8 @@ export async function openDrawingFile(e: IpcMainInvokeEvent, inFlight: Set<Brows
 }
 
 function requireSaveRequest(v: unknown): SaveDrawingRequest {
-  if (!isRecord(v)) throw new BridgeFailure('BAD_REQUEST', 'missing request')
-  const { defaultName, content } = v
-  if (typeof defaultName !== 'string' || defaultName === '') throw new BridgeFailure('BAD_REQUEST', "'defaultName' must be a non-empty string")
-  if (typeof content !== 'string' || content === '') throw new BridgeFailure('BAD_REQUEST', "'content' must be a non-empty string")
-  return { defaultName, content }
+  const r = requireObject(v, 'missing request')
+  return { defaultName: str(r.defaultName, 'defaultName'), content: str(r.content, 'content') }
 }
 
 /**
@@ -124,9 +121,8 @@ export async function saveDrawingFile(e: IpcMainInvokeEvent, inFlight: Set<Brows
 }
 
 function requireSaveImageRequest(v: unknown): SaveImageRequest {
-  if (!isRecord(v)) throw new BridgeFailure('BAD_REQUEST', 'missing request')
-  const { defaultName, png, svg } = v
-  if (typeof defaultName !== 'string' || defaultName === '') throw new BridgeFailure('BAD_REQUEST', "'defaultName' must be a non-empty string")
+  const { defaultName: name, png, svg } = requireObject(v, 'missing request')
+  const defaultName = str(name, 'defaultName')
   if (typeof png !== 'string' || !png.startsWith(IMAGE_DATA_URL['.png'])) throw new BridgeFailure('BAD_REQUEST', "'png' must be a PNG data URL")
   if (typeof svg !== 'string' || !svg.startsWith(IMAGE_DATA_URL['.svg'])) throw new BridgeFailure('BAD_REQUEST', "'svg' must be an SVG data URL")
   return { defaultName, png, svg }
@@ -153,8 +149,8 @@ export async function saveImageFile(e: IpcMainInvokeEvent, inFlight: Set<Browser
 
 export function registerDialogIpc(): void {
   const inFlight = new Set<BrowserWindow | null>()
-  handleWithEvent(CH.dialogPickFolder, (e) => pickFolder(e, inFlight))
-  handleWithEvent(CH.dialogOpenFile, (e) => openDrawingFile(e, inFlight))
-  handleWithEvent(CH.dialogSaveFile, (e, body: unknown) => saveDrawingFile(e, inFlight, body))
-  handleWithEvent(CH.dialogSaveImage, (e, body: unknown) => saveImageFile(e, inFlight, body))
+  handleWithEvent(CONTRACT.pickFolder, (e) => pickFolder(e, inFlight))
+  handleWithEvent(CONTRACT.dialog.openDrawing, (e) => openDrawingFile(e, inFlight))
+  handleWithEvent(CONTRACT.dialog.saveDrawing, (e, body: unknown) => saveDrawingFile(e, inFlight, body))
+  handleWithEvent(CONTRACT.dialog.saveImage, (e, body: unknown) => saveImageFile(e, inFlight, body))
 }
