@@ -153,6 +153,7 @@ The packaged app is checked the same way — launch
 npm run desktop:build && npm run perf:budget   # size + integrity of the packaged app vs tools/perf/budget.json
 npm run perf -- launch drawio --runs 5          # scenarios (list: npm run perf); `all` runs every one (~45 min)
 npm run perf -- canvas-4k --dev                 # desktop/out under the workspace Electron, no packaging
+npm run perf -- hover --runs 7 --vs <old.app>  # A/B: this build vs another, interleaved run by run
 ```
 
 `perf` generates its fixtures (seeded, so identical every run: 1k/4k-shape boards, 121- and 90-image
@@ -162,7 +163,10 @@ git vault with a bare origin) and an isolated profile under `--work` (default
 warm-up and prints JSON — median, p95 and `cv` (noise) per metric — checked against the `perf`
 ceilings. It opens real windows for a few seconds each and never reads the real profile or vaults.
 Numbers only compare on the same machine: note `loadAvg` in the output and rerun when it is high.
-`tools/perf/baseline.json` holds v0.1.11's runs; every YAZ-2073 change reports its before → after.
+`--vs` alternates two bundles run by run (each with its own warm-up, fixtures and profile), so load
+from anything else running hits both alike; the second app's numbers land under each scenario's `vs`.
+`tools/perf/baseline.json` holds v0.1.11's runs (re-measured A/B in YAZ-2073 7A); every YAZ-2073
+change reports its before → after, and `thoughts/yaz-2073-scope/before-after.md` has the final table.
 
 ## Gotchas
 
