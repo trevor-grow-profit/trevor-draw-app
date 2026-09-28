@@ -236,6 +236,7 @@ export function App() {
     }
     storage.setRoot(path) // ONE identity write: { root, file: null, tabs: [] } (Tabs rule 13)
     storage.pushRecentRoot(path)
+    setSidebarLens(storage.getSidebarLens()) // a different vault lands on Files (Docs YAZ-1846 D2); the same one keeps its tab
     setSidebarRevealRequest(null)
     setRoot(path)
     // The folder's remembered file becomes the sole restored tab (D6); reset mirrors it down.

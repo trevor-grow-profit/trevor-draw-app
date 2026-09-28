@@ -32,8 +32,10 @@ export function cleanVaultName(raw: unknown): string | null {
  * value falls back to the default, `files`.
  */
 export type SidebarLens = 'files' | 'favorites'
-/** The tabs' order, left→right: the default lens leads. */
+/** The tabs' order, left→right. */
 export const SIDEBAR_LENSES: readonly SidebarLens[] = ['files', 'favorites']
+/** The lens a new window, and a switch to a DIFFERENT vault, opens on (port of Docs YAZ-1846 D1/D2). */
+export const DEFAULT_SIDEBAR_LENS: SidebarLens = 'files'
 export const isSidebarLens = (v: unknown): v is SidebarLens => SIDEBAR_LENSES.includes(v as SidebarLens)
 
 /**

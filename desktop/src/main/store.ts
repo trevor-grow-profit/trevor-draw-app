@@ -3,6 +3,7 @@ import { dirname, isAbsolute } from 'node:path'
 import {
   DEFAULT_CANVAS_PANEL,
   DEFAULT_SETTINGS,
+  DEFAULT_SIDEBAR_LENS,
   DIAGRAM_DARK_COLORS,
   MAX_RECENT_ROOTS,
   SIDEBAR_DEFAULT_W,
@@ -224,7 +225,7 @@ function sanitizeState(raw: unknown): AppState | null {
   // YAZ-1628 migration, the same shape: a v1 file's retired global lens (YAZ-847) seeds only
   // windows without a valid lens of their own; a pre-847 file has none at all, and missing or
   // junk both read as the default. The returned state omits the old key too.
-  const legacySidebarLens: SidebarLens = isSidebarLens(raw.sidebarLens) ? raw.sidebarLens : 'files'
+  const legacySidebarLens: SidebarLens = isSidebarLens(raw.sidebarLens) ? raw.sidebarLens : DEFAULT_SIDEBAR_LENS
   return {
     version: 1,
     settings: sanitizeSettings(raw.settings),

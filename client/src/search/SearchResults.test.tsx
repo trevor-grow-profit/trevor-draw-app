@@ -32,7 +32,7 @@ let reactRoot: Root | null = null
 let container: HTMLElement | null = null
 
 function render(results: SearchCandidate[], selected = 0) {
-  const props = { onSelect: vi.fn(), onActivate: vi.fn() }
+  const props = { onSelect: vi.fn(), onActivate: vi.fn(), onRowContextMenu: vi.fn() }
   container = document.createElement('div')
   document.body.appendChild(container)
   reactRoot = createRoot(container)
@@ -86,6 +86,15 @@ describe('SearchResults (YAZ-803)', () => {
     const { el, onActivate } = render(results)
     act(() => void rows(el)[0].dispatchEvent(new MouseEvent('click', { bubbles: true, metaKey: true })))
     expect(onActivate).toHaveBeenCalledExactlyOnceWith(results[0], true)
+  })
+
+  it('a right-click reports the row and moves selection to it, opening nothing (Docs YAZ-2050)', () => {
+    const results = [cand('A'), dir('B')]
+    const { el, onActivate, onSelect, onRowContextMenu } = render(results)
+    act(() => void rows(el)[1].dispatchEvent(new MouseEvent('contextmenu', { bubbles: true })))
+    expect(onRowContextMenu).toHaveBeenCalledExactlyOnceWith(results[1], expect.objectContaining({ type: 'contextmenu' }))
+    expect(onSelect).toHaveBeenCalledWith(1)
+    expect(onActivate).not.toHaveBeenCalled()
   })
 
   it('a folder row carries the dir class, a glyph, and a `, folder` aria-label suffix (🔒 D4, YAZ-1491)', () => {

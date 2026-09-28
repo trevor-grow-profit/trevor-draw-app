@@ -1,4 +1,5 @@
 import {
+  DEFAULT_SIDEBAR_LENS,
   addRecentRoot,
   cleanVaultName,
   defaultAppState,
@@ -22,7 +23,7 @@ import { basename } from './paths'
  */
 
 let state: AppState = defaultAppState()
-let identity: WindowIdentity = { id: '', root: null, file: null, tabs: [], sidebarCollapsed: false, sidebarLens: 'files', focusDirs: [], focusFavorites: [] }
+let identity: WindowIdentity = { id: '', root: null, file: null, tabs: [], sidebarCollapsed: false, sidebarLens: DEFAULT_SIDEBAR_LENS, focusDirs: [], focusFavorites: [] }
 let unsubscribe: (() => void) | null = null
 const listeners = new Set<() => void>()
 
@@ -69,12 +70,13 @@ export const storage = {
   getRoot: (): string | null => identity.root,
   /**
    * Changing the root clears this window's file AND tab list (Tabs rule 13, GRO-2234) and both
-   * Focus Mode lists (YAZ-1628, YAZ-1766) in the same write; re-setting the same root keeps them.
+   * Focus Mode lists (YAZ-1628, YAZ-1766), and lands the lens on Files (Docs YAZ-1846 D2), in the
+   * same write; re-setting the same root keeps them.
    */
   setRoot(root: string | null): void {
     const patch = root === identity.root
       ? { root }
-      : { root, file: null, tabs: [] as string[], focusDirs: [] as string[], focusFavorites: [] as string[] }
+      : { root, file: null, tabs: [] as string[], sidebarLens: DEFAULT_SIDEBAR_LENS, focusDirs: [] as string[], focusFavorites: [] as string[] }
     identity = { ...identity, ...patch }
     send('window.setIdentity', () => window.yaseenDraw.window.setIdentity(patch))
   },
@@ -178,8 +180,8 @@ export const storage = {
   /**
    * The active sidebar lens (YAZ-847): chrome, not per-folder view state, so no root argument
    * and no `FolderState` entry. Window identity since YAZ-1628, like `sidebarCollapsed` above —
-   * another window's switch never lands here through a state broadcast, and a root change
-   * keeps it (`setRoot` leaves it alone).
+   * another window's switch never lands here through a state broadcast; a switch to a DIFFERENT
+   * root lands it on Files (`setRoot`, Docs YAZ-1846 D2), the same root keeps it.
    */
   getSidebarLens: (): SidebarLens => identity.sidebarLens,
   setSidebarLens(lens: SidebarLens): void {
