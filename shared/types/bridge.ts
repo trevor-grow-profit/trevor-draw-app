@@ -287,7 +287,7 @@ export interface YaseenDrawApi {
   pickFolder(): Promise<PickFolderResponse>
   /** Native file dialogs: pick a `.excalidraw` to import (YAZ-1833). */
   dialog: DialogApi
-  /** One chokidar watcher per root in main, shared by every window; late joiners get `ready` at once. */
+  /** One watcher per root in main (`fs/treeWatcher.ts`), shared by every window; late joiners get `ready` at once. */
   watch(root: string, listener: (ev: WatchEvent) => void): () => void
   state: StateApi
   window: WindowApi

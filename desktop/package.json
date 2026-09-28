@@ -9,10 +9,8 @@
     "dev": "node ../tools/packDrawio.mjs && node ../tools/buildShareViewer.mjs && electron-vite dev",
     "build": "node ../tools/packDrawio.mjs && electron-vite build && node ../tools/buildShareViewer.mjs"
   },
-  "dependencies": {
-    "chokidar": "^4.0.3"
-  },
   "devDependencies": {
+    "chokidar": "^4.0.3",
     "electron": "43.4.1",
     "electron-builder": "^26.15.3",
     "electron-vite": "^5.0.0",

@@ -1,0 +1,150 @@
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { mkdir, mkdtemp, rename, rm, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import path from 'node:path'
+import { isNetworkMount, watchTree, type TreeWatcher } from './treeWatcher'
+import { until } from './testFixture'
+
+/**
+ * The engine's own rules (YAZ-2073 5F). What consumers see through it is pinned by
+ * `watchConformance.test.ts`; this file holds what only the engine knows about: depth, a folder
+ * that is not there yet, the watched folder itself going and coming back, tmp files that linger,
+ * reading `mount`, and the polling fallback.
+ */
+const nativeWatch = vi.hoisted(() => ({ fail: false }))
+vi.mock('node:fs', async (importOriginal) => {
+  const fs = await importOriginal<typeof import('node:fs')>()
+  const watch = ((...args: Parameters<typeof fs.watch>) => {
+    if (nativeWatch.fail) throw Object.assign(new Error('not here'), { code: 'ERR_FEATURE_UNAVAILABLE_ON_PLATFORM' })
+    return fs.watch(...args)
+  }) as typeof fs.watch
+  return { ...fs, default: { ...fs, watch }, watch }
+})
+
+const dirs: string[] = []
+const watchers: TreeWatcher[] = []
+afterEach(async () => {
+  nativeWatch.fail = false
+  await Promise.all(watchers.splice(0).map((w) => w.close()))
+  await Promise.all(dirs.splice(0).map((d) => rm(d, { recursive: true, force: true })))
+})
+
+async function tempDir(): Promise<string> {
+  const d = await mkdtemp(path.join(tmpdir(), 'yaseendraw-engine-'))
+  dirs.push(d)
+  return d
+}
+
+/** Starts a watch on `dir` and records `type rel` lines; `ready` resolves once it is live. */
+function record(dir: string, opts: Parameters<typeof watchTree>[1] = {}) {
+  const lines: string[] = []
+  let ready = false
+  const w = watchTree(dir, opts)
+  watchers.push(w)
+  const note = (type: string) => (p: string) => lines.push(`${type} ${path.relative(dir, p)}`)
+  w.on('add', note('add')).on('change', note('change')).on('unlink', note('unlink')).on('addDir', note('addDir')).on('unlinkDir', note('unlinkDir'))
+  w.on('ready', () => (ready = true))
+  const quiet = async () => {
+    let seen = -1
+    while (seen !== lines.length) {
+      seen = lines.length
+      await new Promise((r) => setTimeout(r, 500))
+    }
+    return [...lines].sort()
+  }
+  return { lines, ready: () => until(() => ready, 10_000), quiet, watcher: w }
+}
+
+describe('treeWatcher', { timeout: 20_000 }, () => {
+  it('depth 0 announces the folder`s own entries and nothing deeper', async () => {
+    const dir = await tempDir()
+    await mkdir(path.join(dir, 'sub'))
+    const r = record(dir, { depth: 0 })
+    await r.ready()
+    await writeFile(path.join(dir, 'top.json'), '{}')
+    await writeFile(path.join(dir, 'sub', 'deep.json'), '{}')
+    await mkdir(path.join(dir, 'new'))
+    expect(await r.quiet()).toEqual(['add top.json', 'addDir new'])
+  })
+
+  it('a folder several levels from existing is waited for, and what it holds arrives when it does', async () => {
+    const parent = await tempDir()
+    const dir = path.join(parent, 'a', 'b', 'library')
+    const r = record(dir)
+    await r.ready()
+    await mkdir(path.join(parent, 'a'))
+    await new Promise((r) => setTimeout(r, 200))
+    await mkdir(dir, { recursive: true })
+    await writeFile(path.join(dir, 'media.json'), '{}')
+    expect(await r.quiet()).toEqual(['add media.json'])
+  })
+
+  it('the watched folder itself going takes everything with it; coming back brings its contents', async () => {
+    const parent = await tempDir()
+    const dir = path.join(parent, 'vault')
+    await mkdir(path.join(dir, 'sub'), { recursive: true })
+    await writeFile(path.join(dir, 'sub', 'x.excalidraw'), 'x')
+    await new Promise((r) => setTimeout(r, 300))
+    const r = record(dir)
+    await r.ready()
+    await rename(dir, path.join(parent, 'elsewhere'))
+    expect(await r.quiet()).toEqual(['unlink sub/x.excalidraw', 'unlinkDir sub'])
+    r.lines.length = 0
+    await mkdir(dir)
+    await writeFile(path.join(dir, 'back.excalidraw'), 'b')
+    expect(await r.quiet()).toEqual(['add back.excalidraw'])
+  })
+
+  it('an atomicWrite tmp file is silent even when it lingers past the settle window', async () => {
+    const dir = await tempDir()
+    const r = record(dir)
+    await r.ready()
+    const tmp = path.join(dir, 'big.excalidraw.tmp-0123456789ab')
+    await writeFile(tmp, 'a large save, still being written')
+    await new Promise((r) => setTimeout(r, 400))
+    await rename(tmp, path.join(dir, 'big.excalidraw'))
+    expect(await r.quiet()).toEqual(['add big.excalidraw'])
+  })
+
+  it('close() ends every event, pending ones included', async () => {
+    const dir = await tempDir()
+    const r = record(dir)
+    await r.ready()
+    await writeFile(path.join(dir, 'late.json'), '{}')
+    await r.watcher.close()
+    await new Promise((r) => setTimeout(r, 400))
+    expect(r.lines).toEqual([])
+  })
+
+  it('falls back to chokidar polling when fs.watch cannot serve, and still announces', async () => {
+    nativeWatch.fail = true
+    const dir = await tempDir()
+    const r = record(dir)
+    await r.ready()
+    await writeFile(path.join(dir, 'polled.json'), '{}')
+    await until(() => r.lines.length > 0, 10_000)
+    expect(r.lines).toEqual(['add polled.json'])
+  })
+})
+
+describe('isNetworkMount (macOS `mount`)', () => {
+  const TABLE = [
+    '/dev/disk3s1s1 on / (apfs, sealed, local, read-only, journaled)',
+    '/dev/disk3s5 on /System/Volumes/Data (apfs, local, journaled, nobrowse, protect)',
+    '//yasin@nas._smb._tcp.local/Boards on /Volumes/Boards (smbfs, nodev, nosuid, mounted by yasin)',
+    'nas:/export/vaults on /Volumes/NFS Vaults (nfs, nodev, nosuid, mounted by yasin)',
+    '/dev/disk5s1 on /Volumes/USB Stick (exfat, local, nodev, nosuid, noowners, mounted by yasin)',
+  ].join('\n')
+
+  it('a share (SMB, NFS) is network; the system volume and a USB stick are local; the longest mount point decides', () => {
+    expect(isNetworkMount(TABLE, '/Volumes/Boards/Team vault')).toBe(true)
+    expect(isNetworkMount(TABLE, '/Volumes/NFS Vaults/mine')).toBe(true)
+    expect(isNetworkMount(TABLE, '/Volumes/USB Stick/vault')).toBe(false)
+    expect(isNetworkMount(TABLE, '/System/Volumes/Data/Users/yasin/vault')).toBe(false)
+    expect(isNetworkMount(TABLE, '/Volumes/BoardsNot/vault')).toBe(false)
+  })
+
+  it('an unreadable table is local — the native watcher is the default', () => {
+    expect(isNetworkMount('', '/Volumes/Boards')).toBe(false)
+  })
+})

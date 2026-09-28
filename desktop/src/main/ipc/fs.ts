@@ -82,7 +82,7 @@ export function registerFsIpc(store: Store, windows: WindowLookup): void {
   //  - nothing downstream rewrites references to the deleted file; other drawings keep theirs.
   // Like rename, the tree needs no push: the watcher's unlink / unlinkDir echo heals it
   // (verified empirically in the GRO-2275 scope pass — trashItem is a MOVE at the fs layer,
-  // so chokidar reports it exactly like any other move out of the root).
+  // so the watcher reports it exactly like any other move out of the root).
   handleWithEvent(CH.fsDelete, async (e, req: unknown) => {
     // The calling window's own vault ROOT cannot be deleted — same reasoning and the same
     // sender lookup as rename: root identity is a recents/vault-management question. ANOTHER

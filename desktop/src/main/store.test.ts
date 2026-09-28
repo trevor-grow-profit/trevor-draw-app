@@ -786,6 +786,26 @@ describe('createStore: persistence', () => {
     expect(renames()).toHaveLength(1)
   })
 
+  it('a change that moves nothing on disk writes nothing: a session-only folder toggle, or the same settings again (YAZ-2073 5G)', async () => {
+    const store = createStore(file)
+    store.setFolder('/v', { lastFile: '/v/a.excalidraw' })
+    await store.flush()
+    expect(renames()).toHaveLength(1)
+    // `expanded` never reaches disk (YAZ-1642): listeners still hear it, the file is not rewritten.
+    const heard = vi.fn()
+    store.onChange(heard)
+    store.setFolder('/v', { expanded: ['/v/sub'] })
+    store.setSettings({ ...store.get().settings })
+    await store.flush()
+    expect(heard).toHaveBeenCalledTimes(2)
+    expect(renames()).toHaveLength(1)
+    // A change that does move the file still lands.
+    store.setSidebarWidth(SIDEBAR_MIN_W)
+    await store.flush()
+    expect(renames()).toHaveLength(2)
+    expect((await onDisk()).sidebarWidth).toBe(SIDEBAR_MIN_W)
+  })
+
   it('the file on disk is the pretty-printed state and the parent directory is created on demand', async () => {
     const nested = path.join(dir, 'deeper', 'yaseendraw.json')
     const store = createStore(nested)

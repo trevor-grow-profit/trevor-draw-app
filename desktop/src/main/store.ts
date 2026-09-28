@@ -276,14 +276,22 @@ export function createStore(filePath: string): Store {
   let timer: ReturnType<typeof setTimeout> | null = null
   /** Writes are chained so two atomic writes can never land out of order. */
   let chain: Promise<void> = Promise.resolve()
+  /**
+   * The text this store last wrote. A commit whose file would read the same — a session-only
+   * `expanded` toggle, a settings echo — writes nothing (YAZ-2073 5G).
+   */
+  let written: string | null = null
 
   const write = (): Promise<void> => {
     dirty = false
     const snapshot = state
     chain = chain
       .then(async () => {
+        const text = `${JSON.stringify(toDisk(snapshot), null, 2)}\n`
+        if (text === written) return
         mkdirSync(dirname(filePath), { recursive: true })
-        await atomicWrite(filePath, `${JSON.stringify(toDisk(snapshot), null, 2)}\n`)
+        await atomicWrite(filePath, text)
+        written = text
       })
       .catch((err: unknown) => console.error(`[store] failed to write ${filePath}: ${String(err)}`))
     return chain

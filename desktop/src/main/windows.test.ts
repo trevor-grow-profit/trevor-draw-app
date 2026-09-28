@@ -270,18 +270,18 @@ describe('createWindowManager: close', () => {
 })
 
 describe('createWindowManager: quit', () => {
-  it('flushes every window sequentially, keeps all entries, saves final bounds, then resolves', async () => {
+  it('flushes every window at once, keeps all entries, saves final bounds, then resolves (YAZ-2073 5G)', async () => {
     const { manager, w1, w2 } = seedTwo()
     w1.bounds = { x: 111, y: 11, width: 800, height: 600 }
     const done = vi.fn()
     void manager.flushAllForQuit().then(done)
     await vi.advanceTimersByTimeAsync(0)
     expect(w1.flushCount()).toBe(1)
-    expect(w2.flushCount()).toBe(0) // sequential: w2 is not asked until w1 acked
+    expect(w2.flushCount()).toBe(1) // in parallel: w2 is asked without waiting for w1's ack
     manager.handleFlushed(w1.webContents)
     await vi.advanceTimersByTimeAsync(0)
     expect(w1.isDestroyed()).toBe(true)
-    expect(w2.flushCount()).toBe(1)
+    expect(w2.isDestroyed()).toBe(false)
     expect(done).not.toHaveBeenCalled()
     manager.handleFlushed(w2.webContents)
     await vi.advanceTimersByTimeAsync(0)
@@ -291,14 +291,15 @@ describe('createWindowManager: quit', () => {
     expect(store.get().windows[0].bounds).toEqual({ x: 111, y: 11, width: 800, height: 600 })
   })
 
-  it('hung renderers cannot block quit: each handshake times out on its own', async () => {
+  it('hung renderers cannot block quit: their handshakes time out together, so N windows cost ONE timeout (YAZ-2073 5G)', async () => {
     const { manager, w1, w2 } = seedTwo()
     const done = vi.fn()
     void manager.flushAllForQuit().then(done)
-    await vi.advanceTimersByTimeAsync(FLUSH_TIMEOUT_MS)
-    expect(w1.isDestroyed()).toBe(true)
+    await vi.advanceTimersByTimeAsync(FLUSH_TIMEOUT_MS - 1)
+    expect(w1.isDestroyed()).toBe(false)
     expect(done).not.toHaveBeenCalled()
-    await vi.advanceTimersByTimeAsync(FLUSH_TIMEOUT_MS)
+    await vi.advanceTimersByTimeAsync(1)
+    expect(w1.isDestroyed()).toBe(true)
     expect(w2.isDestroyed()).toBe(true)
     expect(done).toHaveBeenCalled()
     expect(store.get().windows).toHaveLength(2)

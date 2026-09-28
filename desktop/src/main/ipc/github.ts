@@ -6,7 +6,7 @@ import { detectRepo } from '../git/detect'
 import { resolveGit } from '../git/exec'
 import { boardHistory, boardVersion, restoreBoardVersion } from '../git/history'
 import { createGitSync, type GitSyncManager } from '../git/manager'
-import { syncPass } from '../git/sync'
+import { remoteMoved, syncPass } from '../git/sync'
 import type { Store } from '../store'
 import { readConfig, subscribeConfig, writeConfig } from '../vaultConfig'
 import { broadcastAll } from './broadcast'
@@ -16,7 +16,7 @@ import { handle } from './envelope'
  * The `github.*` half of `window.yaseenDraw` (YAZ-1081 2C) — and the ONE place the Electron-free
  * sync core (`../git/`) is handed its production edges. `createGitSync` takes every edge as an
  * injected function, so this module is the whole seam: the vault-local config store, the shared
- * chokidar, the status broadcast, and the pass itself.
+ * vault watcher, the status broadcast, and the pass itself.
  *
  * Which roots exist is `AppState.windows` (null = Welcome), exactly the per-open-root idiom
  * `ipc/vaultConfig.ts` already uses — the manager subscribes, times and
@@ -55,6 +55,7 @@ export function registerGithubIpc(store: Store): GitSyncManager {
     // Every live window hears about every vault; renderers filter by `status.root` (the `state:changed` posture).
     onStatus: (status) => broadcastAll(CH.githubStatusChanged, status),
     syncPass,
+    remoteMoved,
     inspect,
   })
 

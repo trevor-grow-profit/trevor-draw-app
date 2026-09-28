@@ -209,8 +209,8 @@ export function createComponentStore(initialFolder: string, deps: { now?: () => 
       const name = path.basename(p)
       return slugOfComponentFile(name) !== null || slugOfComponentPreview(name) !== null
     },
-    // `components/` may have come into existence DURING chokidar's own initialisation, which
-    // polling loses. Re-adding it once at `ready` is the recovery; on a path that still does not
+    // `components/` may have come into existence DURING the watcher's own start, which the polling
+    // fallback loses (`fs/treeWatcher.ts`). Re-adding it once at `ready` is the recovery; on a path that still does not
     // exist it does nothing, and the parent watch picks that folder up when it is finally made.
     alsoWatch: (dir) => [componentsOf(dir)],
     onChange: () => {

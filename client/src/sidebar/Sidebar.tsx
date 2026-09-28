@@ -285,6 +285,8 @@ const SORT_LABEL: Record<SortOrder, string> = { name: 'Name', updated: 'Last upd
 
 /** How long the pointer (or focus) rests on a board row before its preview opens (YAZ-1800). */
 export const BOARD_PREVIEW_DWELL_MS = 400
+/** The quiet a watcher change waits out before the tree refreshes; a burst inside it is one walk (YAZ-2073 5E). */
+export const WATCH_REFRESH_MS = 120
 
 /** The Favorites tree's file move (YAZ-1766 D4): nothing on that tab drags to disk, so every callback is a no-op. */
 const INERT_MOVE: TreeFileMove = { dragging: null, dropDir: null, start: () => undefined, end: () => undefined, hover: () => undefined, drop: () => undefined }
@@ -535,15 +537,22 @@ export function Sidebar({
 
   // Refresh on EVERY change, not only structural ones (🔒 YAZ-1835 D4): a save moves a board's
   // `updatedAt`, and with it its place under "Last updated" — in this window and every other one
-  // on the vault. `ready` also fires on every watch (re)subscription, covering missed events.
-  useEffect(
-    () =>
-      watch.subscribe((ev) => {
-        if (ev.type === 'error') setError(ev.message)
-        else refresh()
-      }),
-    [watch, refresh],
-  )
+  // on the vault. `ready` also fires on every watch (re)subscription, covering missed events, and
+  // refreshes at once; a change waits out `WATCH_REFRESH_MS` of quiet, so a burst (a sync pull, a
+  // folder copy) costs one walk, not one per file (YAZ-2073 5E, 🔒 D10).
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout> | undefined
+    const off = watch.subscribe((ev) => {
+      if (ev.type === 'error') return setError(ev.message)
+      clearTimeout(timer)
+      if (ev.type === 'ready') refresh()
+      else timer = setTimeout(refresh, WATCH_REFRESH_MS)
+    })
+    return () => {
+      clearTimeout(timer)
+      off()
+    }
+  }, [watch, refresh])
 
   // Another window's sort change lands in the store cache; follow it (🔒 YAZ-1835 D3).
   useEffect(() => storage.subscribe(() => setSortOrderState(storage.getSortOrder(root))), [root])

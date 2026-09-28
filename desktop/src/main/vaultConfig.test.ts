@@ -128,7 +128,7 @@ describe('subscribeConfig', () => {
   })
 
   it('an own write straight after subscribing (folder created during watcher init) still leaves external edits watched', async () => {
-    // Regression: a polling chokidar loses a path that appears DURING its initialisation; the
+    // Regression: a polling watcher (the fallback) loses a path that appears DURING its initialisation; the
     // first writeConfig re-anchors the watcher (see the module header), so this must notify.
     const root = await makeRoot()
     const changes = collect(root)

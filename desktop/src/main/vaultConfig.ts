@@ -12,13 +12,13 @@ import { createWatchedFolder, type WatchedFolder } from './watchedFolder'
  * (`mkdir -p` + the `atomicWrite` tmp+rename idiom, pretty-printed JSON).
  *
  * Watching: the shared vault watcher (`fs/watchers.ts`) ignores every dot-entry by design, so
- * this module runs its own chokidar per root, scoped to the dotfolder path. Chokidar tracks a
- * not-yet-existing path (verified for v4, FSEvents and polling), so the watcher is attached at
- * first subscribe whether or not the folder exists — it creates nothing, and an external
- * `mkdir .yaseendraw` + write by a sync tool is still picked up live. One caveat (verified): a
- * polling watcher loses the path for good when the folder appears DURING its initialisation, so
- * the first `writeConfig` that creates the folder re-`add()`s it once — the debounce absorbs the
- * duplicate events FSEvents emits after a re-add. Same lifecycle idioms as `fs/watchers.ts`:
+ * this module runs its own watcher per root, scoped to the dotfolder path. The engine
+ * (`fs/treeWatcher.ts`) waits for a not-yet-existing path, so the watcher is attached at first
+ * subscribe whether or not the folder exists — it creates nothing, and an external
+ * `mkdir .yaseendraw` + write by a sync tool is still picked up live. One caveat (verified): the
+ * polling fallback loses the path for good when the folder appears DURING its initialisation, so
+ * the first `writeConfig` that creates the folder re-`add()`s it once — the debounce absorbs any
+ * duplicate events after a re-add. Same lifecycle idioms as `fs/watchers.ts`:
  * one watcher per root, shared listener set, closed on the last unsubscribe.
  *
  * Echo policy: `writeConfig` notifies this process's subscribers synchronously (so every window
@@ -41,7 +41,7 @@ interface Entry {
   listeners: Set<Listener>
 }
 
-/** One chokidar per root's dotfolder, shared by every subscriber; closed when the last one leaves. */
+/** One watcher per root's dotfolder, shared by every subscriber; closed when the last one leaves. */
 const entries = new Map<string, Entry>()
 
 export function activeConfigWatcherRoots(): string[] {
