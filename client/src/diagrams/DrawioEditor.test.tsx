@@ -20,7 +20,7 @@ vi.mock('../share/liveShare', () => ({ noteBoardSaved: vi.fn() }))
 vi.mock('./renderDiagram', () => ({ renderDiagramImage: vi.fn() }))
 
 import { api, BridgeRequestError } from '../api'
-import { BOARD_COMMAND_EVENT } from '../drawings/boardCommand'
+import { BOARD_COMMAND_EVENT } from '../documents/boardCommand'
 import { _resetRenameContinuity } from '../lib/renameContinuity'
 import { BROKEN_DIAGRAM_DOCUMENT, DrawioEditor } from './DrawioEditor'
 import { renderDiagramImage } from './renderDiagram'

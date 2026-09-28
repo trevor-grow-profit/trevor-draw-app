@@ -16,7 +16,7 @@ import { DEFAULT_CANVAS_PREFS, type DrawingLoadResponse, type GithubSyncStatus }
 import type { WatchEvent } from '@shared/types'
 import type { DrawingFileData } from '@shared/drawingAssets'
 import type { DrawingSnapshot, DrawingSurfaceApi, DrawingSurfaceProps } from './ExcalidrawSurface'
-import { requestBoardCommand, type BoardCommand } from './boardCommand'
+import { requestBoardCommand, type BoardCommand } from '../documents/boardCommand'
 
 vi.mock('../api', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../api')>()

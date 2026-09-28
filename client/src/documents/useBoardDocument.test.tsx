@@ -16,7 +16,7 @@ import { BridgeRequestError } from '../api'
 import type { Autosave } from '../lib/autosave'
 import { _resetRenameContinuity, dirtyPaths, flushRenamedPath, retirePath } from '../lib/renameContinuity'
 import { noteBoardSaved } from '../share/liveShare'
-import { BOARD_COMMAND_EVENT, requestBoardCommand } from '../drawings/boardCommand'
+import { BOARD_COMMAND_EVENT, requestBoardCommand } from '../documents/boardCommand'
 import { BoardChips, exportWithNotice, useBoardDocument } from './useBoardDocument'
 
 const ROOT = '/vault'
