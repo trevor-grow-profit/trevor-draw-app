@@ -318,7 +318,8 @@ survives Remove from recent vaults (recents never prune `folders`), follows the 
 `renamePath`, and goes with it in `removePath`; a Finder rename outside the app drops it, like recents.
 
 `SettingsState.canvas` is `CanvasPrefs` (`shared/types/`, mapped by `shared/canvasPrefs.ts`) —
-the fourteen user-level canvas preferences 🔒 YAZ-1775 D9 took out of the engine's browser localStorage:
+the fourteen user-level canvas preferences 🔒 YAZ-1775 D9 took out of the engine's browser localStorage,
+plus the laser pointer's three (🔒 YAZ-1989 D1):
 
 ```ts
 CanvasPrefs {
@@ -336,8 +337,17 @@ CanvasPrefs {
   defaultFontFamily: number         // 10 Assistant (engine `currentItemFontFamily`)
   defaultRoughness: 0 | 1 | 2       // 0 architect  (engine `currentItemRoughness`)
   defaultTextAlign: 'left'|'center'|'right'  // 'center' (engine `currentItemTextAlign`)
+  laserTrailMode: 'fade'|'hold'|'sticky'     // 'fade'    (engine `laserTrailMode`, same name)
+  laserColor: '#ff0000'|'#ffd400'|'#00c853'|'#2979ff'|'#d500f9'  // '#ff0000' (engine `laserColor`)
+  laserSize: 'S'|'M'|'L'                     // 'S'       (engine `laserSize`)
 }
 ```
+
+The laser's three (🔒 YAZ-1989 D1) are the fork's `browser: true, export: false` appState, like
+`writingMode`: remembered here, never written into a board, and changed only from the laser's own
+toolbar in the engine — Settings › Canvas has no row for them. The literal lists are
+`LASER_TRAIL_MODES` / `LASER_COLORS` / `LASER_SIZES`; a value outside them (a colour in another
+spelling included) is invalid at the bridge and defaulted on load.
 
 Every default is the engine's own (`packages/excalidraw/appState.ts`, `packages/common/src/constants.ts`).
 They are seeded into `initialData.appState` at mount and kept in step both ways, each direction
@@ -1083,7 +1093,7 @@ two that do not — the Pixabay key and the GitHub switch — are marked below.
 | Section | Rows |
 |---|---|
 | Appearance | Theme · draw.io diagrams in dark mode (🔒 YAZ-1802 D16: Adapt colours / Keep original colours) — 🔒 YAZ-1775 D9 put everything else about the canvas in Excalidraw canvas |
-| Excalidraw canvas | the fourteen `CanvasPrefs` (🔒 YAZ-1775 D9) in three groups: Drawing aids, Modes, New elements — Excalidraw's alone; a draw.io diagram has fixed defaults (🔒 YAZ-1802 D12) |
+| Excalidraw canvas | the fourteen `CanvasPrefs` of 🔒 YAZ-1775 D9 (not the laser's three, 🔒 YAZ-1989 D1 — its toolbar owns them) in three groups: Drawing aids, Modes, New elements — Excalidraw's alone; a draw.io diagram has fixed defaults (🔒 YAZ-1802 D12) |
 | Files | Confirm before deleting · Library folder (🔒 YAZ-1775 D5: resolved path, Choose…, Reset to default) |
 | Images | Pixabay API key (🔒 YAZ-1775 D4: a password field, Save / Clear, "Key set" / "No key" from `secrets:has`, never echoed) — NOT in `SettingsState`, it lives in main's owner-only `secrets.json` (YAZ-1842 D1) |
 | Sync | the per-vault GitHub switch — the other setting NOT in `SettingsState` (it lives in `.yaseendraw/github.json`) |
