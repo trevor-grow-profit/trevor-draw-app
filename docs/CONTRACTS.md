@@ -1199,7 +1199,11 @@ an unpackaged (dev) build — a shipped app always sends the real token to the r
 `yaseendraw:///Users/me/vault/Board.excalidraw`, with an optional `?root=` (also a percent-encoded
 absolute path) naming the vault the link should open under. `shared/links.ts` owns the one
 encoding, so main's parser and the renderer's generator cannot drift; `#` and `?` are encoded on
-top of `encodeURI` because either would truncate the path on parse.
+top of `encodeURI` because either would truncate the path on parse. A Windows drive path rides the
+link the way `file:///C:/…` does — `C:\Vault\Board.excalidraw` ⇄ `yaseendraw:///C:/Vault/Board.excalidraw`
+— and parses back to its native `\` form, so an Explorer double-click routes like a Finder one
+(YAZ-2073 2D). Path containment everywhere ("is this inside that vault or folder") goes through
+`shared/paths.ts` `isWithin`, which compares by whole segment in the base path's own separator.
 
 Main routes a link to the best window — one already on that vault, else the focused one, else a
 new one — and the renderer then treats it exactly like a sidebar click (activate the tab if the

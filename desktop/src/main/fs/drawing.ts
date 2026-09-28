@@ -53,6 +53,7 @@ import path from 'node:path'
 import type { DrawingFileEntry, DrawingLoadRequest, DrawingLoadResponse, DrawingSaveRequest, DrawingSaveResponse } from '@shared/types'
 import { MAX_DRAWING_BYTES } from '@shared/types'
 import { isDrawing } from '@shared/fileKind'
+import { isWithin } from '@shared/paths'
 import { ASSETS_DIR, assetFileName, extForMime, fileIdOfAssetName, isValidFileId, mimeForAssetExt, parseDataUrl, referencedFileIds, stampBoardMeta, stripEmbeddedFiles } from '@shared/drawingAssets'
 import { readBoardHead } from './boardHead'
 import { readBoundedRegularFile } from './boundedRead'
@@ -64,7 +65,7 @@ const TOO_LARGE = `drawing exceeds ${MAX_DRAWING_BYTES} bytes`
 export function resolveDocument(dir: string, rel: unknown): string {
   if (typeof rel !== 'string' || rel.trim() === '' || rel.includes('\0')) throw new BridgeFailure('BAD_REQUEST', "missing 'path'")
   const file = path.resolve(dir, rel)
-  if (!file.startsWith(dir + path.sep)) throw new BridgeFailure('BAD_REQUEST', 'path escapes the vault root', { path: rel })
+  if (!isWithin(dir, file, true)) throw new BridgeFailure('BAD_REQUEST', 'path escapes the vault root', { path: rel })
   if (!isDrawing(file)) throw new BridgeFailure('UNSUPPORTED_EXTENSION', 'only .excalidraw files open as drawings', { path: file })
   return file
 }

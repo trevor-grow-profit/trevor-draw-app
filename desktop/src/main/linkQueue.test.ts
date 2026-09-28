@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import { fileLink, parseFileLink } from '@shared/links'
+import { openableFileArgs } from './fileArgs'
 import { createLinkQueue } from './linkQueue'
 
 // E1 (GRO-2171): macOS delivers cold-start `open-url` before `ready`; URLs queue until
@@ -62,5 +63,21 @@ describe('open-file paths through the link queue', () => {
     q.flush()
     q.push(fileLink('/v/ünïcode näme.md'))
     expect(routed).toEqual(['/v/ünïcode näme.md'])
+  })
+})
+
+// YAZ-2073 2D: Windows has no `open-file` — an Explorer double-click is a bare `C:\…` argv entry that
+// index.ts turns into `fileLink(path)`. It must come out of the queue as the same native path.
+describe('an Explorer double-click through the link queue', () => {
+  it('argv → fileLink → queue → parseFileLink hands back the native Windows path', () => {
+    const board = 'C:\\Users\\me\\My Vault\\Board #1.excalidraw'
+    const routed: string[] = []
+    const q = createLinkQueue((url) => {
+      const parsed = parseFileLink(url)
+      if (parsed !== null) routed.push(parsed.path)
+    })
+    for (const path of openableFileArgs(['C:\\Program Files\\Yaseen Draw\\Yaseen Draw.exe', board], 1)) q.push(fileLink(path))
+    q.flush()
+    expect(routed).toEqual([board])
   })
 })

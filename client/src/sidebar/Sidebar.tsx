@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react'
 import { SIDEBAR_LENSES, SORT_ORDERS, type FileClipState, type SettingsState, type SidebarLens, type SortOrder, type TreeNode, type TreeResponse } from '@shared/types'
 import { EMPTY_DIAGRAM_XML } from '@shared/diagramFile'
+import { isWithin } from '@shared/paths'
 import { api, BridgeRequestError } from '../api'
 import { EMPTY_SCENE_JSON } from '../drawings/drawingScene'
 import { ContextMenuSurface } from '../components/ContextMenuSurface'
@@ -264,7 +265,7 @@ function findDir(nodes: readonly TreeNode[], dir: string): readonly TreeNode[] |
   for (const node of nodes) {
     if (node.type !== 'dir') continue
     if (node.path === dir) return node.children
-    if (dir.startsWith(`${node.path}/`)) {
+    if (isWithin(node.path, dir, true)) {
       const hit = findDir(node.children, dir)
       if (hit !== null) return hit
     }
@@ -661,7 +662,7 @@ export function Sidebar({
       return
     }
     // A reveal is "show me THIS" (YAZ-1605): a target outside every focused folder ends the focus first.
-    if (focusDirs.length > 0 && !focusDirs.some((dir) => pendingReveal.path === dir || pendingReveal.path.startsWith(`${dir}/`))) setFocusDirs([])
+    if (focusDirs.length > 0 && !focusDirs.some((dir) => isWithin(dir, pendingReveal.path))) setFocusDirs([])
     // A folder opens ITSELF too — the synthetic-child idiom the create menu already uses.
     dispatch({ type: 'expandTo', root, file: revealIsDir ? `${pendingReveal.path}/x` : pendingReveal.path })
   }, [focusDirs, onNotice, pendingReveal, revealIsDir, revealTargetPresent, root, tree])
@@ -691,7 +692,7 @@ export function Sidebar({
   useEffect(() => {
     if (tree === null || validated.current) return
     validated.current = true
-    if (activeFile !== null && activeFile.startsWith(`${root.replace(/\/+$/, '')}/`) && !treeHasFile(tree.tree, activeFile))
+    if (activeFile !== null && isWithin(root, activeFile, true) && !treeHasFile(tree.tree, activeFile))
       onFileMissing()
   }, [tree, activeFile, root, onFileMissing])
 
@@ -709,7 +710,7 @@ export function Sidebar({
   useEffect(() => {
     if (activeFile === lastActive.current) return
     lastActive.current = activeFile
-    if (activeFile === null || !activeFile.startsWith(`${root.replace(/\/+$/, '')}/`)) return
+    if (activeFile === null || !isWithin(root, activeFile, true)) return
     if (treeRef.current !== null && treeHasFile(treeRef.current.tree, activeFile)) return
     let cancelled = false // the activation moved on (or the sidebar unmounted): the probe's verdict is stale
     api.tree(root).then(

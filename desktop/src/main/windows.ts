@@ -6,8 +6,9 @@
  * under vitest with fakes.
  */
 import { randomUUID } from 'node:crypto'
-import { posix } from 'node:path'
+import { posix, win32 } from 'node:path'
 import { fileKind } from '@shared/fileKind'
+import { isWithin, sepOf } from '@shared/paths'
 import { DEFAULT_SIDEBAR_LENS, type OpenWindowOptions, type RecentRoots, type WindowBounds, type WindowEntry } from '@shared/types'
 import { CH } from '../channels'
 import type { Store } from './store'
@@ -163,11 +164,8 @@ export type LinkTarget = { kind: 'existing'; id: string } | { kind: 'new'; root:
 /** Trailing slash off (never off `/` itself), so `/v` and `/v/` name the same root. */
 const stripSlash = (p: string): string => (p.length > 1 && p.endsWith('/') ? p.slice(0, -1) : p)
 
-/** `root` is an ancestor directory of `path` (or its dirname) — by segment, so `/a/b` never contains `/a/bc/x.excalidraw`. */
-const rootContains = (root: string, path: string): boolean => {
-  const r = stripSlash(root)
-  return path.startsWith(r === '/' ? '/' : r + '/') && path.length > r.length + 1
-}
+/** The folder `path` sits in, by its own separator's rules — a Windows path's parent is not posix's `.` (YAZ-2073 2D). */
+const parentDir = (path: string): string => (sepOf(path) === '\\' ? win32 : posix).dirname(path)
 
 /**
  * Where a `yaseendraw://` link to `path` should land: (1) the open window whose root contains
@@ -182,19 +180,19 @@ export function resolveLinkTarget(
   recents: RecentRoots,
   rootOverride?: string | null,
 ): LinkTarget {
-  if (rootOverride != null && rootContains(rootOverride, path)) {
+  if (rootOverride != null && isWithin(rootOverride, path, true)) {
     const exact = windows.find((w) => w.root !== null && stripSlash(w.root) === stripSlash(rootOverride))
     return exact === undefined ? { kind: 'new', root: rootOverride, file: path } : { kind: 'existing', id: exact.id }
   }
   let best: { id: string; rootLength: number } | undefined
   for (const w of windows) {
-    if (w.root === null || !rootContains(w.root, path)) continue
+    if (w.root === null || !isWithin(w.root, path, true)) continue
     if (best === undefined || w.root.length > best.rootLength) best = { id: w.id, rootLength: w.root.length }
   }
   if (best !== undefined) return { kind: 'existing', id: best.id }
-  const recent = recents.find((r) => rootContains(r.path, path))
+  const recent = recents.find((r) => isWithin(r.path, path, true))
   if (recent !== undefined) return { kind: 'new', root: recent.path, file: path }
-  return { kind: 'new', root: posix.dirname(path), file: path }
+  return { kind: 'new', root: parentDir(path), file: path }
 }
 
 // ---------- the manager ----------
@@ -416,7 +414,7 @@ export function createWindowManager(store: Store, host: WindowHost): WindowManag
       if (win === undefined || win.isDestroyed()) {
         // A stored entry with no live window (mid-close race): fall back to a fresh window on its root.
         const entry = state.windows.find((w) => w.id === target.id)
-        openWindow({ root: entry?.root ?? posix.dirname(path), file: path })
+        openWindow({ root: entry?.root ?? parentDir(path), file: path })
         return
       }
       focusWindow(win)

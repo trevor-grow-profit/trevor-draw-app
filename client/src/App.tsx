@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react'
 import { SIDEBAR_MAX_W, SIDEBAR_MIN_W, type CanvasPanelState, type CanvasPrefs, type SettingsState, type SidebarLens } from '@shared/types'
 import { prefsEqual } from '@shared/canvasPrefs'
+import { isWithin } from '@shared/paths'
 import { api, BridgeRequestError } from './api'
 import { requestBoardCommand } from './drawings/boardCommand'
 import { Editor } from './Editor'
@@ -414,7 +415,7 @@ export function App() {
         noteBoardRenamed(oldPath, newPath)
         if (kind === 'dir') {
           retireDir(oldPath)
-          const movedRoot = root !== null && (root === oldPath || root.startsWith(`${oldPath}/`)) ? newPath + root.slice(oldPath.length) : undefined
+          const movedRoot = root !== null && isWithin(oldPath, root) ? newPath + root.slice(oldPath.length) : undefined
           renameWorkspaceDir(oldPath, newPath, movedRoot)
           if (movedRoot !== undefined) setRoot(movedRoot)
           return

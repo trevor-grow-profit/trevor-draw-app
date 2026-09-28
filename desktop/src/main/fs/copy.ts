@@ -1,6 +1,7 @@
 import { cp, stat } from 'node:fs/promises'
 import path from 'node:path'
 import type { PasteResponse, RenameFileResponse } from '@shared/types'
+import { isWithin } from '@shared/paths'
 import type { FileClip } from '../fileClip'
 import { BridgeFailure, fsCall, isSkipped, requireAbsPath, requireDir, toBridgeFailure } from './fsUtils'
 
@@ -60,7 +61,7 @@ export async function copyEntry(from: unknown, toDir: unknown): Promise<PastedEn
     // `isSkipped`, not a bare dot check — the SAME definition of "invisible" the tree, index and
     // watcher use, so the guard cannot drift from the rule that justifies it (remove.ts's posture).
     if (isSkipped(path.basename(src))) throw new BridgeFailure('BAD_REQUEST', 'hidden entries cannot be copied', { path: src })
-    if (kind === 'dir' && (dir === src || dir.startsWith(`${src}${path.sep}`))) {
+    if (kind === 'dir' && isWithin(src, dir)) {
       throw new BridgeFailure('BAD_REQUEST', 'a folder cannot be copied inside itself', { path: dir })
     }
     const to = path.join(dir, await freeName(dir, path.basename(src), kind))

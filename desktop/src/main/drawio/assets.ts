@@ -9,6 +9,7 @@
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { DRAWIO_ORIGIN, DRAWIO_TAG } from '@shared/drawio'
+import { isWithin } from '@shared/paths'
 
 /**
  * 🔒 YAZ-1802 D4: the strict policy on every drawio-host response. Network is closed: `connect-src`,
@@ -76,7 +77,7 @@ export function drawioFilePath(dir: string, pathname: string): string | null {
   if (decoded.includes('\0')) return null
   const rel = decoded === '/' || decoded === '' ? 'index.html' : decoded.replace(/^\/+/, '')
   const file = path.resolve(dir, rel)
-  return file.startsWith(dir + path.sep) ? file : null
+  return isWithin(dir, file, true) ? file : null
 }
 
 /**

@@ -27,6 +27,12 @@ describe('ancestorDirs', () => {
     expect(ancestorDirs('/r', '/other/x.excalidraw')).toEqual([])
     expect(ancestorDirs('/r/', '/r/a/x.excalidraw')).toEqual(['/r/a'])
   })
+
+  it('walks a Windows vault in its own separator, the `${dir}/x` synthetic child included (YAZ-2073 2D)', () => {
+    expect(ancestorDirs('C:\\r', 'C:\\r\\a\\b\\x.excalidraw')).toEqual(['C:\\r\\a', 'C:\\r\\a\\b'])
+    expect(ancestorDirs('C:\\r', 'C:\\r\\a/x')).toEqual(['C:\\r\\a'])
+    expect(ancestorDirs('C:\\r', 'C:\\r2\\a\\x.excalidraw')).toEqual([])
+  })
 })
 
 describe('treeHasFile', () => {
