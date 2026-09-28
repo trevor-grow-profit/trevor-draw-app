@@ -1,6 +1,7 @@
 import React from 'react'
 import ReactDOM from 'react-dom/client'
 import { App } from './App'
+import { warmEngineFor } from './drawings/engine'
 import { storage } from './lib/storage'
 import './app.css'
 
@@ -23,4 +24,7 @@ function render(): void {
 void storage
   .init()
   .catch((err: unknown) => console.error('[storage] init failed; rendering with defaults', err))
-  .then(render)
+  .then(() => {
+    warmEngineFor(storage.getFile())
+    render()
+  })

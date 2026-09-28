@@ -24,7 +24,13 @@ npm run dev
 npm run desktop:build
 ```
 
-- Builds `desktop/out` (electron-vite) and then packages with electron-builder: `desktop/dist-app/mac-arm64/Yaseen Draw.app` (~375 MB, ~47 MB of it the bundled draw.io webapp, pruned to what the app loads — YAZ-1973) and `desktop/dist-app/Yaseen Draw-0.1.0-arm64.dmg` (~175 MB) — arm64 only, and the version in the dmg name is the ROOT `package.json` version that `tools/packDesktop.mjs` stamps in. The filenames contain spaces, so quote every path.
+- Builds `desktop/out` (electron-vite) and then packages with electron-builder: `desktop/dist-app/mac-arm64/Yaseen Draw.app` (~351 MB, ~47 MB of it the bundled draw.io webapp, pruned to what the app loads — YAZ-1973) and `desktop/dist-app/Yaseen Draw-0.1.0-arm64.dmg` (~125 MB, lzma — `tools/packDesktop.mjs` converts electron-builder's zlib image, mounts it and checks the app's seal; YAZ-2073 3A) — arm64 only, and the version in the dmg name is the ROOT `package.json` version that `tools/packDesktop.mjs` stamps in. The filenames contain spaces, so quote every path.
+- The renderer ships minified; its hidden sourcemaps land in the gitignored `desktop/.maps/<version>/`, never in the app (🔒 YAZ-2073 D14) — keep that folder for a release whose stack traces you may need to read. A stack frame such as `app://yaseen/assets/index-CUvbLYUM.js:23:53960` maps back with `source-map-js` (installed with Vite; it counts columns from 0, a stack from 1):
+
+```bash
+node -e "const {SourceMapConsumer}=require('source-map-js'); const m=new SourceMapConsumer(require('./desktop/.maps/0.1.11/assets/index-CUvbLYUM.js.map')); console.log(m.originalPositionFor({ line: 23, column: 53959 }))"
+# → { source: '../../../../client/src/main.tsx', line: 26, column: 41, … }
+```
 - `mac.identity: null` makes electron-builder skip signing, so `desktop/build/adhocSign.cjs` (`afterPack`) deep ad-hoc signs the bundle itself — without that seal Gatekeeper reports a downloaded copy as "damaged" instead of offering **Open Anyway**. Check it with `codesign -dv --verbose=2 "desktop/dist-app/mac-arm64/Yaseen Draw.app"`, which prints `Signature=adhoc`. `spctl -a -t install` on the same bundle prints `rejected` — expected, because nothing here is Developer-ID signed.
 - The first packaging run on a clean machine needs network: electron-builder downloads its Electron dist zip and dmgbuild once, then caches them.
 - Install: open the dmg and drag `Yaseen Draw.app` into `/Applications` in Finder (or copy it straight from `desktop/dist-app/mac-arm64/`). The installed app and a `npm run dev` instance coexist — different userData, different single-instance lock.

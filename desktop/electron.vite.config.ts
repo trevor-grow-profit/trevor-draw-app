@@ -1,10 +1,10 @@
 import { defineConfig } from 'electron-vite'
 import react from '@vitejs/plugin-react'
 import type { Plugin } from 'vite'
-import { createReadStream, existsSync } from 'node:fs'
-import { cp, rm } from 'node:fs/promises'
+import { createReadStream, existsSync, readFileSync } from 'node:fs'
+import { cp, mkdir, rename, rm } from 'node:fs/promises'
 import { fileURLToPath } from 'node:url'
-import { resolve } from 'node:path'
+import { dirname, resolve } from 'node:path'
 // Relative, not `@shared`: this file runs in Node before any alias exists.
 import { DRAWIO_TAG } from '../shared/drawio'
 
@@ -82,6 +82,31 @@ function drawioAssets(): Plugin {
   }
 }
 
+/**
+ * The renderer's sourcemaps, OUT of the app (🔒 YAZ-2073 D14): the build is minified and writes
+ * `sourcemap: 'hidden'` maps (no `sourceMappingURL` comment), and this moves every `.map` of the
+ * bundle from `outDir` to `mapsDir` the moment it is written — so electron-builder's `out/**` never
+ * packs them, and a minified stack trace can still be symbolicated locally. `mapsDir` is replaced
+ * whole per build, like `out/drawio`.
+ */
+export function renderSourcemapsAside(outDir: string, mapsDir: string): Plugin {
+  return {
+    name: 'yaseen-sourcemaps-aside',
+    apply: 'build',
+    async writeBundle(_options, bundle) {
+      await rm(mapsDir, { recursive: true, force: true })
+      for (const file of Object.keys(bundle).filter((f) => f.endsWith('.map'))) {
+        await mkdir(dirname(resolve(mapsDir, file)), { recursive: true })
+        await rename(resolve(outDir, file), resolve(mapsDir, file))
+      }
+    },
+  }
+}
+
+/** Kept per shipped version (the ROOT package.json's, which `tools/packDesktop.mjs` stamps in), gitignored. */
+const { version } = JSON.parse(readFileSync(resolve(here, '../package.json'), 'utf8')) as { version: string }
+const mapsDir = resolve(here, '.maps', version)
+
 export default defineConfig({
   main: {
     // No externalizeDepsPlugin: chokidar 4 is pure JS and gets bundled, so the packaged app
@@ -95,7 +120,7 @@ export default defineConfig({
   },
   renderer: {
     root: client,
-    plugins: [react(), excalidrawAssets(), drawioAssets()],
+    plugins: [react(), excalidrawAssets(), drawioAssets(), renderSourcemapsAside(rendererOut, mapsDir)],
     resolve: {
       alias: { '@shared': shared },
       /**
@@ -108,6 +133,8 @@ export default defineConfig({
        */
       dedupe: ['react', 'react-dom'],
     },
-    build: { outDir: rendererOut, rollupOptions: { input: resolve(client, 'index.html') } },
+    // electron-vite 5 leaves the renderer unminified; Vite's esbuild minifier cuts its JS + CSS
+    // 14.7 → 9.4 MB and the entry chunk every window parses 973 → 413 KB (YAZ-2073 D14).
+    build: { outDir: rendererOut, minify: 'esbuild', sourcemap: 'hidden', rollupOptions: { input: resolve(client, 'index.html') } },
   },
 })

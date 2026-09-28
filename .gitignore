@@ -6,3 +6,4 @@ desktop/dist-app/
 .claude/*
 share/dist/
 desktop/.cache/
+desktop/.maps/

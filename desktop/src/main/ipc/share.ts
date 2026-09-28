@@ -1,5 +1,5 @@
 import { readdir, readFile } from 'node:fs/promises'
-import { join, relative, sep } from 'node:path'
+import { join, relative, resolve, sep } from 'node:path'
 import { shell } from 'electron'
 import { isRecord } from '@shared/guards'
 import { CH } from '../../channels'
@@ -40,12 +40,25 @@ export function viewerAssetsDir({ isPackaged, resourcesPath, appPath }: { isPack
 }
 
 /**
- * The Worker's static assets: the viewer build's own files as `/assets/…`, and the draw.io files and
+ * Excalidraw's font files, which the viewer fetches from `/assets/fonts/` (YAZ-2073 3C): the packaged
+ * app's ONE copy, beside the renderer bundle in the asar (`excalidrawAssets()` in
+ * `electron.vite.config.ts`); dev reads the package itself, wherever npm hoisted it — the same bytes.
+ */
+export function excalidrawFontsDir({ isPackaged, mainDir, appPath, exists }: { isPackaged: boolean; mainDir: string; appPath: string; exists: (p: string) => boolean }): string {
+  if (isPackaged) return resolve(mainDir, '..', 'renderer', 'excalidraw-assets', 'fonts')
+  const inPackage = (base: string) => join(base, 'node_modules', '@excalidraw', 'excalidraw', 'dist', 'prod', 'fonts')
+  const repo = join(appPath, '..')
+  return [inPackage(repo), inPackage(join(repo, 'client'))].find(exists) ?? inPackage(repo)
+}
+
+/**
+ * The Worker's static assets: the viewer build's own files as `/assets/…`, Excalidraw's fonts as
+ * `/assets/fonts/…` from `fontsDir` (`excalidrawFontsDir`, YAZ-2073 3C), and the draw.io files and
  * folders a shared diagram runs (`DRAWIO_SHARE_FILES` / `DRAWIO_SHARE_DIRS`) as `/assets/drawio/…`,
  * read from the app's own draw.io webapp (🔒 YAZ-1802 D5 / D11, YAZ-1973) — the pack cache in dev,
- * `out/drawio` inside the packaged app's asar — instead of a second copy of those bytes in `share-viewer`.
+ * `out/drawio` inside the packaged app's asar. Neither is a second copy of those bytes in `share-viewer`.
  */
-export async function readViewerAssets(dir: string, drawioDir: string): Promise<AssetFile[]> {
+export async function readViewerAssets(dir: string, drawioDir: string, fontsDir: string): Promise<AssetFile[]> {
   const missing = (what: string, run: string) => () => {
     throw new BridgeFailure('NOT_FOUND', `${what} is not built on this computer (run: ${run}), so sharing cannot be set up yet.`)
   }
@@ -58,9 +71,10 @@ export async function readViewerAssets(dir: string, drawioDir: string): Promise<
       .map((e) => join(e.parentPath, e.name))
       .map((abs) => ({ path: `${prefix}${relative(base, abs).split(sep).join('/')}`, abs }))
   const own = await filesUnder(dir, dir, '/assets/')
+  const fonts = await filesUnder(fontsDir, fontsDir, '/assets/fonts/')
   const drawioFiles = DRAWIO_SHARE_FILES.map((file) => ({ path: `/assets/drawio/${file}`, abs: join(drawioDir, ...file.split('/')) }))
   const drawioDirs = (await Promise.all(DRAWIO_SHARE_DIRS.map((sub) => filesUnder(join(drawioDir, sub), drawioDir, '/assets/drawio/')))).flat()
-  return Promise.all([...own, ...drawioFiles, ...drawioDirs].map(async ({ path, abs }) => ({ path, bytes: new Uint8Array(await readFile(abs).catch(notBuilt)) })))
+  return Promise.all([...own, ...fonts, ...drawioFiles, ...drawioDirs].map(async ({ path, abs }) => ({ path, bytes: new Uint8Array(await readFile(abs).catch(notBuilt)) })))
 }
 
 /**
@@ -77,7 +91,7 @@ export function shareEndpoints(isPackaged: boolean, env: Record<string, string |
   return { apiBase, demoOrigin, tokenPage }
 }
 
-export function registerShareIpc(userData: string, secrets: Secrets, where: { viewerAssetsDir: string; drawioDir: string; isPackaged: boolean }): void {
+export function registerShareIpc(userData: string, secrets: Secrets, where: { viewerAssetsDir: string; drawioDir: string; fontsDir: string; isPackaged: boolean }): void {
   const { apiBase, demoOrigin, tokenPage } = shareEndpoints(where.isPackaged, process.env)
   const sharing = createSharing({
     secrets,
@@ -86,7 +100,7 @@ export function registerShareIpc(userData: string, secrets: Secrets, where: { vi
     demoOrigin,
     // Uploaded verbatim: the same two files `tools/fakeCloudflare.mjs` imports and runs.
     modules: { 'worker.js': workerSource, 'viewer/page.js': viewerSource },
-    readAssets: () => readViewerAssets(where.viewerAssetsDir, where.drawioDir),
+    readAssets: () => readViewerAssets(where.viewerAssetsDir, where.drawioDir, where.fontsDir),
     onChanged: () => broadcastAll(CH.shareChanged),
   })
   // Shares follow in-app renames, moves and deletes (the fs IPC calls these beside its favorites repair).

@@ -6,10 +6,11 @@ import { DRAWIO_HOST } from '@shared/drawio'
 import { fileKind } from '@shared/fileKind'
 import { fileLink, parseFileLink } from '@shared/links'
 import type { WindowEntry } from '@shared/types'
+import { APP_SCHEME } from './appScheme'
 import { resolveDrawioDir, serveDrawio } from './drawio/assets'
 import type { GitSyncManager } from './git/manager'
 import { registerIpc } from './ipc'
-import { viewerAssetsDir } from './ipc/share'
+import { excalidrawFontsDir, viewerAssetsDir } from './ipc/share'
 import { ensureLibraryFolder } from './library/folder'
 import { openableFileArgs } from './fileArgs'
 import { createLinkQueue } from './linkQueue'
@@ -78,9 +79,8 @@ app.on('open-file', (event, path) => {
 /** How many leading argv entries belong to the launcher: the executable, plus the app dir in dev. */
 const argsSkip = (): number => (app.isPackaged ? 1 : 2)
 
-// Privileged scheme: `standard` gives a real origin (history API, relative URLs), `secure` treats it
-// like https. VS Code (vscode-file://) and Obsidian (app://obsidian.md) do the same.
-protocol.registerSchemesAsPrivileged([{ scheme: 'app', privileges: { standard: true, secure: true, supportFetchAPI: true } }])
+// Before `ready`: the privileged `app://` scheme, V8 code cache included (appScheme.ts).
+protocol.registerSchemesAsPrivileged([APP_SCHEME])
 
 const RENDERER_DIR = join(__dirname, '../renderer')
 
@@ -214,6 +214,7 @@ app.whenReady().then(() => {
   gitSync = registerIpc(store, manager, app.getPath('userData'), {
     viewerAssetsDir: viewerAssetsDir({ isPackaged: app.isPackaged, resourcesPath: process.resourcesPath, appPath: app.getAppPath() }),
     drawioDir: DRAWIO_DIR,
+    fontsDir: excalidrawFontsDir({ isPackaged: app.isPackaged, mainDir: __dirname, appPath: app.getAppPath(), exists: existsSync }),
     isPackaged: app.isPackaged,
   })
   // 🔒 YAZ-1775 D5: the one library folder every vault shares. Made at startup, detached — a launch must

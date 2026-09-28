@@ -50,6 +50,10 @@ const ASSET_DIR = path.join(DATA, 'assets')
 const REPO_ASSETS = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'share', 'dist', 'assets')
 /** The app's draw.io webapp: share setup publishes its viewer files under `/assets/drawio/` (🔒 YAZ-1802 D5). */
 const REPO_DRAWIO = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'desktop', '.cache', 'drawio', DRAWIO_TAG)
+/** Excalidraw's own fonts: share setup publishes the app's copy of them under `/assets/fonts/` (YAZ-2073 3C). */
+const REPO_FONTS = ['client', '.']
+  .map((base) => path.join(path.dirname(fileURLToPath(import.meta.url)), '..', base, 'node_modules', '@excalidraw', 'excalidraw', 'dist', 'prod', 'fonts'))
+  .find((dir) => fs.existsSync(dir))
 const STATE_FILE = path.join(DATA, 'state.json')
 fs.mkdirSync(BUCKET_DIR, { recursive: true })
 fs.mkdirSync(ASSET_DIR, { recursive: true })
@@ -139,8 +143,9 @@ const diskBucket = {
 const MIME = { '.js': 'application/javascript', '.css': 'text/css', '.woff2': 'font/woff2', '.png': 'image/png', '.svg': 'image/svg+xml', '.xml': 'application/xml', '.txt': 'text/plain' }
 /**
  * The `ASSETS` binding (Workers Static Assets): the uploaded manifest's files, by path. Before any
- * setup uploaded them (board 10's pre-existing link), the repo's `share/dist/assets` stands in, and
- * the pack cache for the draw.io files setup would have added under `/assets/drawio/`.
+ * setup uploaded them (board 10's pre-existing link), the repo's `share/dist/assets` stands in, with
+ * the package's fonts and the pack cache for what setup would have added under `/assets/fonts/` and
+ * `/assets/drawio/`.
  */
 const assetsBinding = (manifest) => ({
   async fetch(request) {
@@ -154,6 +159,8 @@ const assetsBinding = (manifest) => ({
       if (candidate.startsWith(`${REPO_ASSETS}/`)) file = candidate
       const drawio = path.resolve(REPO_DRAWIO, `.${pathname.slice('/assets/drawio'.length)}`)
       if (pathname.startsWith('/assets/drawio/') && !fs.existsSync(candidate) && drawio.startsWith(`${REPO_DRAWIO}/`)) file = drawio
+      const font = path.resolve(REPO_FONTS, `.${pathname.slice('/assets/fonts'.length)}`)
+      if (pathname.startsWith('/assets/fonts/') && font.startsWith(`${REPO_FONTS}/`)) file = font
     }
     if (file === null || !fs.existsSync(file)) return new Response('not found', { status: 404 })
     const type = MIME[path.extname(pathname)] ?? 'application/octet-stream'

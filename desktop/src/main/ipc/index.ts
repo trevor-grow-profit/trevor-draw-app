@@ -27,7 +27,7 @@ import { registerWindowIpc } from './window'
  * (🔒 YAZ-1775 D5) and where `secrets.json` lives (🔒 YAZ-1775 D4), and every module under `main/` that touches it
  * stays Electron-free and testable.
  */
-export function registerIpc(store: Store, windows: WindowManagerIpc, userData: string, share: { viewerAssetsDir: string; drawioDir: string; isPackaged: boolean }): GitSyncManager {
+export function registerIpc(store: Store, windows: WindowManagerIpc, userData: string, share: { viewerAssetsDir: string; drawioDir: string; fontsDir: string; isPackaged: boolean }): GitSyncManager {
   registerFsIpc(store, windows)
   registerDrawingIpc(store, userData)
   registerDiagramIpc()

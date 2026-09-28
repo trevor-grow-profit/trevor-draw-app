@@ -32,6 +32,7 @@
  * engine localStorage key this app touches — WRITTEN, never read. See `YASEEN_FULL_TOOLBAR_MODE`.
  */
 import type { ComponentProps } from 'react'
+import { isDrawing } from '@shared/fileKind'
 import { DRAWING_SOURCE } from './drawingScene'
 
 /** Bundle-relative home of the package's `fonts/…` tree (see `excalidrawAssets()` in the vite config). */
@@ -133,4 +134,16 @@ export function loadExcalidraw(): Promise<ExcalidrawModule> {
     loading = import('@excalidraw/excalidraw')
   }
   return loading
+}
+
+/**
+ * THE BOOT-TIME WARM-UP (YAZ-2073 4B): a window restored onto a drawing mounts the canvas next, so
+ * the engine's download and compile start at boot, in parallel with the first render, instead of
+ * after it (the canvas mount was the only trigger, ~35 ms later). The same ONE promise and pins
+ * `ExcalidrawSurface` uses; a window on Welcome, a folder or a diagram loads nothing, as before.
+ */
+export function warmEngineFor(file: string | null): void {
+  if (file === null || !isDrawing(file)) return
+  loadExcalidraw().catch(() => {}) // the canvas reports a failure itself, awaiting this same promise
+  void import('@excalidraw/excalidraw/index.css')
 }
