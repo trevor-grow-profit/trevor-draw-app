@@ -367,6 +367,54 @@ describe('🔒 YAZ-1834 — the yaseendraw block on save', () => {
 })
 
 /**
+ * ONE PARSE, ONE STRINGIFY (YAZ-2073 5G). The save used to parse the scene three times and
+ * stringify it twice; it now works on the parsed object. The bytes on disk must not move by one:
+ * `frozenSaveBytes` is the old text pipeline (`stripEmbeddedFiles` → `stampBoardMeta`) copied
+ * verbatim as the oracle, and every awkward spelling below goes through the real door.
+ */
+describe('drawing:save writes the same bytes as the old three-parse pipeline (YAZ-2073 5G)', () => {
+  const isPlainObject = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v)
+  function frozenSaveBytes(json: string, at: { createdAt: number; updatedAt: number }, prior: Record<string, unknown> | null): string {
+    const scene = JSON.parse(json) as Record<string, unknown>
+    const lean = `${JSON.stringify({ ...scene, files: {} }, null, 2)}\n`
+    const { [BOARD_META_KEY]: own, ...rest } = JSON.parse(lean) as Record<string, unknown>
+    const existing = prior ?? own
+    const { createdAt, updatedAt: _stale, ...extras } = isPlainObject(existing) ? existing : {}
+    const block = { createdAt: typeof createdAt === 'number' && Number.isFinite(createdAt) ? createdAt : at.createdAt, updatedAt: at.updatedAt, ...extras }
+    return `${JSON.stringify({ [BOARD_META_KEY]: block, ...rest }, null, 2)}\n`
+  }
+  // Not `blockOf`: an integer-like top-level key sorts before the block in ANY JS object, old path included.
+  const stampOf = (written: string) => (JSON.parse(written) as Record<string, { createdAt: number; updatedAt: number }>)[BOARD_META_KEY]
+  const FIXTURES: Record<string, string> = {
+    lean: scene([{ id: 'a', type: 'rectangle', x: 1.5 }]),
+    minified: JSON.stringify({ files: {}, elements: [{ id: 'm' }], type: 'excalidraw', appState: { zoom: { value: 1 } } }),
+    awkward: `{"2":"int keys sort first","type":"excalidraw","__proto__":{"own":true},"elements":[{"id":"u","text":"café \\ud800 \\u2028 😀","n":-0,"big":1e21,"tiny":5e-324,"esc":"\\"\\\\\\n"}],"dup":1,"dup":2,"1":"one","files":{}}`,
+    legacy: scene([imageEl('abc'), imageEl('keep')], { files: { abc: { mimeType: 'image/png', dataURL: dataUrl() }, gone: { mimeType: 'image/png', dataURL: dataUrl() }, bad: { mimeType: 'image/png', dataURL: 'https://x' }, keep: { mimeType: 'image/png', dataURL: dataUrl('a2VlcA==') } } }),
+    ownBlockNotFirst: scene([], { [BOARD_META_KEY]: { updatedAt: 3, cloudId: 'z', createdAt: 2 } }),
+    ownBlockNotAnObject: scene([], { [BOARD_META_KEY]: [1, 2] }),
+    noFilesKey: JSON.stringify({ type: 'excalidraw', elements: [], appState: {} }, null, 4),
+  }
+
+  for (const [name, json] of Object.entries(FIXTURES)) {
+    it(`${name}: a new board`, async () => {
+      const newFiles = name === 'legacy' ? [{ fileId: 'keep', mimeType: 'image/png', dataURL: dataUrl('a2VlcA==') }] : []
+      await saveDrawing({ root, path: `${name}.excalidraw`, json, newFiles })
+      const written = await readFile(path.join(root, `${name}.excalidraw`), 'utf8')
+      const { createdAt, updatedAt } = stampOf(written)
+      expect(written).toBe(frozenSaveBytes(json, { createdAt, updatedAt }, null))
+    })
+
+    it(`${name}: over a board whose head carries a block with extras`, async () => {
+      const prior = { createdAt: 1600000000000, updatedAt: 1600000000001, cloudId: 'k7' }
+      const file = await seed(`${name}.excalidraw`, `${JSON.stringify({ [BOARD_META_KEY]: prior, type: 'excalidraw', elements: [], files: {} }, null, 2)}\n`)
+      await saveDrawing({ root, path: file, json, newFiles: [] })
+      const written = await readFile(file, 'utf8')
+      expect(written).toBe(frozenSaveBytes(json, { createdAt: 0, updatedAt: stampOf(written).updatedAt }, prior))
+    })
+  }
+})
+
+/**
  * The simulated end-to-end (🔒 YAZ-1811 acceptance): a real temp vault, the real doors, no
  * Electron and no React. `shell.trashItem` is the one thing injected — a test must not move
  * files into the developer's own Trash.
