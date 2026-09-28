@@ -1,6 +1,7 @@
 import { readdir, readFile } from 'node:fs/promises'
 import { join, relative, resolve, sep } from 'node:path'
 import { shell } from 'electron'
+import { EXCALIDRAW_ASSET_DIR, excalidrawPackageFonts } from '@shared/excalidrawFonts'
 import { CONTRACT } from '@shared/ipc'
 import { BridgeFailure } from '../fs/fsUtils'
 import { bool, optBool, optStr, requireRequest, str, strOrNull } from '../fs/validate'
@@ -37,12 +38,12 @@ export function viewerAssetsDir({ isPackaged, resourcesPath, appPath }: { isPack
  * Excalidraw's font files, which the viewer fetches from `/assets/fonts/` (YAZ-2073 3C): the packaged
  * app's ONE copy, beside the renderer bundle in the asar (`excalidrawAssets()` in
  * `electron.vite.config.ts`); dev reads the package itself, wherever npm hoisted it — the same bytes.
+ * Found nowhere, it answers the root's, so the upload's own check says what to run.
  */
 export function excalidrawFontsDir({ isPackaged, mainDir, appPath, exists }: { isPackaged: boolean; mainDir: string; appPath: string; exists: (p: string) => boolean }): string {
-  if (isPackaged) return resolve(mainDir, '..', 'renderer', 'excalidraw-assets', 'fonts')
-  const inPackage = (base: string) => join(base, 'node_modules', '@excalidraw', 'excalidraw', 'dist', 'prod', 'fonts')
-  const repo = join(appPath, '..')
-  return [inPackage(repo), inPackage(join(repo, 'client'))].find(exists) ?? inPackage(repo)
+  if (isPackaged) return resolve(mainDir, '..', 'renderer', EXCALIDRAW_ASSET_DIR, 'fonts')
+  const candidates = excalidrawPackageFonts(join(appPath, '..'))
+  return candidates.find(exists) ?? candidates[0]
 }
 
 /**

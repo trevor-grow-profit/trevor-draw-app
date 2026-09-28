@@ -7,22 +7,18 @@ import { fileURLToPath } from 'node:url'
 import { dirname, resolve } from 'node:path'
 // Relative, not `@shared`: this file runs in Node before any alias exists.
 import { DRAWIO_TAG } from '../shared/drawio'
+import { EXCALIDRAW_ASSET_DIR, excalidrawPackageFonts } from '../shared/excalidrawFonts'
 
 const here = fileURLToPath(new URL('.', import.meta.url))
 const shared = resolve(here, '../shared')
 const client = resolve(here, '../client')
 const rendererOut = resolve(here, 'out/renderer')
 
-/** Where the renderer expects Excalidraw's assets (mirrors `EXCALIDRAW_ASSET_DIR` in renderScene.ts). */
-const EXCALIDRAW_ASSET_DIR = 'excalidraw-assets'
-
 /** The package's own `fonts/` tree, wherever npm hoisted the workspace dependency. */
 function excalidrawFontsDir(): string {
-  for (const base of [resolve(here, '..'), client]) {
-    const dir = resolve(base, 'node_modules/@excalidraw/excalidraw/dist/prod/fonts')
-    if (existsSync(dir)) return dir
-  }
-  throw new Error('@excalidraw/excalidraw fonts not found — run `npm install`')
+  const dir = excalidrawPackageFonts(resolve(here, '..')).find((d) => existsSync(d))
+  if (dir === undefined) throw new Error('@excalidraw/excalidraw fonts not found — run `npm install`')
+  return dir
 }
 
 /**
