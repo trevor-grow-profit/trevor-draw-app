@@ -1,7 +1,8 @@
 import { execFile } from 'node:child_process'
-import { EventEmitter } from 'node:events'
+import { EventEmitter, once } from 'node:events'
 import { existsSync, watch as fsWatch, type FSWatcher, type Stats } from 'node:fs'
-import { lstat, readdir, realpath } from 'node:fs/promises'
+import { lstat, mkdtemp, readdir, realpath, rm, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { isWithin } from '@shared/paths'
 import { isAtomicTmp } from '@shared/fileKind'
@@ -24,7 +25,9 @@ import { isAtomicTmp } from '@shared/fileKind'
  *    is one `change` and a file written in pieces is announced when whole — the job chokidar's
  *    `awaitWriteFinish` polling did.
  *  - READY after one walk of what is already there (nothing is announced for it, `ignoreInitial`'s
- *    meaning), so `change` and `add` can be told apart from the first event on.
+ *    meaning), so `change` and `add` can be told apart from the first event on. On macOS the walk
+ *    waits until the stream demonstrably hears (`probeStream`), or a change between the two would
+ *    be neither walked nor reported.
  *  - A FOLDER THAT DOES NOT EXIST YET is waited for from its nearest existing ancestor, and its
  *    contents arrive as `add`s when it appears.
  *  - FALLBACK. Where `fs.watch` cannot serve — it throws (at the start, or on a folder that arrives
@@ -72,6 +75,42 @@ function nearestExisting(p: string): string {
   return at
 }
 
+/** How often a probe writes its file until it hears one. */
+const PROBE_MS = 10
+
+interface Probe {
+  /** Resolves once the probe has heard its own write. */
+  heard: Promise<void>
+  close(): Promise<void>
+}
+
+/**
+ * THE STREAM HEARS (YAZ-2073 5F1). On macOS `fs.watch` returns before libuv's FSEvents thread has
+ * started the stream that serves it — 0–20 ms later when idle, 100 ms and more with `fseventsd`
+ * busy — and a change in that gap is never reported, so a `ready` announced in it would be a lie.
+ * libuv serves every FSEvents watch in the process from ONE stream, rebuilt whenever a watch opens
+ * or closes, so a probe — a watch of a fresh private folder, opened after the real one — can only
+ * hear from a stream that serves the real one too. It writes a file there every `PROBE_MS` until it
+ * hears one, without blocking anything (closing a watch waits for a rebuild; opening does not).
+ * Windows' watch is live before `fs.watch` returns.
+ */
+async function probeStream(): Promise<Probe> {
+  const dir = await mkdtemp(path.join(tmpdir(), 'yaseendraw-probe-'))
+  const probe = fsWatch(dir)
+  const tick = setInterval(() => void writeFile(path.join(dir, 'probe'), '').catch(() => undefined), PROBE_MS)
+  return {
+    heard: once(probe, 'change').then(() => clearInterval(tick)),
+    async close() {
+      clearInterval(tick)
+      probe.close()
+      await rm(dir, { recursive: true, force: true })
+    },
+  }
+}
+
+/** Closes a probe; one that never opened has nothing to close. */
+const closeProbe = (probe: Promise<Probe>): Promise<void> => probe.then((p) => p.close(), () => undefined)
+
 /**
  * Whether `dir` sits on a volume macOS does not call `local` (SMB, NFS, AFP, WebDAV), read off
  * `mount`'s table: the longest mount point containing it decides. Windows' change notifications
@@ -81,8 +120,22 @@ async function onNetworkVolume(dir: string): Promise<boolean> {
   if (process.platform !== 'darwin') return false
   const at = nearestExisting(dir)
   const real = await realpath(at).catch(() => at)
-  const table = await new Promise<string>((resolve) => execFile('/sbin/mount', (err, out) => resolve(err === null ? out : '')))
-  return isNetworkMount(table, real)
+  return isNetworkMount(await mountTable(), real)
+}
+
+/**
+ * How long one read of `mount`'s table answers for (YAZ-2073 5F1): the four or more watches a launch
+ * starts share one spawn, and a share mounted since is seen by the first watch after that.
+ */
+const MOUNT_TABLE_TTL_MS = 5000
+let lastMountRead: { at: number; table: Promise<string> } | null = null
+
+function mountTable(): Promise<string> {
+  const now = Date.now()
+  if (lastMountRead === null || now - lastMountRead.at > MOUNT_TABLE_TTL_MS) {
+    lastMountRead = { at: now, table: new Promise((resolve) => execFile('/sbin/mount', (err, out) => resolve(err === null ? out : ''))) }
+  }
+  return lastMountRead.table
 }
 
 /** `mount`'s `<device> on <point> (<type>, <flags…>)` lines → whether the mount holding `real` lacks `local`. */
@@ -107,6 +160,13 @@ class Engine extends EventEmitter implements TreeWatcher {
   private chain: Promise<void> = Promise.resolve()
   private native: FSWatcher | null = null
   private polling: TreeWatcher | null = null
+  /**
+   * macOS: a probe per watch this engine opened, all open until it closes — closing one would rebuild
+   * the stream, deaf again for a while. An awaited folder adds one per level it arrives through.
+   */
+  private readonly probes: Promise<Probe>[] = []
+  /** Resolves once the stream serving `native` hears — at once off macOS; renewed with `native`. */
+  private listening: Promise<void> = Promise.resolve()
   private started = false
   private closed = false
 
@@ -127,19 +187,23 @@ class Engine extends EventEmitter implements TreeWatcher {
     this.native?.close()
     this.timers.forEach(clearTimeout)
     this.timers.clear()
-    await Promise.all([this.chain, this.polling?.close()])
+    await Promise.all([this.chain, this.polling?.close(), ...this.probes.map(closeProbe)])
   }
 
   private async start(): Promise<void> {
     if (await onNetworkVolume(this.dir)) return this.poll()
     if (this.closed) return
+    const there = existsSync(this.dir)
     try {
-      if (existsSync(this.dir)) this.watchDir()
+      if (there) this.watchDir()
       else this.awaitDir()
     } catch {
       return this.poll()
     }
-    await this.walk(this.dir, false)
+    await this.listening
+    // A folder that is there is read once its stream hears, so nothing lands between the two
+    // unreported; one that is not announces what it holds when it arrives (`arrived`).
+    if (there) await this.walk(this.dir, false)
     this.started = true
     // What moved during the walk is looked at now, against what the walk found.
     for (const [p, timer] of [...this.timers]) {
@@ -169,9 +233,19 @@ class Engine extends EventEmitter implements TreeWatcher {
     this.polling = w as unknown as TreeWatcher
   }
 
+  /** `w` is the watch now; a new probe must vouch for it, since one opened before it vouches for nothing. */
+  private listen(w: FSWatcher): void {
+    this.native = w
+    if (process.platform !== 'darwin') return
+    const probe = probeStream()
+    this.probes.push(probe)
+    // A probe that cannot run (no temp folder) is reported, and the watch goes on unvouched.
+    this.listening = probe.then((p) => p.heard).catch((err: unknown) => void this.emit('error', err))
+  }
+
   private watchDir(): void {
     const base = path.basename(this.dir)
-    this.native = fsWatch(this.dir, { recursive: true }, (_type, name) => {
+    const w = fsWatch(this.dir, { recursive: true }, (_type, name) => {
       if (this.closed) return
       // `null` = the OS dropped the detail (an overflowed buffer): look at everything again.
       if (name === null) return this.queue(this.dir)
@@ -180,7 +254,8 @@ class Engine extends EventEmitter implements TreeWatcher {
       if (rel === base) this.queue(this.dir)
       this.queue(path.join(this.dir, rel))
     })
-    this.native.on('error', (err) => this.emit('error', err))
+    w.on('error', (err) => this.emit('error', err))
+    this.listen(w)
   }
 
   /**
@@ -189,32 +264,37 @@ class Engine extends EventEmitter implements TreeWatcher {
    */
   private awaitDir(): void {
     const anchor = nearestExisting(path.dirname(this.dir))
-    const w = fsWatch(anchor, () => {
-      if (this.closed) return
-      try {
-        if (existsSync(this.dir)) this.arrived(w)
-        else if (nearestExisting(path.dirname(this.dir)) !== anchor) {
-          w.close()
-          this.awaitDir()
-        }
-      } catch {
-        // The next folder down cannot be watched (EACCES, say): poll instead, as `start` would have,
-        // and announce what the folder already holds, as the native path would have.
-        this.poll()
-          .then(() => (this.closed ? undefined : this.walk(this.dir, true)))
-          .catch((err: unknown) => void this.emit('error', err))
-      }
-    })
+    const w = fsWatch(anchor, () => this.fillIn(w, anchor))
     w.on('error', (err) => this.emit('error', err))
-    this.native = w
-    // It may have appeared between the check and the watch.
-    if (existsSync(this.dir)) this.arrived(w)
+    this.listen(w)
+    // It may have appeared between the check and the watch, or before the stream heard.
+    if (existsSync(this.dir)) return this.arrived(w)
+    void this.listening.then(() => this.fillIn(w, anchor))
   }
 
+  /** The awaited path may have filled in below `anchor`: watch the folder once it exists, else move the anchor down. */
+  private fillIn(w: FSWatcher, anchor: string): void {
+    if (this.closed || this.native !== w) return
+    try {
+      if (existsSync(this.dir)) this.arrived(w)
+      else if (nearestExisting(path.dirname(this.dir)) !== anchor) {
+        w.close()
+        this.awaitDir()
+      }
+    } catch {
+      // The next folder down cannot be watched (EACCES, say): poll instead, as `start` would have,
+      // and announce what the folder already holds, as the native path would have.
+      this.poll()
+        .then(() => (this.closed ? undefined : this.walk(this.dir, true)))
+        .catch((err: unknown) => void this.emit('error', err))
+    }
+  }
+
+  /** The folder is here: watch it, and once that watch hears, look at what it holds — all of it new to consumers. */
   private arrived(anchor: FSWatcher): void {
     anchor.close()
     this.watchDir()
-    this.queue(this.dir)
+    void this.listening.then(() => this.queue(this.dir))
   }
 
   private skip(p: string): boolean {

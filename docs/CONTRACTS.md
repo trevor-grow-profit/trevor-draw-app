@@ -225,8 +225,9 @@ Rules that hold across the whole surface:
 - **One watcher engine** (`fs/treeWatcher.ts`, 🔒 YAZ-2073 D9) under the vault, `.yaseendraw/` and
   library watches: one recursive `fs.watch` per folder (no fd per file), each path looked at once it
   has been quiet 100 ms (`SETTLE_MS`) and classified by `lstat` against what it knew, `ready` after
-  one walk of what is there, the app's own `atomicWrite` tmp files never announced. A folder that
-  does not exist yet is waited for. On a macOS network volume (no `local` in `mount`), or where
+  one walk of what is there and only once macOS's FSEvents stream is live (YAZ-2073 5F1), the app's
+  own `atomicWrite` tmp files never announced. A folder that does not exist yet is waited for. On a
+  macOS network volume (no `local` in `mount`'s table, read at most once per 5 s), or where
   `fs.watch` throws — at the start, or on a folder that arrives but cannot be watched (`EACCES`) —
   chokidar polling (1 s) runs instead, loaded only then, and what the folder holds still arrives.
   What consumers see is pinned by `watchConformance.test.ts`, which passed against chokidar before
