@@ -140,6 +140,16 @@ describe('watch IPC', () => {
     expect(sent(s)).toEqual([{ id: 'next', ev: { type: 'ready', root } }])
   })
 
+  it('an unsubscribe for an id that is not subscribing leaves nothing behind: that id can still subscribe later (YAZ-2073 2C)', async () => {
+    const s = makeSender()
+    senders.push(s)
+    unsubscribeAs(s, 'never-seen')
+    await subscribeAs(s, 'never-seen', root)
+    await until(() => sent(s).length >= 1)
+    expect(sent(s)).toEqual([{ id: 'never-seen', ev: { type: 'ready', root } }])
+    expect(activeWatcherRoots()).toEqual([root])
+  })
+
   it('a bad root answers one error event and subscribes nothing', async () => {
     const s = makeSender()
     await subscribeAs(s, 'rel', root.slice(1))
