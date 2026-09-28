@@ -24,7 +24,7 @@
 - CLOSED-READY 2026-09-27: close on merge.
 
 ## Open Questions
-- UNCONFIRMED: ⇧ seen while the pointer is over the draw.io iframe (S36).
+- None. (⇧ over the canvas / draw.io iframe: confirmed in the hand pass — keys follow focus, and the panel focuses its filter; S36 passed.)
 
 ## Working Set
 - Worktrees: `yaseen-draw-app-yaz-2056` (branch `yaz-2056-vault-viewer`), `yaseen-draw-app-yaz-2056-sidebar` (branch `yaz-2056-sidebar-fixes`).
