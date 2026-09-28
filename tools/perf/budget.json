@@ -1,5 +1,5 @@
 {
-  "$comment": "Ceilings for `npm run perf:budget` / `perf:budget:ci` (size: bytes / counts) and `npm run perf` (scenario medians: ms / MB / s / %), set to the v0.1.11 baseline (YAZ-2073 1A/1B; the measured runs are in baseline.json). THE RATCHET (🔒 D17): a change that improves a metric lowers its ceiling here in the same PR; raising one needs Yasin's OK in the PR description. `target` is the YAZ-2073 goal. The tolerances absorb build-to-build byte jitter and run-to-run timing noise, nothing more.",
+  "$comment": "Ceilings for `npm run perf:budget` / `perf:budget:ci` (size: bytes / counts) and `npm run perf` (scenario medians: ms / MB / s / %), set to the v0.1.11 baseline (YAZ-2073 1A/1B; the measured runs are in baseline.json). THE RATCHET (🔒 D17): a change that improves a metric lowers its ceiling here in the same PR; raising one needs Yasin's OK in the PR description. `target` is the YAZ-2073 goal (hover preview times include the 400 ms dwell, so 700 = the scope's 300 ms). The tolerances absorb build-to-build byte jitter and run-to-run timing noise, nothing more.",
   "baseline": "v0.1.11",
   "sizeTolerance": 0.001,
   "size": {
@@ -21,5 +21,27 @@
     "mainBundleBytes": { "max": 285442 }
   },
   "perfTolerance": 0.15,
-  "perf": {}
+  "perf": {
+    "launch.spawnToCanvasMs": { "max": 529.8, "target": 450 },
+    "launch.navToCanvasMs": { "max": 256.2 },
+    "drawio.drawioOpenMs": { "max": 922.1, "target": 650 },
+    "canvas-1k.dragFrameP50Ms": { "max": 24.9 },
+    "canvas-4k.dragFrameP50Ms": { "max": 475.1, "target": 95 },
+    "canvas-1k-dark.dragFrameP50Ms": { "max": 23.6 },
+    "canvas-4k-dark.dragFrameP50Ms": { "max": 474.7, "target": 95 },
+    "canvas-images.openLongTaskMaxMs": { "max": 363, "target": 50 },
+    "canvas-legacy.openLongTaskMaxMs": { "max": 115 },
+    "hover.hover121PreviewMs": { "max": 807.7, "target": 700 },
+    "hover.hover121FrameMaxMs": { "max": 340.6, "target": 20 },
+    "hover.hoverLegacyPreviewMs": { "max": 669.4 },
+    "drawers.panelFrameP95Ms": { "max": 10 },
+    "drawers.sidebarFrameP95Ms": { "max": 9.9 },
+    "drawers.switcherFrameP95Ms": { "max": 9.9 },
+    "storm.mainCpuSec": { "max": 34.6, "target": 1 },
+    "storm.mainPeakMb": { "max": 3224.2, "target": 250 },
+    "storm.ipcMaxMs": { "max": 2404.2 },
+    "heavy-tabs.rendererFootprintMb": { "max": 93.4 },
+    "heavy-tabs.gpuFootprintMb": { "max": 265.1 },
+    "idle.mainFootprintMb": { "max": 44.6 }
+  }
 }
