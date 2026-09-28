@@ -10,7 +10,7 @@ import type { WatchSource } from '../hooks/useWatch'
 import { basename } from '../lib/paths'
 import { storage } from '../lib/storage'
 import { EMPTY_SELECTION, orderedSelection, selectionReducer } from '../lib/selection'
-import { allDirs, ancestorDirs, favoriteRoots, findDirNode, findNode, focusRoots, treeHasFile, treeHasPath, treeReducer } from '../lib/treeState'
+import { allDirs, ancestorDirs, favoriteRoots, findDirNode, findNode, focusRoots, treeHasFile, treeHasPath } from '../lib/treeState'
 import { sortTree, type FileNode } from '@shared/treeSort'
 import { createStore } from '../lib/store'
 import { BoardInfo } from './BoardInfo'
@@ -27,6 +27,14 @@ import { buildMenuSections, countItems } from './menuSections'
 import type { NoticeKind } from '../lib/notice'
 import { Tree, type PendingCreate, type PendingRename, type TreeFileMove, type TreeReorder, type TreeSelection } from './Tree'
 import { VaultSwitcher } from './VaultSwitcher'
+import { sameList } from './hooks/sameList'
+import { useExpansion } from './hooks/useExpansion'
+import { useInfoPopover } from './hooks/useInfoPopover'
+import { useMissingFileChecks } from './hooks/useMissingFileChecks'
+import { useSortOrder } from './hooks/useSortOrder'
+import { useVaultTree } from './hooks/useVaultTree'
+
+export { WATCH_REFRESH_MS } from './hooks/useVaultTree'
 import { flashTreeRows, revealMissingMessage, type SidebarRevealRequest } from './revealRow'
 
 interface SidebarProps {
@@ -284,12 +292,9 @@ const SORT_LABEL: Record<SortOrder, string> = { name: 'Name', updated: 'Last upd
 
 /** How long the pointer (or focus) rests on a board row before its preview opens (YAZ-1800). */
 export const BOARD_PREVIEW_DWELL_MS = 400
-/** The quiet a watcher change waits out before the tree refreshes; a burst inside it is one walk (YAZ-2073 5E). */
-export const WATCH_REFRESH_MS = 120
 
 /** The Favorites tree's file move (YAZ-1766 D4): nothing on that tab drags to disk, so every callback is a no-op. */
 const INERT_MOVE: TreeFileMove = { dragging: null, dropDir: null, start: () => undefined, end: () => undefined, hover: () => undefined, drop: () => undefined }
-const sameList = (a: readonly string[], b: readonly string[]) => a.length === b.length && a.every((x, i) => x === b[i])
 
 /** Mounted with `key={root}` by App, so all state below is per root. */
 export function Sidebar({
@@ -323,9 +328,9 @@ export function Sidebar({
   clipboardRef,
   tooLarge,
 }: SidebarProps) {
-  const [tree, setTree] = useState<TreeResponse | null>(null)
-  const [error, setError] = useState<string | null>(null)
-  const [expanded, dispatch] = useReducer(treeReducer, root, storage.getExpanded)
+  const { tree, error, refresh } = useVaultTree(root, watch, onRootMissing)
+  useMissingFileChecks(root, tree, activeFile, onFileMissing)
+  const { expanded, dispatch, expandedSet, toggleDir } = useExpansion(root, activeFile)
   // Focus Mode (YAZ-1605): one path LIST per lens — dirs, on both lenses; empty is no focus.
   // Per WINDOW since YAZ-1628 (`sidebarCollapsed`'s rule), unlike the per-vault expansion above:
   // restored from this window's identity and written back the same way, so it survives a lens
@@ -349,12 +354,9 @@ export function Sidebar({
   // outlive them (a collapse ends it).
   const [selectedPaths, dispatchSelection] = useReducer(selectionReducer, EMPTY_SELECTION)
   const [menu, setMenu] = useState<MenuTargets | null>(null)
-  // The Files lens's order (🔒 YAZ-1835 D3): per vault, read off the store and re-read when another window changes it.
-  const [sortOrder, setSortOrderState] = useState<SortOrder>(() => storage.getSortOrder(root))
+  const [sortOrder, setSortOrder] = useSortOrder(root)
   const [sortMenu, setSortMenu] = useState<{ x: number; y: number } | null>(null)
-  // The "Info" popover (🔒 YAZ-1835 D6): the board's PATH, resolved against the live tree at render;
-  // `now` is pinned at open, like the vault switcher's, so a relative time never shifts on a re-render.
-  const [infoPopover, setInfoPopover] = useState<{ x: number; y: number; path: string; now: number } | null>(null)
+  const { infoPopover, setInfoPopover, infoNode } = useInfoPopover(tree)
   const [creating, setCreating] = useState<{ kind: EntryKind; seed: string; parentDir: string } | null>(null)
   const [renamingEntry, setRenamingEntry] = useState<{ path: string; kind: 'file' | 'dir' } | null>(null)
   // The delete confirm sheet's target (GRO-2272 `C3-`); null when the sheet is closed.
@@ -389,16 +391,6 @@ export function Sidebar({
   const favoriteDirs = useMemo(() => allDirs(favoriteNodes), [favoriteNodes])
   // 🔒 YAZ-1835 D1: the order is a VIEW applied here, to the Files lens only — `fs:tree`, ⌘K and the Favorites lens never see it.
   const sortedNodes = useMemo(() => sortTree(focusNodes.length > 0 ? focusNodes : (tree?.tree ?? []), sortOrder), [focusNodes, tree, sortOrder])
-  // The Info popover's board, off the LIVE tree (🔒 YAZ-1835 D7): a refresh moves its dates; a deletion closes it.
-  const infoNode = useMemo(() => {
-    if (infoPopover === null || tree === null) return null
-    const n = findNode(tree.tree, infoPopover.path)
-    return n !== null && n.type === 'file' ? n : null
-  }, [infoPopover, tree])
-  // The board went (deleted, moved): close for good, so a path that comes back does not reopen it.
-  useEffect(() => {
-    if (infoPopover !== null && tree !== null && infoNode === null) setInfoPopover(null)
-  }, [infoPopover, tree, infoNode])
   // What the chevrons button unfolds on the two disk-reading lenses.
   const bodyDirs = lens === 'favorites' ? favoriteDirs : shownDirs
   // ⌘K's feed (YAZ-1814): the ONE tree this panel already holds and the watcher already keeps
@@ -489,60 +481,7 @@ export function Sidebar({
   const anyExpanded = bodyDirs.some((d) => expanded.includes(d))
   const allLabel = anyExpanded ? 'Collapse all' : 'Expand all'
 
-  const refresh = useCallback(() => {
-    api.tree(root).then(
-      (res) => {
-        // Walks overlap now that every watcher event refreshes (🔒 YAZ-1835 D4): a slower, older
-        // answer must never overwrite a newer one, and `generatedAt` is main's clock for exactly that.
-        setTree((cur) => (cur !== null && cur.generatedAt > res.generatedAt ? cur : res))
-        setError(null)
-      },
-      (err: unknown) => {
-        if (err instanceof BridgeRequestError && (err.code === 'NOT_FOUND' || err.code === 'NOT_A_DIRECTORY')) onRootMissing()
-        else setError(err instanceof BridgeRequestError ? err.message : 'Failed to load folder')
-      },
-    )
-  }, [root, onRootMissing])
-
-  useEffect(() => refresh(), [refresh])
-
-  // Refresh on EVERY change, not only structural ones (🔒 YAZ-1835 D4): a save moves a board's
-  // `updatedAt`, and with it its place under "Last updated" — in this window and every other one
-  // on the vault. `ready` also fires on every watch (re)subscription, covering missed events, and
-  // refreshes at once; a change waits out `WATCH_REFRESH_MS` of quiet, so a burst (a sync pull, a
-  // folder copy) costs one walk, not one per file (YAZ-2073 5E, 🔒 D10).
-  useEffect(() => {
-    let timer: ReturnType<typeof setTimeout> | undefined
-    const off = watch.subscribe((ev) => {
-      if (ev.type === 'error') return setError(ev.message)
-      clearTimeout(timer)
-      if (ev.type === 'ready') refresh()
-      else timer = setTimeout(refresh, WATCH_REFRESH_MS)
-    })
-    return () => {
-      clearTimeout(timer)
-      off()
-    }
-  }, [watch, refresh])
-
-  // Another window's sort change lands in the store cache; follow it (🔒 YAZ-1835 D3).
-  useEffect(() => storage.subscribe(() => setSortOrderState(storage.getSortOrder(root))), [root])
-  const setSortOrder = useCallback(
-    (order: SortOrder) => {
-      setSortOrderState(order)
-      storage.setSortOrder(root, order)
-    },
-    [root],
-  )
-
-  useEffect(() => {
-    // Idempotent (⚡ YAZ-874): the first render holds exactly what was
-    // just read, and re-sending it would make the main process commit, write and broadcast for nothing.
-    if (sameList(storage.getExpanded(root), expanded)) return
-    storage.setExpanded(root, expanded)
-  }, [root, expanded])
-
-  // Focus Mode's write-back (YAZ-1605), idempotent like the two above it — into this window's
+  // Focus Mode's write-back (YAZ-1605), idempotent like the expansion's (⚡ YAZ-874) — into this window's
   // identity (YAZ-1628), not the vault bucket.
   useEffect(() => {
     if (sameList(storage.getFocusDirs(), focusDirs)) return
@@ -585,15 +524,6 @@ export function Sidebar({
     },
     [root, onNotice],
   )
-
-  // The file this mount woke up with is SHOWN, not revealed (YAZ-1642): a relaunch restores the
-  // tab and leaves the tree collapsed. Any file opened after that still opens its folders.
-  const restoredFile = useRef(activeFile)
-  useEffect(() => {
-    if (activeFile === restoredFile.current) return
-    restoredFile.current = null
-    if (activeFile !== null) dispatch({ type: 'expandTo', root, file: activeFile })
-  }, [root, activeFile])
 
   // Focus Mode (YAZ-1605): a focus target that left the vault DROPS OUT — deleted or moved out —
   // and the last one leaving ends the focus: never an empty tree under a lit eye. The store repairs
@@ -662,47 +592,6 @@ export function Sidebar({
     searchInput.current?.focus()
     onSearchFocusHandled()
   }, [pendingSearchFocus, onSearchFocusHandled])
-
-  // Stored lastFile that no longer exists → drop it (first tree only, so a file deleted on disk
-  // EXTERNALLY while it is being edited stays open and is recreated by the next save — an
-  // IN-APP delete never reaches here, it closes tabs through the `file:deleted` broadcast
-  // which retires the editor first (GRO-2272); do not unify the two. Files OUTSIDE the
-  // root (opened via a pasted `#/abs/path.excalidraw` URL, GRO-2069) are never in the tree — skip them.
-  const validated = useRef(false)
-  useEffect(() => {
-    if (tree === null || validated.current) return
-    validated.current = true
-    if (activeFile !== null && isWithin(root, activeFile, true) && !treeHasFile(tree.tree, activeFile))
-      onFileMissing()
-  }, [tree, activeFile, root, onFileMissing])
-
-  // A stale tab ACTIVATED after its file vanished on disk (I3, GRO-2235): when the activation
-  // CHANGES to an in-root file the cached tree does not show, confirm against a FRESH tree —
-  // the inline-create flow activates a just-created file before `refresh()` lands, so the
-  // cached tree can be behind — and close it through the same onFileMissing path. A file
-  // deleted EXTERNALLY while it is the active editor stays open (no activation change —
-  // recreated by the next save); an IN-APP delete never routes through here, it closes tabs
-  // via the `file:deleted` broadcast, which also retires the editor first (GRO-2272). Do not
-  // unify the two. Background tabs are never probed (out of scope, noted in GRO-2235).
-  const lastActive = useRef(activeFile)
-  const treeRef = useRef(tree)
-  treeRef.current = tree
-  useEffect(() => {
-    if (activeFile === lastActive.current) return
-    lastActive.current = activeFile
-    if (activeFile === null || !isWithin(root, activeFile, true)) return
-    if (treeRef.current !== null && treeHasFile(treeRef.current.tree, activeFile)) return
-    let cancelled = false // the activation moved on (or the sidebar unmounted): the probe's verdict is stale
-    api.tree(root).then(
-      (res) => {
-        if (!cancelled && !treeHasFile(res.tree, activeFile)) onFileMissing()
-      },
-      () => undefined, // a root-level failure is refresh()'s problem, not this probe's
-    )
-    return () => {
-      cancelled = true
-    }
-  }, [activeFile, root, onFileMissing])
 
   // ---- New drawing / new folder (GRO-2022): right-click menu → inline name input ----
 
@@ -1145,10 +1034,6 @@ export function Sidebar({
     () => (creating === null ? null : { kind: creating.kind, seed: creating.seed, parentDir: creating.parentDir, onSubmit: submitCreate, onCancel: cancelCreate }),
     [creating, submitCreate, cancelCreate],
   )
-
-  // The Tree is memoized (YAZ-2073 5D): these two, like every object above, keep their identity until they change.
-  const expandedSet = useMemo(() => new Set(expanded), [expanded])
-  const toggleDir = useCallback((dir: string) => dispatch({ type: 'toggle', dir }), [])
 
   // ONE gate for both disk-folder births (YAZ-948 rule; YAZ-1604 adds the dated twin).
   const canNewFolder = menu !== null
