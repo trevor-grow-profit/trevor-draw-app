@@ -89,7 +89,7 @@ test('the renderer is a secure context on app:// (image ids, clipboard, workers 
 test('opening a text board loads its fonts from the app itself and never touches the network', async ({ sandbox, launch }) => {
   const vault = sandbox.vault('V', { 'Words.excalidraw': scene([text('t1', 'Hand-drawn words', 0, 0), rect('r', 0, 60)]) })
   sandbox.writeProfile({ windows: [{ root: vault, file: `${vault}/Words.excalidraw` }] })
-  const app = await launch()
+  const app = await launch({ network: true })
   const fonts: string[] = []
   app.electron.context().on('request', (req) => void (/\.woff2(\?|$)/.test(req.url()) && fonts.push(req.url())))
   const page = await app.window()

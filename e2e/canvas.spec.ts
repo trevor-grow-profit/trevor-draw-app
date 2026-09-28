@@ -184,7 +184,7 @@ test('Components: save a selection to the Library folder, insert a copy into ano
 })
 
 test('Images › Shapes inserts a shape without any network', async ({ openBoard }) => {
-  const { app, page, board } = await openBoard({ 'Board.excalidraw': scene() })
+  const { app, page, board } = await openBoard({ 'Board.excalidraw': scene() }, 'Board.excalidraw', { network: true })
   await openPanelTab(page, 'Image Studio')
   await panel(page).getByRole('navigation', { name: 'Image Studio sections' }).getByRole('button', { name: 'Shapes' }).click()
   await panel(page).getByRole('button', { name: 'Add Hexagon', exact: true }).click()

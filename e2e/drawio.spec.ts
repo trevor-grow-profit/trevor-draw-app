@@ -12,7 +12,7 @@ import { row, treeReady } from './support/sidebar'
 import { diagram, diagramBox, scene, writeOutside, writesSettled } from './support/vault'
 
 test('a diagram opens in draw.io on app://drawio, offline and locked down, after the overlay’s handshake', async ({ openBoard }) => {
-  const { app, page } = await openBoard({ 'Flow.drawio': diagram(diagramBox('c1', 'Hello box')), 'Board.excalidraw': scene() }, 'Board.excalidraw')
+  const { app, page } = await openBoard({ 'Flow.drawio': diagram(diagramBox('c1', 'Hello box')), 'Board.excalidraw': scene() }, 'Board.excalidraw', { network: true })
   await treeReady(page)
   await page.evaluate(() => {
     const w = window as unknown as { __drawioEvents: string[] }

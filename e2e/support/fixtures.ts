@@ -80,24 +80,32 @@ export interface LaunchOptions {
   /** Extra argv after the app dir — e.g. a board path, as a Finder double-click on Windows would pass. */
   args?: string[]
   env?: Record<string, string>
+  /**
+   * Record requests from the moment the app is handed over (`outsideRequests`). Opt-in: a listener
+   * makes Playwright forward every one of the app's own requests too, which slows a busy run.
+   */
+  network?: boolean
 }
 
 /** A running app: its Electron handle plus the helpers every spec needs. */
 export class DrawApp {
   private readonly proc: ChildProcess
-  private readonly network = { attempted: [] as string[], reached: [] as string[] }
+  private readonly network: { attempted: string[]; reached: string[] } | null = null
 
   private constructor(
     readonly electron: ElectronApplication,
     private readonly sandbox: Sandbox,
+    network: boolean,
   ) {
     this.proc = electron.process()
+    if (!network) return
+    const log = (this.network = { attempted: [] as string[], reached: [] as string[] })
     const outside = (url: string) => !/^(app|data|blob):/.test(url)
-    electron.context().on('request', (req) => void (outside(req.url()) && this.network.attempted.push(req.url())))
-    electron.context().on('requestfinished', (req) => void (outside(req.url()) && this.network.reached.push(req.url())))
+    electron.context().on('request', (req) => void (outside(req.url()) && log.attempted.push(req.url())))
+    electron.context().on('requestfinished', (req) => void (outside(req.url()) && log.reached.push(req.url())))
   }
 
-  static async launch(sandbox: Sandbox, { args = [], env = {} }: LaunchOptions = {}): Promise<DrawApp> {
+  static async launch(sandbox: Sandbox, { args = [], env = {}, network = false }: LaunchOptions = {}): Promise<DrawApp> {
     mkdirSync(sandbox.profile, { recursive: true })
     const { command, args: argv } = appCommand(args)
     const electron = await _electron.launch({
@@ -110,7 +118,7 @@ export class DrawApp {
       // (i.e. `nativeTheme.themeSource`, which the Theme setting drives).
       colorScheme: null,
     })
-    const app = new DrawApp(electron, sandbox)
+    const app = new DrawApp(electron, sandbox, network)
     if (PACKAGED) await electron.evaluate((_electron, hook) => void process.mainModule?.require(hook), MAIN_HOOK)
     // Config `use` options only reach contexts Playwright creates; this one Electron made.
     electron.context().setDefaultTimeout(ACTION_TIMEOUT_MS)
@@ -150,11 +158,12 @@ export class DrawApp {
 
   /**
    * Every request any window has made to somewhere other than the app itself (`app:`, `data:`,
-   * `blob:`), recorded from the moment Playwright hands the app over — before a spec can act:
-   * `attempted` (whatever the page tried) and `reached` (what actually got an answer — a request the
-   * CSP blocks is attempted, not reached). A live log: read it after the page has acted.
+   * `blob:`), recorded from the moment Playwright handed the app over — before a spec can act — for
+   * an app launched with `{ network: true }`: `attempted` (whatever the page tried) and `reached`
+   * (what actually got an answer — a request the CSP blocks is attempted, not reached).
    */
   outsideRequests(): { attempted: string[]; reached: string[] } {
+    if (this.network === null) throw new Error('launch the app with { network: true } to record its requests')
     return this.network
   }
 
@@ -319,7 +328,7 @@ export interface Fixtures {
    * file) in front, launched. A drawing is waited for until its canvas is ready; a diagram's test
    * waits for its own content (`diagramReady`).
    */
-  openBoard: (files: VaultFiles, open?: string) => Promise<OpenBoard>
+  openBoard: (files: VaultFiles, open?: string, options?: LaunchOptions) => Promise<OpenBoard>
 }
 
 export const test = base.extend<Fixtures, { pruneSandboxes: void }>({
@@ -353,11 +362,11 @@ export const test = base.extend<Fixtures, { pruneSandboxes: void }>({
     }
   },
   openBoard: async ({ sandbox, launch }, use) => {
-    await use(async (files, open = Object.keys(files)[0]) => {
+    await use(async (files, open = Object.keys(files)[0], options) => {
       const vault = sandbox.vault('V', files)
       const board = join(vault, open)
       sandbox.writeProfile({ windows: [{ root: vault, file: board }] })
-      const app = await launch()
+      const app = await launch(options)
       const page = await app.window()
       if (board.endsWith('.excalidraw')) await canvasReady(page)
       return { app, page, vault, board }
