@@ -35,3 +35,19 @@ export const nameBox = (page: Page): Locator => page.locator('input.create-inlin
 export async function treeReady(page: Page): Promise<void> {
   await expect(page.getByRole('tree')).toBeVisible()
 }
+
+/**
+ * Rests the pointer on `label`'s row until its hover preview shows `shows`. The tree can re-render
+ * under a pointer that is already there (a fresh answer after the vault opens), which swallows the
+ * enter — a user just moves the mouse again, and so does this.
+ */
+export async function glance(page: Page, label: string, shows: (preview: Locator) => Locator, timeout = 5_000): Promise<void> {
+  const preview = page.locator('.board-preview')
+  await expect(async () => {
+    await page.mouse.move(900, 500)
+    await expect(preview).toHaveCount(0)
+    await row(page, label).hover()
+    await expect(preview).toHaveAccessibleName(`Preview of ${label}`, { timeout: 2_000 })
+    await expect(shows(preview)).toBeVisible({ timeout })
+  }).toPass({ timeout: 60_000 })
+}

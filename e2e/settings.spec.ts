@@ -108,6 +108,19 @@ test('a canvas preference (Grid) applies live to an open board and is stored glo
   expect(board.appState.gridModeEnabled).toBeUndefined() // a user preference, never written into the board
 })
 
+test('a canvas preference changed in one window applies live in another window’s board', async ({ sandbox, launch }) => {
+  const vault = sandbox.vault('V', { 'One.excalidraw': scene([rect('a')]), 'Two.excalidraw': scene([rect('b')]) })
+  sandbox.writeProfile({ windows: [{ root: vault, file: `${vault}/One.excalidraw` }, { root: vault, file: `${vault}/Two.excalidraw`, bounds: { x: 220, y: 140, width: 1100, height: 760 } }] })
+  const app = await launch()
+  const [one, two] = await app.windows(2)
+  await canvasReady(one)
+  await canvasReady(two)
+  const before = await staticCanvasShot(two)
+  await openSettings(one)
+  await segment(one, 'Grid', 'On').click()
+  await canvasChanged(two, before)
+})
+
 test('Confirm before deleting and Preview on hover are switches in Files', async ({ sandbox, launch }) => {
   const vault = sandbox.vault('V', { 'Board.excalidraw': scene() })
   sandbox.writeProfile({ windows: [{ root: vault }] })

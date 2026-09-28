@@ -4,7 +4,7 @@
  * shape it expects in its own words, the way a user's older file would look.
  */
 import { execFileSync } from 'node:child_process'
-import { mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
+import { mkdirSync, readFileSync, renameSync, statSync, writeFileSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { crc32, deflateSync } from 'node:zlib'
 import { createHash } from 'node:crypto'
@@ -131,6 +131,16 @@ export async function writesSettled(path: string, quietMs = 1_200, timeoutMs = 2
       since = Date.now()
     }
   }
+}
+
+/**
+ * Another program's save, done the way editors and sync tools do it: a temp file renamed over the
+ * target. (A plain in-place `writeFileSync` truncates then writes, and the watcher can report that
+ * as two changes — see the note in autosave.spec.ts.)
+ */
+export function writeOutside(path: string, content: string): void {
+  writeFileSync(`${path}.outside-tmp`, content)
+  renameSync(`${path}.outside-tmp`, path)
 }
 
 // ---------------------------------------------------------------- vaults

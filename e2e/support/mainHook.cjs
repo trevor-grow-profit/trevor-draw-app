@@ -15,8 +15,12 @@
  *  - every window is made fully transparent (not hidden: a hidden window is throttled and would
  *    change what the renderer does), so a run does not paint over the desktop. `E2E_SHOW=1`
  *    leaves the windows visible for debugging.
+ *
+ * A packaged bundle ignores `-r`, so under `E2E_PACKAGED=1` support/fixtures.ts requires this file
+ * into the running app right after launch instead: everything above then holds except the
+ * `yaseendraw://` registration, which the bundle has already made by then (as any launch of it does).
  */
-const { app, shell } = require('electron')
+const { app, BrowserWindow, shell } = require('electron')
 const { appendFileSync, mkdirSync, renameSync, writeFileSync } = require('node:fs')
 const { basename, join } = require('node:path')
 
@@ -42,4 +46,5 @@ shell.openExternal = async (url) => record('openExternal', url)
 
 if (process.env.E2E_SHOW !== '1') {
   app.on('browser-window-created', (_event, win) => win.setOpacity(0))
+  for (const win of BrowserWindow.getAllWindows()) win.setOpacity(0) // late install (packaged)
 }

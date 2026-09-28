@@ -7,11 +7,25 @@
 import { test as base, expect, _electron, type ElectronApplication, type Page } from '@playwright/test'
 import type { ChildProcess } from 'node:child_process'
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync } from 'node:fs'
+import { createRequire } from 'node:module'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { REPO, writeProfile, writeVault, type ProfileSpec, type VaultFiles } from './vault'
 
 const APP_DIR = join(REPO, 'desktop')
+/**
+ * `E2E_PACKAGED=1` runs the suite against the packaged bundle from `npm run desktop:build` instead of
+ * `desktop/out` — the build a user installs (its own draw.io and share-viewer paths, `isPackaged`).
+ */
+export const PACKAGED = process.env.E2E_PACKAGED === '1'
+const PACKAGED_BIN = join(REPO, 'desktop/dist-app/mac-arm64/Yaseen Draw.app/Contents/MacOS/Yaseen Draw')
+/** In node, the `electron` package's export is the path of its binary. */
+const DEV_BIN = createRequire(__filename)('electron') as string
+
+/** The app's own command line — what a second launch or a double-click would run — plus `extra`. */
+export function appCommand(extra: string[] = []): { command: string; args: string[] } {
+  return PACKAGED ? { command: PACKAGED_BIN, args: ['-r', MAIN_HOOK, ...extra] } : { command: DEV_BIN, args: ['-r', MAIN_HOOK, APP_DIR, ...extra] }
+}
 const MAIN_HOOK = join(__dirname, 'mainHook.cjs')
 /** A quit is renderers-flush (5 s cap each) + exit; past this the sequence is stuck, not slow. */
 const QUIT_TIMEOUT_MS = 30_000
@@ -72,14 +86,18 @@ export class DrawApp {
 
   static async launch(sandbox: Sandbox, { args = [], env = {} }: LaunchOptions = {}): Promise<DrawApp> {
     mkdirSync(sandbox.profile, { recursive: true })
+    const { command, args: argv } = appCommand(args)
     const electron = await _electron.launch({
-      args: ['-r', MAIN_HOOK, APP_DIR, ...args],
+      // Unpackaged, Playwright finds the dev binary itself (and preloads its own loader first).
+      ...(PACKAGED ? { executablePath: command } : {}),
+      args: argv,
       env: { ...process.env, ...env, YASEEN_DRAW_USER_DATA_DIR: sandbox.profile, E2E_SANDBOX: sandbox.dir },
       cwd: REPO,
       // Playwright emulates a light `prefers-color-scheme` by default; the app must see the OS's
       // (i.e. `nativeTheme.themeSource`, which the Theme setting drives).
       colorScheme: null,
     })
+    if (PACKAGED) await electron.evaluate((_electron, hook) => void process.mainModule?.require(hook), MAIN_HOOK)
     // Config `use` options only reach contexts Playwright creates; this one Electron made.
     electron.context().setDefaultTimeout(ACTION_TIMEOUT_MS)
     return new DrawApp(electron, sandbox)
@@ -116,6 +134,19 @@ export class DrawApp {
   /** Whether a menu item is enabled right now (🔒 YAZ-1775 D10 enablement by the active board's kind). */
   menuEnabled(id: string): Promise<boolean | null> {
     return this.electron.evaluate(({ Menu }, itemId) => Menu.getApplicationMenu()?.getMenuItemById(itemId)?.enabled ?? null, id)
+  }
+
+  /**
+   * Every request any window makes to somewhere other than the app itself (`app:`, `data:`, `blob:`):
+   * `attempted` (whatever the page tried) and `reached` (what actually got an answer — a request the
+   * CSP blocks is attempted, not reached). Start it before the page acts.
+   */
+  outsideRequests(): { attempted: string[]; reached: string[] } {
+    const log = { attempted: [] as string[], reached: [] as string[] }
+    const outside = (url: string) => !/^(app|data|blob):/.test(url)
+    this.electron.context().on('request', (req) => void (outside(req.url()) && log.attempted.push(req.url())))
+    this.electron.context().on('requestfinished', (req) => void (outside(req.url()) && log.reached.push(req.url())))
+    return log
   }
 
   async focus(page: Page): Promise<void> {

@@ -4,7 +4,8 @@
  */
 import { readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { test, expect } from './support/fixtures'
-import { contextMenu, notice, row, treeReady } from './support/sidebar'
+import { canvasReady } from './support/canvas'
+import { contextMenu, glance, notice, row, treeReady } from './support/sidebar'
 import { diagram, diagramBox, readProfile, rect, scene, stampedScene } from './support/vault'
 
 const DAY = 86_400_000
@@ -45,12 +46,24 @@ test('the tree follows the disk: a file added or removed outside the app appears
   await expect(row(page, 'Board')).toBeHidden()
 })
 
+test('hover previews render in dark mode too, for a drawing and a diagram', async ({ sandbox, launch }) => {
+  const vault = sandbox.vault('V', { 'Shapes.excalidraw': scene([rect('a'), rect('b', 260, 40)]), 'Flow.drawio': diagram(diagramBox('c', 'Night')) })
+  sandbox.writeProfile({ windows: [{ root: vault }], settings: { theme: 'dark' } })
+  const app = await launch()
+  const page = await app.window()
+  await treeReady(page)
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark')
+  await glance(page, 'Shapes', (p) => p.locator('img.board-preview__img--loaded'))
+  await glance(page, 'Flow', (p) => p.locator('img.board-preview__img--loaded'), 20_000)
+})
+
 test('⌘K search finds boards and folders; Enter opens, ⌘Enter opens in a background tab', async ({ sandbox, launch }) => {
   const vault = sandbox.vault('V', { 'Roadmap 2026.excalidraw': scene(), 'Notes/Road trip.excalidraw': scene(), 'Other.excalidraw': scene() })
   sandbox.writeProfile({ windows: [{ root: vault, file: `${vault}/Other.excalidraw` }] })
   const app = await launch()
   const page = await app.window()
   await treeReady(page)
+  await canvasReady(page) // a mounting canvas takes focus; ⌘K comes after it, as a user's would
   await app.menu('menu.file.search', page)
   const search = page.getByRole('textbox', { name: 'Search boards' })
   await expect(search).toBeFocused()
@@ -152,16 +165,9 @@ test('hover preview: a drawing and a diagram get pictures after the dwell, an em
   const page = await app.window()
   await treeReady(page)
   const preview = page.locator('.board-preview')
-  await row(page, 'Shapes').hover()
-  await expect(preview).toHaveAccessibleName('Preview of Shapes')
-  await expect(preview.locator('img.board-preview__img--loaded')).toBeVisible()
-  await page.mouse.move(900, 500)
-  await expect(preview).toBeHidden()
-  await row(page, 'Flow').hover()
-  await expect(preview.locator('img.board-preview__img--loaded')).toBeVisible({ timeout: 30_000 })
-  await page.mouse.move(900, 500)
-  await row(page, 'Empty').hover()
-  await expect(preview.locator('.board-preview__msg')).toHaveText('Empty board')
+  await glance(page, 'Shapes', (p) => p.locator('img.board-preview__img--loaded'))
+  await glance(page, 'Flow', (p) => p.locator('img.board-preview__img--loaded'), 20_000)
+  await glance(page, 'Empty', (p) => p.locator('.board-preview__msg').filter({ hasText: 'Empty board' }))
   await page.mouse.move(900, 500)
   await page.getByRole('button', { name: 'Preview on hover' }).click()
   await expect(page.getByRole('button', { name: 'Preview on hover' })).toHaveAttribute('aria-pressed', 'false')

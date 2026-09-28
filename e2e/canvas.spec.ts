@@ -169,6 +169,11 @@ test('Present: frames become slides and the player walks them with the keys', as
   const slides = panel(page).getByRole('region', { name: 'Presentation' })
   await expect(slides.getByText('2 slides')).toBeVisible()
   await expect(slides.getByTestId('presentation-slide-f1')).toContainText('Intro')
+  // Reorder: moving the first slide down makes it the second — the panel's order is the deck's.
+  await slides.getByRole('button', { name: 'Move slide 1 down' }).click()
+  await expect(slides.locator('.presentation-sidebar__slide').first()).toContainText('Plan')
+  await slides.getByRole('button', { name: 'Move slide 1 down' }).click()
+  await expect(slides.locator('.presentation-sidebar__slide').first()).toContainText('Intro')
   await slides.getByRole('button', { name: /Start presentation/ }).click()
   const player = page.getByRole('dialog', { name: 'Presentation mode' })
   await expect(player).toContainText('slide 1 of 2 — Intro')
@@ -180,7 +185,7 @@ test('Present: frames become slides and the player walks them with the keys', as
   await expect(player).toBeHidden()
 })
 
-test('Components: save a selection to the Library folder and insert a copy into another board', async ({ sandbox, launch }) => {
+test('Components: save a selection to the Library folder, insert a copy into another board, rename, delete', async ({ sandbox, launch }) => {
   const vault = sandbox.vault('V', { 'Source.excalidraw': scene([rect('a'), rect('b', 260)]), 'Target.excalidraw': scene() })
   sandbox.writeProfile({ windows: [{ root: vault, tabs: [`${vault}/Source.excalidraw`, `${vault}/Target.excalidraw`], file: `${vault}/Source.excalidraw` }] })
   const app = await launch()
@@ -201,8 +206,22 @@ test('Components: save a selection to the Library folder and insert a copy into 
   await page.getByRole('tab', { name: 'Target' }).click()
   await canvasReady(page)
   await openPanelTab(page, 'Components')
-  await panel(page).filter({ visible: true }).getByRole('button', { name: 'Insert Two boxes' }).click()
+  const components = panel(page).filter({ visible: true })
+  await components.getByRole('button', { name: 'Insert Two boxes' }).click()
   await expect.poll(() => liveElements(`${vault}/Target.excalidraw`)?.length).toBe(2)
+
+  // Rename changes the label only; Delete sends both files to the Trash. (Inserting closed the panel.)
+  await openPanelTab(page, 'Components')
+  await components.getByRole('button', { name: 'Options for Two boxes' }).click()
+  await components.getByRole('button', { name: 'Rename Two boxes' }).click()
+  await components.getByRole('textbox', { name: 'Rename Two boxes' }).fill('Pair')
+  await components.getByRole('button', { name: 'Save', exact: true }).click()
+  await expect(components.getByRole('button', { name: 'Insert Pair' })).toBeVisible()
+  await components.getByRole('button', { name: 'Options for Pair' }).click()
+  await components.getByRole('button', { name: 'Delete Pair' }).click()
+  await page.getByRole('alertdialog', { name: 'Delete Pair?' }).getByRole('button', { name: 'Delete' }).click()
+  await expect(components.getByText('No saved components yet')).toBeVisible()
+  expect(sandbox.trashed().sort()).toEqual(['two-boxes.excalidraw', 'two-boxes.png'])
 })
 
 test('Images › Shapes inserts a shape without any network', async ({ sandbox, launch }) => {
@@ -210,15 +229,14 @@ test('Images › Shapes inserts a shape without any network', async ({ sandbox, 
   const board = `${vault}/Board.excalidraw`
   sandbox.writeProfile({ windows: [{ root: vault, file: board }] })
   const app = await launch()
-  const requests: string[] = []
-  app.electron.context().on('request', (req) => requests.push(req.url()))
+  const network = app.outsideRequests()
   const page = await app.window()
   await canvasReady(page)
   await openPanelTab(page, 'Image Studio')
   await panel(page).getByRole('navigation', { name: 'Image Studio sections' }).getByRole('button', { name: 'Shapes' }).click()
   await panel(page).getByRole('button', { name: 'Add Hexagon', exact: true }).click()
   await expect.poll(() => liveElements(board)?.length ?? 0).toBeGreaterThan(0)
-  expect(requests.filter((url) => !/^(app|data|blob):/.test(url))).toEqual([])
+  expect(network.attempted).toEqual([])
 })
 
 test('the launcher rail’s Writing mode and Show frames are global canvas preferences', async ({ sandbox, launch }) => {

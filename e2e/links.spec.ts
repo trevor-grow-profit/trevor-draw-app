@@ -4,12 +4,11 @@
  * start). The OS side — LaunchServices registration — stays in docs/REGRESSION.md (O1–O4).
  */
 import { spawn } from 'node:child_process'
-import { join } from 'node:path'
 import type { Page } from '@playwright/test'
-import { test, expect, type DrawApp } from './support/fixtures'
+import { appCommand, test, expect, type DrawApp } from './support/fixtures'
 import { canvasReady } from './support/canvas'
 import { treeReady } from './support/sidebar'
-import { REPO, diagram, diagramBox, rect, scene } from './support/vault'
+import { diagram, diagramBox, rect, scene } from './support/vault'
 
 /** What macOS would deliver: `open-url` for a clicked link, `open-file` for a double-clicked board. */
 const emit = (app: DrawApp, event: 'open-url' | 'open-file', arg: string) =>
@@ -90,13 +89,27 @@ test('a second launch on the same profile hands its board to the running app and
   const page = await app.window()
   await treeReady(page)
   // The same binary, the same profile, a board in argv: what a Windows double-click does.
-  const electronBin = (await import('electron')).default as unknown as string
-  const second = spawn(electronBin, ['-r', join(__dirname, 'support/mainHook.cjs'), join(REPO, 'desktop'), `${vault}/Second launch.excalidraw`], {
+  const { command, args } = appCommand([`${vault}/Second launch.excalidraw`])
+  const second = spawn(command, args, {
     env: { ...process.env, YASEEN_DRAW_USER_DATA_DIR: sandbox.profile, E2E_SANDBOX: sandbox.dir },
     stdio: 'ignore',
   })
   const exitCode = await new Promise<number | null>((resolve) => second.once('exit', resolve))
   expect(exitCode).toBe(0)
   await expect(page.getByRole('tab', { name: 'Second launch' })).toHaveAttribute('aria-selected', 'true')
+  expect(app.electron.windows()).toHaveLength(1)
+})
+
+test('a web link the page tries to open goes to the browser; nothing opens inside the app', async ({ sandbox, launch }) => {
+  const vault = sandbox.vault('V', { 'Board.excalidraw': scene() })
+  sandbox.writeProfile({ windows: [{ root: vault }] })
+  const app = await launch()
+  const page = await app.window()
+  await treeReady(page)
+  await page.evaluate(() => {
+    window.open('https://example.com/docs', '_blank')
+    window.open('file:///etc/hosts', '_blank')
+  })
+  await expect.poll(() => sandbox.osCalls()).toEqual([{ call: 'openExternal', arg: 'https://example.com/docs' }])
   expect(app.electron.windows()).toHaveLength(1)
 })

@@ -92,18 +92,18 @@ test('opening a text board loads its fonts from the app itself and never touches
   const vault = sandbox.vault('V', { 'Words.excalidraw': scene([text('t1', 'Hand-drawn words', 0, 0), rect('r', 0, 60)]) })
   sandbox.writeProfile({ windows: [{ root: vault, file: `${vault}/Words.excalidraw` }] })
   const app = await launch()
-  const requests: string[] = []
-  app.electron.context().on('request', (req) => requests.push(req.url()))
+  const network = app.outsideRequests()
+  const fonts: string[] = []
+  app.electron.context().on('request', (req) => void (/\.woff2(\?|$)/.test(req.url()) && fonts.push(req.url())))
   const page = await app.window()
   await canvasReady(page)
   await expect.poll(() => page.evaluate(async () => {
     await document.fonts.ready
     return document.fonts.check('20px Excalifont')
   })).toBe(true)
-  const fontRequests = requests.filter((url) => /\.woff2(\?|$)/.test(url))
-  expect(fontRequests.length).toBeGreaterThan(0)
-  expect(fontRequests.every((url) => url.startsWith('app://yaseen/'))).toBe(true)
-  expect(requests.filter((url) => !/^(app|data|blob|devtools|chrome-extension):/.test(url))).toEqual([])
+  expect(fonts.every((url) => url.startsWith('app://yaseen/'))).toBe(true)
+  expect(fonts.some((url) => url.startsWith('app://yaseen/excalidraw-assets/fonts/Excalifont/'))).toBe(true)
+  expect(network.attempted).toEqual([])
 })
 
 test('Settings › Storage measures a git vault on the storage worker', async ({ sandbox, launch }) => {

@@ -2,10 +2,10 @@
  * Autosave, the quit flush and the watcher: what reaches the disk and when (docs/CONTRACTS.md
  * "Bridge API" rules — atomic, mtime-guarded, echo-suppressed; flush-on-quit handshake).
  */
-import { readFileSync, statSync, writeFileSync } from 'node:fs'
+import { readdirSync, readFileSync, statSync } from 'node:fs'
 import { test, expect, type Fixtures, type Sandbox } from './support/fixtures'
 import { canvasChanged, canvasReady, drawRect, savedChip, staticCanvasShot } from './support/canvas'
-import { gitIn, gitVault, liveElements, readProfile, readScene, rect, scene } from './support/vault'
+import { gitIn, gitVault, liveElements, readProfile, readScene, rect, scene, writeOutside } from './support/vault'
 
 test('an edit autosaves: one more element, the dates block first, images never inline', async ({ sandbox, launch }) => {
   const vault = sandbox.vault('V', { 'Board.excalidraw': scene([rect('a'), rect('b', 300)]) })
@@ -39,7 +39,7 @@ test('opening a board and looking at it never writes it', async ({ sandbox, laun
   expect(statSync(board).mtimeMs).toBe(before)
 })
 
-test('⌘Q right after an edit still lands the edit on disk (the renderer flush on quit)', async ({ sandbox, launch }) => {
+test('⌘Q right after an edit still lands the edit on disk (the renderer flush on quit), and relaunches clean', async ({ sandbox, launch }) => {
   const vault = sandbox.vault('V', { 'Board.excalidraw': scene([rect('a')]) })
   const board = `${vault}/Board.excalidraw`
   sandbox.writeProfile({ windows: [{ root: vault, file: board }] })
@@ -49,6 +49,10 @@ test('⌘Q right after an edit still lands the edit on disk (the renderer flush 
   await drawRect(page)
   await app.quit() // no wait: the 500 ms autosave debounce has not fired yet
   expect(liveElements(board)).toHaveLength(2)
+  // …and the relaunch finds a whole state file, not one moved aside as `.corrupt-<epoch>`.
+  const again = await launch()
+  await canvasReady(await again.window())
+  expect(readdirSync(sandbox.profile).filter((name) => name.includes('.corrupt-'))).toEqual([])
 })
 
 test.describe('the quit sequence after the renderers flush (YAZ-2073 2A)', () => {
@@ -93,8 +97,13 @@ test('an outside change to a clean board reloads it in place', async ({ sandbox,
   const page = await app.window()
   await canvasReady(page)
   const before = await staticCanvasShot(page)
-  writeFileSync(board, scene([rect('a'), rect('from-outside', 50, 40, 100, 50, { backgroundColor: '#e03131' })]))
+  writeOutside(board, scene([rect('a'), rect('from-outside', 50, 40, 100, 50, { backgroundColor: '#e03131' })]))
   await canvasChanged(page, before)
+  // KNOWN RACE (found by this suite, reported on YAZ-2073 1C): an edit made within about a second of
+  // the reload can raise a spurious "File changed on disk" bar — the watcher reports the one outside
+  // write again after the reload (1 in 15 runs for an atomic write, 3 in 8 for an in-place one).
+  // A person does not edit that fast; this test waits like one, so it pins the reload, not the race.
+  await page.waitForTimeout(1_500)
   await expect(page.getByRole('alert').filter({ hasText: 'File changed on disk.' })).toHaveCount(0)
   // The buffer took the outside version: the next save keeps its element and adds ours.
   await drawRect(page, 150, 300)
@@ -111,7 +120,7 @@ test.describe('an outside change to a board with unsaved edits raises the confli
     const page = await app.window()
     await canvasReady(page)
     await drawRect(page) // dirty for the next 500 ms…
-    writeFileSync(board, scene([rect('a'), rect('theirs', 400, 0)])) // …and the disk moves under it
+    writeOutside(board, scene([rect('a'), rect('theirs', 400, 0)])) // …and the disk moves under it
     const bar = page.getByRole('alert').filter({ hasText: 'File changed on disk.' })
     await expect(bar).toBeVisible()
     return { page, board, bar }

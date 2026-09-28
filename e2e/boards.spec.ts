@@ -62,6 +62,7 @@ test('New dated drawing and New dated folder seed today’s MM_DD- prefix; New f
   await nameBox(page).pressSequentially('Standup')
   await nameBox(page).press('Enter')
   await expect.poll(() => existsSync(`${vault}/${dated()}Standup.excalidraw`)).toBe(true)
+  await canvasReady(page) // the new board opens and its canvas takes focus — let it, before the next box
 
   await contextMenu(page, null, 'New dated folder')
   await expect(nameBox(page)).toHaveValue(dated())

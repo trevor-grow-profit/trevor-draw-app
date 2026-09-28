@@ -7,9 +7,9 @@ import { spawn, type ChildProcess } from 'node:child_process'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import type { Page } from '@playwright/test'
-import { test as base, expect, type DrawApp, type Sandbox } from './support/fixtures'
+import { PACKAGED, test as base, expect, type DrawApp, type Sandbox } from './support/fixtures'
 import { canvasReady, drawRect } from './support/canvas'
-import { contextMenu, treeReady } from './support/sidebar'
+import { contextMenu, row, treeReady } from './support/sidebar'
 import { REPO, diagram, diagramBox, rect, scene } from './support/vault'
 
 interface FakeCloudflare {
@@ -34,6 +34,10 @@ const test = base.extend<{ cloudflare: FakeCloudflare }>({
     child.kill()
   },
 })
+
+// The app honours YASEEN_DRAW_CLOUDFLARE_API / _SHARE_ORIGIN only unpackaged: a packaged run would
+// talk to real Cloudflare, which this suite never does (docs/REGRESSION.md K1–K7 cover it by hand).
+test.skip(PACKAGED, 'share links run only against the unpackaged app and the fake Cloudflare')
 
 const shareDialog = (page: Page) => page.getByTestId('share-dialog')
 
@@ -107,6 +111,7 @@ test('sharing a board makes a live link; View only blocks the download; Not shar
   await expect(shareDialog(page).getByTestId('share-live')).toContainText('Up to date', { timeout: 30_000 })
   const entry = await shareOf(page, vault, board)
   expect(entry?.url).toBe(`${cloudflare.origin}/b/${entry?.id}`)
+  await expect(row(page, 'Plan').locator('.tree__share')).toBeVisible() // the tree marks shared boards
   const id = entry?.id ?? ''
   expect((await fetch(`${cloudflare.origin}/b/${id}`)).status).toBe(200)
   const sharedScene = (await (await fetch(`${cloudflare.origin}/scene/${id}`)).json()) as { elements: { id: string }[] }
@@ -120,7 +125,7 @@ test('sharing a board makes a live link; View only blocks the download; Not shar
   await shareDialog(page).getByTestId('share-access').click()
   await page.getByRole('menuitemradio', { name: 'Not shared' }).click()
   await expect.poll(async () => (await fetch(`${cloudflare.origin}/b/${id}`)).status).toBe(404)
-  expect(await shareOf(page, vault, board)).toBeNull()
+  await expect.poll(() => shareOf(page, vault, board)).toBeNull()
 })
 
 test('a shared board re-uploads itself after an edit settles', async ({ sandbox, launch, cloudflare }) => {
