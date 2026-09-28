@@ -3,7 +3,8 @@
  * Electron and the heavy modules stubbed and the real link queue, file-arg filter and profile
  * override left in. Each rule here is one a startup optimization (lazy imports, deferred IPC,
  * `ready-to-show`) could break without an error: a double-clicked board opening an empty window,
- * a profile override applied too late, image paste and export losing their secure context.
+ * a profile override applied too late, image paste and export losing their secure context. The
+ * quit handler's wiring is here too; `quitSequence.test.ts` pins the order it runs (YAZ-2073 D11).
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -44,7 +45,9 @@ const h = vi.hoisted(() => {
     handle: vi.fn((_scheme: string, fn: (req: { url: string }) => unknown) => void (s.serveApp = fn)),
   }
   const net = { fetch: vi.fn((url: string) => `fetched ${url}`) }
-  return { s, app, manager, protocol, net, serveDrawio: vi.fn(() => 'drawio answer') }
+  const store = { get: () => ({ settings: { theme: 'light', libraryFolder: null }, windows: [], recents: [] }) }
+  const gitSync = { notifyWake: vi.fn() }
+  return { s, app, manager, protocol, net, store, gitSync, serveDrawio: vi.fn(() => 'drawio answer') }
 })
 
 vi.mock('electron', () => ({
@@ -58,9 +61,10 @@ vi.mock('electron', () => ({
   screen: { getPrimaryDisplay: vi.fn(), getAllDisplays: vi.fn(() => []) },
   shell: { openExternal: vi.fn() },
 }))
-vi.mock('./store', () => ({ createStore: () => ({ get: () => ({ settings: { theme: 'light', libraryFolder: null }, windows: [], recents: [] }) }) }))
+vi.mock('./store', () => ({ createStore: () => h.store }))
 vi.mock('./windows', () => ({ createWindowManager: () => h.manager }))
-vi.mock('./ipc', () => ({ registerIpc: vi.fn() }))
+vi.mock('./ipc', () => ({ registerIpc: vi.fn(() => h.gitSync) }))
+vi.mock('./quitSequence', () => ({ runQuitSequence: vi.fn(async () => undefined) }))
 vi.mock('./ipc/share', () => ({ viewerAssetsDir: () => '/viewer', excalidrawFontsDir: () => '/fonts' }))
 vi.mock('./drawio/assets', () => ({ resolveDrawioDir: () => '/drawio-pack', serveDrawio: h.serveDrawio }))
 vi.mock('./library/folder', () => ({ ensureLibraryFolder: vi.fn(async () => undefined) }))
@@ -93,10 +97,11 @@ describe('main startup order (YAZ-2073 1D)', () => {
     expect(h.s.order.indexOf('setPath:userData')).toBeLessThan(h.s.order.indexOf('singleInstanceLock'))
   })
 
-  it('registers app:// as standard + secure + fetch before ready — image paste, clipboard, export fonts and the subset worker need all three', () => {
+  it('registers app:// as standard + secure + fetch before ready — image paste, clipboard, export fonts and the subset worker need all three — with the V8 code cache on', () => {
     // secure → crypto.subtle (image file ids) and navigator.clipboard; standard → a real origin for
-    // the SVG-export subset worker and relative URLs; supportFetchAPI → the engine fetches its fonts.
-    expect(h.protocol.registerSchemesAsPrivileged).toHaveBeenCalledWith([{ scheme: 'app', privileges: expect.objectContaining({ standard: true, secure: true, supportFetchAPI: true }) }])
+    // the SVG-export subset worker and relative URLs; supportFetchAPI → the engine fetches its fonts;
+    // codeCache → a warm launch skips recompiling the bundle (YAZ-2073 D13).
+    expect(h.protocol.registerSchemesAsPrivileged).toHaveBeenCalledWith([{ scheme: 'app', privileges: expect.objectContaining({ standard: true, secure: true, supportFetchAPI: true, codeCache: true }) }])
     expect(h.s.order).not.toContain('ready')
   })
 
@@ -140,5 +145,27 @@ describe('main startup order (YAZ-2073 1D)', () => {
     expect(h.serveDrawio).toHaveBeenCalledWith('/drawio-pack', '/js/app.min.js', expect.objectContaining({ noStore: false }))
     expect(h.s.serveApp!({ url: 'app://yaseen/' })).toMatch(/^fetched file:\/\/.*\/renderer\/index\.html$/)
     expect(h.s.serveApp!({ url: 'app://yaseen/assets/index-A.js' })).toMatch(/^fetched file:\/\/.*\/renderer\/assets\/index-A\.js$/)
+  })
+
+  it('before-quit runs the quit sequence once, with the live manager, store and sync manager, exiting through app.exit(0) (YAZ-2073 D11)', async () => {
+    const { runQuitSequence } = await import('./quitSequence')
+    h.s.ready()
+    await settle() // `whenReady` ran: registerIpc handed back the sync manager
+    const quit = h.s.on.get('before-quit')!
+    const first = event()
+    quit(first)
+    expect(first.preventDefault).toHaveBeenCalled()
+    expect(runQuitSequence).toHaveBeenCalledTimes(1)
+    const deps = vi.mocked(runQuitSequence).mock.calls[0][0]
+    expect(deps.manager).toBe(h.manager)
+    expect(deps.store).toBe(h.store)
+    expect(deps.gitSync).toBe(h.gitSync)
+    deps.exit()
+    expect(h.app.exit).toHaveBeenCalledWith(0)
+    // `app.exit` fires no quit events, but a second ⌘Q while flushing must not start a second sequence.
+    const again = event()
+    quit(again)
+    expect(again.preventDefault).toHaveBeenCalled()
+    expect(runQuitSequence).toHaveBeenCalledTimes(1)
   })
 })
