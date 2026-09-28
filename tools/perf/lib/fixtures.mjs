@@ -5,8 +5,8 @@
  */
 import fs from 'node:fs'
 import path from 'node:path'
-import zlib from 'node:zlib'
-import { fileIdFor } from '../../lib/seedDemoVault.mjs'
+import { fileIdFor, fracIndex } from '../../lib/seedDemoVault.mjs'
+import { json, pngFromRaw, scene as sceneOf, writeProfile as writeKitProfile } from '../../lib/seedKit.mjs'
 
 /** mulberry32: a tiny seeded PRNG, uniform in [0, 1). */
 export function rng(seed) {
@@ -17,33 +17,6 @@ export function rng(seed) {
     t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296
   }
-}
-
-const B62 = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz'
-/** An Excalidraw fractional index for the i-th element, ordered as strings: `a?` then `b??` then `c???` (238 k keys). */
-export function indexKey(i) {
-  if (i < 62) return `a${B62[i]}`
-  if (i < 62 + 62 ** 2) return `b${B62[Math.floor((i - 62) / 62)]}${B62[(i - 62) % 62]}`
-  const j = i - 62 - 62 ** 2
-  return `c${B62[Math.floor(j / 62 ** 2)]}${B62[Math.floor(j / 62) % 62]}${B62[j % 62]}`
-}
-
-const chunk = (type, data) => {
-  const len = Buffer.alloc(4)
-  len.writeUInt32BE(data.length)
-  const body = Buffer.concat([Buffer.from(type, 'ascii'), data])
-  const crc = Buffer.alloc(4)
-  crc.writeUInt32BE(zlib.crc32(body))
-  return Buffer.concat([len, body, crc])
-}
-
-/** A truecolour PNG from raw scanlines (each led by filter byte 0). */
-function png(width, height, raw) {
-  const ihdr = Buffer.alloc(13)
-  ihdr.writeUInt32BE(width, 0)
-  ihdr.writeUInt32BE(height, 4)
-  ihdr.set([8, 2, 0, 0, 0], 8) // 8-bit truecolour, no interlace
-  return Buffer.concat([Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]), chunk('IHDR', ihdr), chunk('IDAT', zlib.deflateSync(raw)), chunk('IEND', Buffer.alloc(0))])
 }
 
 /** An RGB PNG like a screenshot: a flat background with a dozen coloured panels, so it decodes at full size but stays small on disk. */
@@ -59,14 +32,14 @@ export function screenshotPng(width, height, rand) {
   }
   fill(0, 0, width, height, colour())
   for (let k = 0; k < 12; k++) fill(Math.floor(rand() * width), Math.floor(rand() * height), Math.floor(rand() * width * 0.5), Math.floor(rand() * height * 0.5), colour())
-  return png(width, height, raw)
+  return pngFromRaw(width, height, raw)
 }
 
 /** An RGB PNG of noise: incompressible, so its size on disk is its pixel count × 3. */
 export function noisePng(width, height, rand) {
   const raw = Buffer.alloc((width * 3 + 1) * height)
   for (let i = 0; i < raw.length; i++) raw[i] = i % (width * 3 + 1) === 0 ? 0 : Math.floor(rand() * 256)
-  return png(width, height, raw)
+  return pngFromRaw(width, height, raw)
 }
 
 const COLOURS = ['#ffc9c9', '#b2f2bb', '#a5d8ff', '#ffec99', '#d0bfff', '#ffd8a8']
@@ -76,14 +49,14 @@ function element(i, rand, props) {
   return {
     id: `perf-${i.toString(36)}-${Math.floor(rand() * 2 ** 31).toString(36)}`,
     angle: 0, strokeColor: '#1e1e1e', backgroundColor: 'transparent', fillStyle: 'solid', strokeWidth: 2, strokeStyle: 'solid',
-    roughness: 1, opacity: 100, groupIds: [], frameId: null, index: indexKey(i), roundness: null,
+    roughness: 1, opacity: 100, groupIds: [], frameId: null, index: fracIndex(i), roundness: null,
     seed: 1 + Math.floor(rand() * (2 ** 31 - 1)), version: 1, versionNonce: 1 + Math.floor(rand() * (2 ** 31 - 1)),
     isDeleted: false, boundElements: null, updated: 1_790_000_000_000, link: null, locked: false,
     ...props,
   }
 }
 
-const scene = (elements) => `${JSON.stringify({ type: 'excalidraw', version: 2, source: 'yaseen-draw-perf', elements, appState: { viewBackgroundColor: '#ffffff', gridSize: 20 }, files: {} }, null, 2)}\n`
+const scene = (elements) => json(sceneOf('yaseen-draw-perf', elements))
 
 /** `n` filled, hand-drawn shapes on a grid: the drag / pan / zoom scene (1k and 4k are the scope's sizes). */
 export function shapesBoard(n, seed) {
@@ -155,10 +128,7 @@ export function writeBoardVault(vault, folders, perFolder, seed) {
  * reads the real profile (LAUNCH.md "Behaviour checks").
  */
 export function writeProfile(profile, vault, file, { theme = 'light' } = {}) {
-  fs.mkdirSync(profile, { recursive: true })
-  const window = { id: 'perf-win', root: vault, file, tabs: [file], sidebarCollapsed: false, sidebarLens: 'files', focusDirs: [], focusFavorites: [], bounds: { x: 80, y: 60, width: 1280, height: 820 } }
-  const state = { version: 1, settings: { theme, confirmDelete: true, hoverPreview: true }, sidebarWidth: 260, recents: [{ path: vault, lastOpened: 1_790_000_000_000 }], windows: [window], folders: {} }
-  fs.writeFileSync(path.join(profile, 'yaseendraw.json'), JSON.stringify(state, null, 2))
+  writeKitProfile(profile, vault, { id: 'perf-win', theme, settings: { hoverPreview: true }, sidebarWidth: 260, lastOpened: 1_790_000_000_000, file, tabs: [file], bounds: { x: 80, y: 60, width: 1280, height: 820 } })
 }
 
 const MARKER = '.yaseen-draw-perf'

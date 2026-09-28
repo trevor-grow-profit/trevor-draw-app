@@ -24,33 +24,21 @@
  */
 import fs from 'node:fs'
 import path from 'node:path'
-import { assetFileName, fileIdFor, parseArgs } from './lib/seedDemoVault.mjs'
-import { embedded, git as runGit, gradientPNG, indexedKit, noisePNG, refuseExisting, rnd, scene, solidPNG, wipe, write } from './lib/seedKit.mjs'
+import { assetFileName, fileIdFor } from './lib/seedDemoVault.mjs'
+import { cli, embedded, git as runGit, gradientPNG, indexedKit, noisePNG, refuseExisting, rnd, scene, solidPNG, wipe, write } from './lib/seedKit.mjs'
 
 // ---------------------------------------------------------------- paths
 const USAGE = 'usage: node tools/seedDemoVault.mjs --vault <dir> [--origin <bare-dir>] [--force]'
 
-let args
-try {
-  args = parseArgs(process.argv.slice(2))
-} catch (err) {
-  console.error(`${err.message}\n${USAGE}`)
-  process.exit(2)
-}
-if (args.help) {
-  console.log(USAGE)
-  process.exit(0)
-}
+const args = cli(USAGE, { '--vault': 'dir', '--origin': 'dir' }, ['--vault'])
 const VAULT = args.vault
-const ORIGIN = args.origin
+const ORIGIN = args.origin ?? `${VAULT} (origin).git`
 const ASSETS = path.join(VAULT, 'assets')
 
 // A target that already exists is somebody's data until they say otherwise.
 refuseExisting(VAULT, USAGE, { what: 'vault', force: args.force })
 refuseExisting(ORIGIN, USAGE, { what: 'origin', force: args.force })
 
-/** `git` is found on PATH like every other tool here; `GIT` overrides it for an odd install. */
-const GIT = process.env.GIT || 'git'
 const NOW = Date.now()
 
 // ---------------------------------------------------------------- tiny image encoders
@@ -102,7 +90,7 @@ function asset(name, mime, bytes, { write = true } = {}) {
 
 // ---------------------------------------------------------------- build
 const writeFile = (rel, content) => write(VAULT, rel, content)
-const git = (args, cwd = VAULT) => runGit(cwd, ['-c', 'user.name=demo', '-c', 'user.email=demo@example.com', ...args], GIT)
+const git = (args, cwd = VAULT) => runGit(cwd, ['-c', 'user.name=demo', '-c', 'user.email=demo@example.com', ...args])
 
 console.log(`== wiping previous output\n   vault:  ${VAULT}\n   origin: ${ORIGIN}`)
 wipe(VAULT, ORIGIN)

@@ -1,12 +1,13 @@
 import { execFile } from 'node:child_process'
 import { createHash } from 'node:crypto'
-import { mkdtemp, readdir, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readdir, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { promisify } from 'node:util'
 import { describe, expect, it } from 'vitest'
-import { EXT, assetFileName, fileIdFor, fracIndex, parseArgs } from './lib/seedDemoVault.mjs'
+import { EXT, assetFileName, fileIdFor, fracIndex } from './lib/seedDemoVault.mjs'
+import { parseArgs } from './lib/seedKit.mjs'
 
 /**
  * `tools/seedDemoVault.mjs` writes a ~130 MB vault, so the suite covers the pure rules only: the
@@ -41,51 +42,45 @@ describe('asset naming', () => {
 })
 
 describe('fracIndex', () => {
-  it('sorts as a string in generation order, which plain counting would not', () => {
-    const keys = Array.from({ length: 200 }, (_, i) => fracIndex(i))
+  it('sorts as a string in generation order, which plain counting would not — well past 4 000 elements', () => {
+    const keys = Array.from({ length: 12_000 }, (_, i) => fracIndex(i))
     expect([...keys].sort()).toEqual(keys)
     expect(new Set(keys).size).toBe(keys.length)
   })
 
-  it('switches to the longer key form after 62 elements', () => {
+  it('switches to a longer key form after 62, then after 62 + 62² elements', () => {
     expect(fracIndex(0)).toBe('a0')
     expect(fracIndex(61)).toBe('az')
     expect(fracIndex(62)).toBe('b00')
+    expect(fracIndex(3905)).toBe('bzz')
+    expect(fracIndex(3906)).toBe('c000')
   })
 })
 
 describe('parseArgs — the script wipes what it is given, so nothing is implied', () => {
-  it('REQUIRES --vault: there is no default that could one day be a real vault', () => {
-    expect(() => parseArgs([])).toThrow(/--vault <dir> is required/)
-    expect(() => parseArgs(['--origin', '/tmp/o.git'])).toThrow(/--vault <dir> is required/)
-    expect(() => parseArgs(['--force'])).toThrow(/--vault <dir> is required/)
-  })
+  const DEMO = { '--vault': 'dir', '--origin': 'dir' }
 
   it('takes --vault and --origin and resolves them to absolute paths', () => {
-    const args = parseArgs(['--vault', 'scratch/vault', '--origin', 'scratch/origin.git'])
+    const args = parseArgs(['--vault', 'scratch/vault', '--origin', 'scratch/origin.git'], DEMO)
     expect(args.vault).toBe(path.resolve('scratch/vault'))
     expect(args.origin).toBe(path.resolve('scratch/origin.git'))
   })
 
-  it('puts the bare origin beside the vault when only --vault is given', () => {
-    expect(parseArgs(['--vault', '/tmp/v']).origin).toBe('/tmp/v (origin).git')
-  })
-
   it('--force is off unless it is asked for', () => {
-    expect(parseArgs(['--vault', '/tmp/v']).force).toBe(false)
-    expect(parseArgs(['--vault', '/tmp/v', '--force']).force).toBe(true)
+    expect(parseArgs(['--vault', '/tmp/v'], DEMO).force).toBe(false)
+    expect(parseArgs(['--vault', '/tmp/v', '--force'], DEMO).force).toBe(true)
   })
 
   it('throws rather than wiping a directory the caller did not mean', () => {
-    expect(() => parseArgs(['--vault'])).toThrow(/needs a directory/)
-    expect(() => parseArgs(['--vault', '--origin', '/tmp/o.git'])).toThrow(/needs a directory/)
-    expect(() => parseArgs(['--vualt', '/tmp/v'])).toThrow(/unknown argument/)
-    expect(() => parseArgs(['/tmp/v'])).toThrow(/unknown argument/)
+    expect(() => parseArgs(['--vault'], DEMO)).toThrow(/needs a directory/)
+    expect(() => parseArgs(['--vault', '--origin', '/tmp/o.git'], DEMO)).toThrow(/needs a directory/)
+    expect(() => parseArgs(['--vualt', '/tmp/v'], DEMO)).toThrow(/unknown argument/)
+    expect(() => parseArgs(['/tmp/v'], DEMO)).toThrow(/unknown argument/)
   })
 
   it('reports --help without requiring anything else', () => {
-    expect(parseArgs(['--help']).help).toBe(true)
-    expect(parseArgs(['--vault', '/tmp/v']).help).toBe(false)
+    expect(parseArgs(['--help'], DEMO).help).toBe(true)
+    expect(parseArgs(['--vault', '/tmp/v'], DEMO).help).toBe(false)
   })
 })
 
@@ -95,10 +90,25 @@ describe('the script refuses to wipe anything it was not told to', () => {
   const script = fileURLToPath(new URL('./seedDemoVault.mjs', import.meta.url))
   const exec = (args) => run(process.execPath, [script, ...args]).catch((err) => err)
 
-  it('a bare run says what it needs and touches nothing', async () => {
-    const result = await exec([])
-    expect(result.code).toBe(2)
-    expect(`${result.stderr}`).toMatch(/--vault <dir> is required/)
+  it('REQUIRES --vault: there is no default that could one day be a real vault', async () => {
+    for (const args of [[], ['--origin', '/tmp/o.git'], ['--force']]) {
+      const result = await exec(args)
+      expect(result.code).toBe(2)
+      expect(`${result.stderr}`).toMatch(/--vault <dir> is required/)
+    }
+  })
+
+  it('puts the bare origin beside the vault when only --vault is given — and refuses that one too', async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), 'yaseendraw-seed-'))
+    try {
+      await mkdir(path.join(dir, 'v (origin).git'))
+      const result = await exec(['--vault', path.join(dir, 'v')])
+      expect(result.code).toBe(2)
+      expect(`${result.stderr}`).toContain(`refusing to wipe an existing origin: ${path.join(dir, 'v (origin).git')}`)
+      expect(await readdir(dir)).toEqual(['v (origin).git'])
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
   })
 
   it('refuses an EXISTING vault, and says --force is the way past it', async () => {

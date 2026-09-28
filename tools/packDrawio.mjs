@@ -14,6 +14,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { isUnpacked, layOverlay, unpackWebapp, verifyArchive } from './lib/drawioPack.mjs'
+import { excalidrawFontsDir } from './lib/excalidrawFonts.mjs'
 
 /** 🔒 YAZ-1802 D5: the pinned release. Keep in step with `DRAWIO_TAG` in `desktop/src/main/drawio/assets.ts` (`packDrawio.test.mjs` pins the pair). */
 export const DRAWIO_TAG = 'v31.5.2'
@@ -47,15 +48,6 @@ async function warBytes(warArg) {
     writeFileSync(cached, bytes)
   }
   return bytes
-}
-
-/** The Excalidraw package's `fonts/` tree, wherever npm hoisted it (the `excalidrawFontsDir()` rule). */
-function excalidrawFontsDir() {
-  for (const base of [repo, join(repo, 'client')]) {
-    const dir = join(base, 'node_modules/@excalidraw/excalidraw/dist/prod/fonts')
-    if (existsSync(dir)) return dir
-  }
-  throw new Error('@excalidraw/excalidraw fonts not found — run `npm install`')
 }
 
 async function main() {

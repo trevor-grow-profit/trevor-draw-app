@@ -14,15 +14,16 @@
  * `seedDemoVault.mjs` rule. `--profile` also writes an isolated Electron profile whose one window
  * is already on the vault (LAUNCH.md "Behaviour checks"), so no dialog is needed.
  */
-import { cloneAs, dirFlag, git, json, publish, refuseExisting, required, scene as sceneOf, wipe, write, writeProfile } from './lib/seedKit.mjs'
+import { cli, cloneAs, git, json, publish, refuseExisting, scene as sceneOf, wipe, write, writeProfile } from './lib/seedKit.mjs'
 
 const USAGE = 'usage: node tools/seedMergeDemoVault.mjs --vault <dir> [--profile <dir>] [--force]'
-const VAULT = required(dirFlag('--vault'), USAGE)
-const PROFILE = dirFlag('--profile')
+const args = cli(USAGE, { '--vault': 'dir', '--profile': 'dir' }, ['--vault'])
+const VAULT = args.vault
+const PROFILE = args.profile
 const ORIGIN = `${VAULT} (origin).git`
 const SAM = `${VAULT} (Sam)`
 const targets = [VAULT, ORIGIN, SAM, PROFILE].filter(Boolean)
-for (const dir of targets) refuseExisting(dir, USAGE)
+for (const dir of targets) refuseExisting(dir, USAGE, { force: args.force })
 wipe(...targets)
 
 // ---------------------------------------------------------------- elements, as the engine saves them

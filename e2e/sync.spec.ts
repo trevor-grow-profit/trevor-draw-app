@@ -5,8 +5,8 @@
 import { closeSync, existsSync, openSync, readFileSync, ftruncateSync } from 'node:fs'
 import { test, expect } from './support/fixtures'
 import { canvasReady, drawRect } from './support/canvas'
-import { row, treeReady } from './support/sidebar'
-import { fileIdOf, gitIn, gitVault, imageElement, liveElements, png, readScene, rect, scene } from './support/vault'
+import { openSettings, row, treeReady } from './support/sidebar'
+import { embedded, fileIdFor, gitIn, gitVault, imageElement, liveElements, readScene, rect, scene, solidPNG } from './support/vault'
 
 test('the sync chip goes Pending after an edit and Synced after “sync now”, which commits and pushes', async ({ sandbox, launch }) => {
   const vault = sandbox.vault('V', { 'Board.excalidraw': scene([rect('a')]) })
@@ -45,18 +45,16 @@ test('a file over GitHub’s limit is held back: never committed, flagged in the
 })
 
 test('Settings › Storage moves embedded pictures out of legacy boards into assets/', async ({ sandbox, launch }) => {
-  const bytes = png(30, 30, [90, 30, 200])
-  const id = fileIdOf(bytes)
-  const legacy = scene([imageElement('img', id)], { files: { [id]: { id, mimeType: 'image/png', dataURL: `data:image/png;base64,${bytes.toString('base64')}`, created: 1 } } })
+  const bytes = solidPNG(30, 30, [90, 30, 200])
+  const id = fileIdFor(bytes)
+  const legacy = scene([imageElement('img', id)], { files: { [id]: embedded(id, bytes, { created: 1 }) } })
   const vault = sandbox.vault('V', { 'Old one.excalidraw': legacy, 'Nested/Old two.excalidraw': legacy, 'Lean.excalidraw': scene([rect('a')]) })
   gitVault(vault, { sync: false })
   sandbox.writeProfile({ windows: [{ root: vault }] })
   const app = await launch()
   const page = await app.window()
   await treeReady(page)
-  await page.getByRole('button', { name: 'Settings' }).click()
-  const dialog = page.getByRole('dialog', { name: 'Settings' })
-  await dialog.getByRole('button', { name: 'Storage' }).click()
+  const dialog = await openSettings(page, 'Storage')
   await expect(dialog.getByText(/2 drawings still carry/)).toBeVisible()
   await dialog.getByTestId('storage-shrink').click()
   await expect(dialog.getByRole('status').filter({ hasText: /2 drawings .* lighter/ })).toBeVisible({ timeout: 30_000 })

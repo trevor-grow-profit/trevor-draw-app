@@ -3,11 +3,12 @@
  * `run(app, fx)` that launches the app ONCE on the fixture's profile and returns flat metrics
  * (ms / MB / s / %). The runner repeats `run`, drops the warm-up and summarizes. The profile
  * persists across runs (Chromium's caches warm like a real relaunch); the window list and any
- * board a run edits are rewritten first, so every run starts from the same state.
+ * board a run edits are rewritten first, so every run starts from the same state. `quit-flush`
+ * alone rebuilds its whole folder, profile included, for every run: its run pushes to the origin.
  */
-import { execFileSync } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
+import { git, publish, write } from '../lib/seedKit.mjs'
 import { cpuSeconds, footprintMb, helpers, launch, sleep } from './lib/app.mjs'
 import { FRAME_SAMPLER } from './lib/stats.mjs'
 import { flowDiagram, imageBoard, legacyBoard, shapesBoard, writeBoardVault, writeProfile } from './lib/fixtures.mjs'
@@ -124,18 +125,9 @@ const HOVERED = [
 function syncedVault(dir) {
   const fx = vaultWith(dir, (vault) => fs.writeFileSync(path.join(vault, 'Notes.excalidraw'), shapesBoard(10, 2)))
   const origin = path.join(dir, 'origin.git')
-  const git = (...args) => execFileSync('git', args, { cwd: fx.vault, stdio: 'pipe' }).toString().trim()
-  fs.mkdirSync(path.join(fx.vault, '.yaseendraw'))
-  fs.writeFileSync(path.join(fx.vault, '.yaseendraw', 'github.json'), '{ "enabled": true }\n')
-  git('init', '-q', '-b', 'main')
-  git('config', 'user.name', 'perf')
-  git('config', 'user.email', 'perf@example.com')
-  git('add', '-A')
-  git('commit', '-q', '-m', 'seed')
-  git('init', '-q', '--bare', '-b', 'main', origin)
-  git('remote', 'add', 'origin', origin)
-  git('push', '-q', '-u', 'origin', 'main')
-  return { ...fx, git, origin }
+  write(fx.vault, '.yaseendraw/github.json', '{ "enabled": true }\n')
+  publish(fx.vault, origin, 'seed')
+  return { ...fx, git: (...args) => git(fx.vault, args), origin }
 }
 
 export const SCENARIOS = {

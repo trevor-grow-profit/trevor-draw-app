@@ -6,7 +6,7 @@ import { createHash } from 'node:crypto'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { referencedAssetIds } from '../../desktop/src/main/drawings/orphanSweep.ts'
 import { createStore } from '../../desktop/src/main/store.ts'
-import { claimWorkDir, flowDiagram, imageBoard, indexKey, legacyBoard, noisePng, rng, screenshotPng, shapesBoard, writeBoardVault, writeProfile } from './lib/fixtures.mjs'
+import { claimWorkDir, flowDiagram, imageBoard, legacyBoard, noisePng, rng, screenshotPng, shapesBoard, writeBoardVault, writeProfile } from './lib/fixtures.mjs'
 
 let dir
 beforeEach(() => {
@@ -22,15 +22,6 @@ describe('rng', () => {
     expect(Array.from({ length: 5 }, () => b())).toEqual(seq)
     expect(rng(8)()).not.toBe(seq[0])
     expect(seq.every((x) => x >= 0 && x < 1)).toBe(true)
-  })
-})
-
-describe('indexKey', () => {
-  it('sorts as strings in element order well past 4 000 elements', () => {
-    const keys = Array.from({ length: 12_000 }, (_, i) => indexKey(i))
-    expect([...keys].sort()).toEqual(keys)
-    expect(new Set(keys).size).toBe(keys.length)
-    expect([indexKey(0), indexKey(61), indexKey(62), indexKey(3906)]).toEqual(['a0', 'az', 'b00', 'c000'])
   })
 })
 

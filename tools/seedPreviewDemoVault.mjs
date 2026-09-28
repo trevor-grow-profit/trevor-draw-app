@@ -14,19 +14,13 @@
  * (LAUNCH.md "Behaviour checks"), so no dialog is needed and the real profile is never read.
  */
 import fs from 'node:fs'
-import path from 'node:path'
-import { asset as assetIn, dirFlag, elementKit, gradientPNG, refuseExisting, required, scene, stripesPNG, wipe, write as writeIn, writeProfile } from './lib/seedKit.mjs'
+import { asset as assetIn, cli, elementKit, gradientPNG, refuseExisting, scene, stripesPNG, wipe, write as writeIn, writeProfile } from './lib/seedKit.mjs'
 
 const USAGE = 'usage: node tools/seedPreviewDemoVault.mjs --vault <dir> [--profile <dir>] [--force]'
-const VAULT = required(dirFlag('--vault'), USAGE)
-const PROFILE = dirFlag('--profile')
-for (const dir of [VAULT, PROFILE].filter(Boolean)) {
-  refuseExisting(dir, USAGE)
-  if (fs.existsSync(dir)) fs.chmodSync(dir, 0o755)
-}
-// A chmod-000 board from a previous run would stop rmSync; open it up first.
-const locked = path.join(VAULT, 'Locked — chmod 000, cannot be read.excalidraw')
-if (fs.existsSync(locked)) fs.chmodSync(locked, 0o644)
+const args = cli(USAGE, { '--vault': 'dir', '--profile': 'dir' }, ['--vault'])
+const VAULT = args.vault
+const PROFILE = args.profile
+for (const dir of [VAULT, PROFILE].filter(Boolean)) refuseExisting(dir, USAGE, { force: args.force })
 wipe(VAULT)
 fs.mkdirSync(VAULT, { recursive: true })
 
@@ -86,8 +80,7 @@ board('13 Only deleted elements — should say Empty board', [rect(0, 0, 200, 10
 write('14 Corrupt — not JSON.excalidraw', '{ this is not json')
 write('15 Zero bytes.excalidraw', '')
 write('16 No elements array — not a scene.excalidraw', `${JSON.stringify({ type: 'excalidraw', appState: {} })}\n`)
-board('Locked — chmod 000, cannot be read', [rect(0, 0, 100, 100)])
-fs.chmodSync(locked, 0o000)
+fs.chmodSync(board('Locked — chmod 000, cannot be read', [rect(0, 0, 100, 100)]), 0o000)
 
 // ---------------------------------------------------------------- change it while it is cached
 board('Edit me — draw, save, hover again', [...label('Edit me', 'save, then hover: the new version must show'), rect(0, 0, 200, 120, '#ffd8a8')])

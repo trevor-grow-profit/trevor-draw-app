@@ -3,20 +3,15 @@
  * keys, Close Tab, the tab's own menu, and a mounted tab keeping its unsaved state while hidden.
  */
 import { existsSync } from 'node:fs'
-import { test, expect, type Sandbox } from './support/fixtures'
+import { test, expect, withClipboard } from './support/fixtures'
 import { canvasReady, drawRect } from './support/canvas'
 import { menuItem, row, treeReady } from './support/sidebar'
 import { liveElements, readProfile, rect, scene } from './support/vault'
 
-const vaultOfThree = (sandbox: Sandbox) =>
-  sandbox.vault('V', { 'One.excalidraw': scene([rect('a')]), 'Two.excalidraw': scene([rect('b')]), 'Three.excalidraw': scene([rect('c')]) })
+const THREE = { 'One.excalidraw': scene([rect('a')]), 'Two.excalidraw': scene([rect('b')]), 'Three.excalidraw': scene([rect('c')]) }
 
-test('a click opens in the current tab and Back / Forward walk that tab’s history', async ({ sandbox, launch }) => {
-  const vault = vaultOfThree(sandbox)
-  sandbox.writeProfile({ windows: [{ root: vault, file: `${vault}/One.excalidraw` }] })
-  const app = await launch()
-  const page = await app.window()
-  await canvasReady(page)
+test('a click opens in the current tab and Back / Forward walk that tab’s history', async ({ openBoard }) => {
+  const { page } = await openBoard(THREE)
   const tabs = page.getByRole('tablist', { name: 'Open files' }).getByRole('tab')
   await row(page, 'Two').click()
   await expect(tabs).toHaveText(['Two'])
@@ -31,12 +26,8 @@ test('a click opens in the current tab and Back / Forward walk that tab’s hist
   await expect(tabs).toHaveText(['Two'])
 })
 
-test('⌘-click opens a background tab; the Window menu walks tabs and Close Tab picks the neighbour', async ({ sandbox, launch }) => {
-  const vault = vaultOfThree(sandbox)
-  sandbox.writeProfile({ windows: [{ root: vault, file: `${vault}/One.excalidraw` }] })
-  const app = await launch()
-  const page = await app.window()
-  await canvasReady(page)
+test('⌘-click opens a background tab; the Window menu walks tabs and Close Tab picks the neighbour', async ({ sandbox, openBoard }) => {
+  const { app, page, vault } = await openBoard(THREE)
   const tabs = page.getByRole('tablist', { name: 'Open files' }).getByRole('tab')
   const active = page.getByRole('tablist', { name: 'Open files' }).getByRole('tab', { selected: true })
   await row(page, 'Two').click({ modifiers: ['Meta'] })
@@ -61,12 +52,8 @@ test('⌘-click opens a background tab; the Window menu walks tabs and Close Tab
   await expect.poll(() => readProfile(sandbox.profile).windows[0].tabs).toEqual([`${vault}/One.excalidraw`])
 })
 
-test('Close Tab on the last tab leaves the empty editor; on no tab at all it closes the window', async ({ sandbox, launch }) => {
-  const vault = vaultOfThree(sandbox)
-  sandbox.writeProfile({ windows: [{ root: vault, file: `${vault}/One.excalidraw` }] })
-  const app = await launch()
-  const page = await app.window()
-  await canvasReady(page)
+test('Close Tab on the last tab leaves the empty editor; on no tab at all it closes the window', async ({ sandbox, openBoard }) => {
+  const { app, page } = await openBoard(THREE)
   await app.menu('menu.file.close-tab', page)
   await expect(page.getByText('Select a file from the sidebar.')).toBeVisible()
   await expect(page).toHaveTitle('V')
@@ -76,7 +63,7 @@ test('Close Tab on the last tab leaves the empty editor; on no tab at all it clo
 })
 
 test('a hidden tab stays mounted: its unsaved-then-saved edit and its engine survive switching away and back', async ({ sandbox, launch }) => {
-  const vault = vaultOfThree(sandbox)
+  const vault = sandbox.vault('V', THREE)
   sandbox.writeProfile({ windows: [{ root: vault, tabs: [`${vault}/One.excalidraw`, `${vault}/Two.excalidraw`], file: `${vault}/One.excalidraw` }] })
   const app = await launch()
   const page = await app.window()
@@ -91,22 +78,15 @@ test('a hidden tab stays mounted: its unsaved-then-saved edit and its engine sur
   await expect(page.getByRole('button', { name: 'Undo' }).filter({ visible: true })).toBeEnabled() // same engine, same history
 })
 
-test('the tab’s own menu copies its path and shows it in the sidebar', async ({ sandbox, launch }) => {
-  const vault = sandbox.vault('V', { 'Deep/Down/Board.excalidraw': scene([rect('a')]) })
-  sandbox.writeProfile({ windows: [{ root: vault, file: `${vault}/Deep/Down/Board.excalidraw` }] })
-  const app = await launch()
-  const page = await app.window()
+test('the tab’s own menu copies its path and shows it in the sidebar', async ({ openBoard }) => {
+  const { app, page, board } = await openBoard({ 'Deep/Down/Board.excalidraw': scene([rect('a')]) })
   await treeReady(page)
-  await canvasReady(page)
   await page.getByRole('tab', { name: 'Board' }).click({ button: 'right' })
   await menuItem(page, 'Show in sidebar').click()
   await expect(row(page, 'Board')).toBeVisible()
-  const saved = await app.electron.evaluate(({ clipboard }) => clipboard.readText())
-  try {
+  await withClipboard(app, async () => {
     await page.getByRole('tab', { name: 'Board' }).click({ button: 'right' })
     await menuItem(page, 'Copy path').click()
-    await expect.poll(() => app.electron.evaluate(({ clipboard }) => clipboard.readText())).toBe(`${vault}/Deep/Down/Board.excalidraw`)
-  } finally {
-    await app.electron.evaluate(({ clipboard }, text) => clipboard.writeText(text), saved)
-  }
+    await expect.poll(() => app.electron.evaluate(({ clipboard }) => clipboard.readText())).toBe(board)
+  })
 })

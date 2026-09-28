@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * USAGE: npm run perf:budget [-- --json] [-- --app <.app> --dmg <.dmg> --out <desktop/out>]
+ * USAGE: npm run perf:budget [-- [--json] [--app <.app> --dmg <.dmg> --out <desktop/out>]]
  *        npm run perf:budget:ci   (= --out-only)
  *
  * The size and integrity gate (YAZ-2073 1A, 🔒 D17). Measures the build against `budget.json` and

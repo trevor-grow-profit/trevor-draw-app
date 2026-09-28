@@ -1,4 +1,4 @@
-/** The sidebar's tree, its right-click menu and the one passive notice — by role and label. */
+/** The sidebar's tree, its right-click menu, the one passive notice and Settings — by role and label. */
 import { expect, type Locator, type Page } from '@playwright/test'
 
 /** A tree row by its shown label (board extensions hidden, diagrams wear a badge in their name). */
@@ -50,4 +50,16 @@ export async function glance(page: Page, label: string, shows: (preview: Locator
     await expect(preview).toHaveAccessibleName(`Preview of ${label}`, { timeout: 2_000 })
     await expect(shows(preview)).toBeVisible({ timeout })
   }).toPass({ timeout: 60_000 })
+}
+
+/** The Settings dialog. */
+export const settingsDialog = (page: Page): Locator => page.getByRole('dialog', { name: 'Settings' })
+
+/** Opens Settings from the sidebar's button, and `section` in it when given. */
+export async function openSettings(page: Page, section?: string): Promise<Locator> {
+  await page.getByRole('button', { name: 'Settings' }).click()
+  const dialog = settingsDialog(page)
+  await expect(dialog).toBeVisible()
+  if (section !== undefined) await dialog.getByRole('navigation', { name: 'Settings sections' }).getByRole('button', { name: section }).click()
+  return dialog
 }

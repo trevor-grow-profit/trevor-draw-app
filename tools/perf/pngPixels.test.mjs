@@ -1,15 +1,6 @@
-import zlib from 'node:zlib'
 import { describe, expect, it } from 'vitest'
+import { pngFromRaw } from '../lib/seedKit.mjs'
 import { decodePng, pixelDiff } from './lib/pngPixels.mjs'
-
-const chunk = (type, data) => {
-  const len = Buffer.alloc(4)
-  len.writeUInt32BE(data.length)
-  const body = Buffer.concat([Buffer.from(type, 'ascii'), data])
-  const crc = Buffer.alloc(4)
-  crc.writeUInt32BE(zlib.crc32(body))
-  return Buffer.concat([len, body, crc])
-}
 
 const paeth = (a, b, c) => {
   const p = a + b - c
@@ -34,11 +25,7 @@ function encodePng(width, height, channels, pixels) {
     }
     rows.push(out)
   }
-  const ihdr = Buffer.alloc(13)
-  ihdr.writeUInt32BE(width, 0)
-  ihdr.writeUInt32BE(height, 4)
-  ihdr.set([8, channels === 4 ? 6 : 2, 0, 0, 0], 8)
-  return Buffer.concat([Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]), chunk('IHDR', ihdr), chunk('IDAT', zlib.deflateSync(Buffer.concat(rows))), chunk('IEND', Buffer.alloc(0))])
+  return pngFromRaw(width, height, Buffer.concat(rows), { alpha: channels === 4 })
 }
 
 const noise = (n, seed) => Buffer.from(Array.from({ length: n }, (_, i) => (i * 131 + seed * 17 + ((i * i) % 251)) & 255))

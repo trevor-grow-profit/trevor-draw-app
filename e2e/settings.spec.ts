@@ -2,20 +2,15 @@
  * Settings (⌘,) and dark mode: every setting is global, applies live in every window and survives a
  * relaunch; secrets never reach the state file (docs/CONTRACTS.md "Settings", 🔒 YAZ-1775 D4 / D9).
  */
-import { existsSync, readFileSync, statSync } from 'node:fs'
+import { readFileSync, statSync } from 'node:fs'
 import type { Locator, Page } from '@playwright/test'
-import { test, expect } from './support/fixtures'
+import { test, expect, identity } from './support/fixtures'
 import { canvasChanged, canvasReady, staticCanvasShot } from './support/canvas'
-import { treeReady } from './support/sidebar'
-import { diagram, diagramBox, gitVault, readProfile, rect, scene } from './support/vault'
+import { diagramReady } from './support/drawio'
+import { openSettings, settingsDialog as settings, treeReady } from './support/sidebar'
+import { diagram, diagramBox, gitVault, readOr, readProfile, rect, scene } from './support/vault'
 
-const settings = (page: Page): Locator => page.getByRole('dialog', { name: 'Settings' })
 const segment = (page: Page, group: string, option: string): Locator => settings(page).getByRole('group', { name: group }).getByRole('button', { name: option, exact: true })
-
-async function openSettings(page: Page): Promise<void> {
-  await page.getByRole('button', { name: 'Settings' }).click()
-  await expect(settings(page)).toBeVisible()
-}
 
 test('Settings opens from the sidebar and from the app menu, searches its rows, and Escape closes it', async ({ sandbox, launch }) => {
   const vault = sandbox.vault('V', { 'Board.excalidraw': scene() })
@@ -52,7 +47,7 @@ test('Dark theme applies live to the app, the canvas and every window, and is re
   sandbox.writeProfile({ windows: [{ root: vault, file: `${vault}/Board.excalidraw` }, { root: vault, bounds: { x: 220, y: 140, width: 1000, height: 700 } }] })
   const app = await launch()
   const [one, two] = await app.windows(2)
-  const drawingWindow = (await one.evaluate(() => window.yaseenDraw.window.identity())).file !== null ? one : two
+  const drawingWindow = (await identity(one)).file !== null ? one : two
   const other = drawingWindow === one ? two : one
   await canvasReady(drawingWindow)
   await expect(drawingWindow.locator('html')).toHaveAttribute('data-theme', 'light')
@@ -77,7 +72,7 @@ test('a diagram follows dark mode, adapting its colours unless told to keep them
   sandbox.writeProfile({ windows: [{ root: vault, file: `${vault}/Flow.drawio` }], settings: { theme: 'dark' } })
   const app = await launch()
   const page = await app.window()
-  await expect(page.frameLocator('iframe.drawio-editor__frame').getByText('Dark box')).toBeVisible({ timeout: 30_000 })
+  await diagramReady(page, 'Dark box')
   const drawio = () => {
     const frame = page.frames().find((f) => f.url().startsWith('app://drawio'))
     if (frame === undefined) throw new Error('no draw.io frame')
@@ -92,20 +87,16 @@ test('a diagram follows dark mode, adapting its colours unless told to keep them
   await expect.poll(() => readProfile(sandbox.profile).settings.diagramDarkColors).toBe('keep')
 })
 
-test('a canvas preference (Grid) applies live to an open board and is stored globally', async ({ sandbox, launch }) => {
-  const vault = sandbox.vault('V', { 'Board.excalidraw': scene([rect('a')]) })
-  sandbox.writeProfile({ windows: [{ root: vault, file: `${vault}/Board.excalidraw` }] })
-  const app = await launch()
-  const page = await app.window()
-  await canvasReady(page)
+test('a canvas preference (Grid) applies live to an open board and is stored globally', async ({ openBoard, sandbox }) => {
+  const { page, board } = await openBoard({ 'Board.excalidraw': scene([rect('a')]) })
   const before = await staticCanvasShot(page)
   await openSettings(page)
   await segment(page, 'Grid', 'On').click()
   await expect.poll(() => (readProfile(sandbox.profile).settings.canvas as { gridModeEnabled?: boolean } | undefined)?.gridModeEnabled).toBe(true)
   await settings(page).getByRole('button', { name: 'Close settings' }).click()
   await canvasChanged(page, before) // the grid is drawn
-  const board = JSON.parse(readFileSync(`${vault}/Board.excalidraw`, 'utf8')) as { appState: Record<string, unknown> }
-  expect(board.appState.gridModeEnabled).toBeUndefined() // a user preference, never written into the board
+  const saved = JSON.parse(readFileSync(board, 'utf8')) as { appState: Record<string, unknown> }
+  expect(saved.appState.gridModeEnabled).toBeUndefined() // a user preference, never written into the board
 })
 
 test('a canvas preference changed in one window applies live in another window’s board', async ({ sandbox, launch }) => {
@@ -139,8 +130,7 @@ test('the Pixabay key is write-only: set and cleared from Settings, kept 0600 ou
   sandbox.writeProfile({ windows: [{ root: vault }] })
   const app = await launch()
   const page = await app.window()
-  await openSettings(page)
-  await settings(page).getByRole('button', { name: 'Images' }).click()
+  await openSettings(page, 'Images')
   const status = settings(page).getByTestId('pixabay-key-status')
   await expect(status).toHaveText('No key')
   await settings(page).getByRole('textbox', { name: 'Pixabay API key' }).fill('e2e-secret-key-123')
@@ -158,8 +148,7 @@ test('the Library folder defaults to the profile’s own library', async ({ sand
   sandbox.writeProfile({ windows: [{ root: vault }] })
   const app = await launch()
   const page = await app.window()
-  await openSettings(page)
-  await settings(page).getByRole('button', { name: 'Images' }).click()
+  await openSettings(page, 'Images')
   await expect(settings(page).getByTestId('library-folder-path')).toContainText(`${sandbox.profile}/library`)
   await expect(settings(page).getByTestId('library-folder-path')).toContainText('(default)')
 })
@@ -176,8 +165,7 @@ test('Sync › GitHub on a git vault writes the vault’s switch and the chip tu
   await segment(page, 'Sync this vault to GitHub', 'On').click()
   // The switch lands a few ms after the click (an fsynced write, YAZ-2073 D12), and `expect.poll`
   // gives up on a callback that THROWS instead of retrying it: a file not written yet reads as ''.
-  const stored = () => (existsSync(`${vault}/.yaseendraw/github.json`) ? readFileSync(`${vault}/.yaseendraw/github.json`, 'utf8') : '')
-  await expect.poll(stored).toContain('"enabled": true')
+  await expect.poll(() => readOr(`${vault}/.yaseendraw/github.json`)).toContain('"enabled": true')
   await settings(page).getByRole('button', { name: 'Close settings' }).click()
   await expect(page.getByRole('button', { name: 'Synced' })).toBeVisible()
 })

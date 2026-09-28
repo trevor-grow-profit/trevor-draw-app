@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import zlib from 'node:zlib'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { elementKit, embedded, gradientPNG, indexedKit, noiseRaw, png, scene, solidPNG, write } from './lib/seedKit.mjs'
+import { cli, elementKit, embedded, git, gradientPNG, indexedKit, noiseRaw, parseArgs, png, publish, scene, solidPNG, write, writeProfile, writeState } from './lib/seedKit.mjs'
 
 /**
  * `tools/lib/seedKit.mjs` is what every seed script builds its vault from, so the suite pins the
@@ -19,7 +19,7 @@ function decode(bytes) {
   for (let o = 8; o < bytes.length; ) {
     const len = bytes.readUInt32BE(o)
     const typeAndData = bytes.subarray(o + 4, o + 8 + len)
-    if (zlib.crc32) expect(bytes.readUInt32BE(o + 8 + len)).toBe(zlib.crc32(typeAndData)) // Node 22.2+
+    expect(bytes.readUInt32BE(o + 8 + len)).toBe(zlib.crc32(typeAndData))
     chunks[typeAndData.subarray(0, 4).toString('ascii')] = typeAndData.subarray(4)
     o += 12 + len
   }
@@ -90,5 +90,90 @@ describe('write', () => {
     expect(file).toBe(path.join(dir, 'a/b/c.json'))
     expect(await readFile(file, 'utf8')).toBe('{\n  "x": 1\n}\n')
     expect(await readFile(write(dir, 't.txt', 'plain'), 'utf8')).toBe('plain')
+  })
+})
+
+describe('parseArgs / cli', () => {
+  afterEach(() => vi.restoreAllMocks())
+  const SPEC = { '--dir': 'dir', '--port': 'value' }
+
+  it('resolves dir flags, keeps value flags as given, and always knows --force and --help', () => {
+    expect(parseArgs(['--dir', 'a/b', '--port', '8799', '--force'], SPEC)).toEqual({ dir: path.resolve('a/b'), port: '8799', force: true, help: false })
+    expect(parseArgs(['-h'], SPEC)).toEqual({ force: false, help: true })
+    expect(() => parseArgs(['--port'], SPEC)).toThrow(/--port needs a value/)
+    expect(() => parseArgs(['--toString', 'x'], SPEC)).toThrow(/unknown argument: --toString/)
+  })
+
+  /** `cli` on `argv`, with process.exit and the console captured. */
+  function run(argv, required) {
+    const out = { stdout: [], stderr: [], code: undefined }
+    vi.spyOn(process, 'argv', 'get').mockReturnValue(['node', 'seed.mjs', ...argv])
+    vi.spyOn(console, 'log').mockImplementation((m) => out.stdout.push(m))
+    vi.spyOn(console, 'error').mockImplementation((m) => out.stderr.push(m))
+    vi.spyOn(process, 'exit').mockImplementation((code) => {
+      out.code = code
+      throw new Error('exit')
+    })
+    try {
+      out.args = cli('usage: seed --dir <dir>', SPEC, required)
+    } catch (err) {
+      if (err.message !== 'exit') throw err
+    }
+    return out
+  }
+
+  it('prints the usage and exits 0 for --help, even without a required flag', () => {
+    expect(run(['--help'], ['--dir'])).toMatchObject({ code: 0, stdout: ['usage: seed --dir <dir>'], stderr: [] })
+  })
+
+  it('says what is missing or wrong, then the usage, and exits 2', () => {
+    expect(run([], ['--dir'])).toMatchObject({ code: 2, stderr: ['--dir <dir> is required\nusage: seed --dir <dir>'] })
+    expect(run(['--dri', '/x'], ['--dir'])).toMatchObject({ code: 2, stderr: ['unknown argument: --dri\nusage: seed --dir <dir>'] })
+  })
+
+  it('hands back the parsed flags otherwise', () => {
+    expect(run(['--dir', '/x'], ['--dir'])).toMatchObject({ code: undefined, args: { dir: '/x', force: false } })
+  })
+})
+
+describe('profile', () => {
+  let dir
+  afterEach(() => rm(dir, { recursive: true, force: true }))
+
+  it('writeProfile: one window already on the vault, every schema field, settings added after the theme', async () => {
+    dir = await mkdtemp(path.join(tmpdir(), 'seedkit-'))
+    writeProfile(dir, '/v', { id: 'p', theme: 'light', settings: { hoverPreview: true }, lastOpened: 5, file: '/v/B.excalidraw', tabs: ['/v/B.excalidraw'], sidebarCollapsed: true })
+    const state = JSON.parse(await readFile(path.join(dir, 'yaseendraw.json'), 'utf8'))
+    expect(state).toEqual({
+      version: 1,
+      settings: { theme: 'light', confirmDelete: true, hoverPreview: true },
+      sidebarWidth: 300,
+      recents: [{ path: '/v', lastOpened: 5 }],
+      windows: [{ id: 'p', root: '/v', file: '/v/B.excalidraw', tabs: ['/v/B.excalidraw'], sidebarCollapsed: true, sidebarLens: 'files', focusDirs: [], focusFavorites: [], bounds: { x: 60, y: 60, width: 1440, height: 900 } }],
+      folders: {},
+    })
+    expect(Object.keys(state.settings)).toEqual(['theme', 'confirmDelete', 'hoverPreview'])
+  })
+
+  it('writeState: a setting can override the theme in place, and there may be no window at all', async () => {
+    dir = await mkdtemp(path.join(tmpdir(), 'seedkit-'))
+    writeState(dir, { theme: 'light', settings: { theme: 'dark' } })
+    expect(JSON.parse(await readFile(path.join(dir, 'yaseendraw.json'), 'utf8'))).toMatchObject({ settings: { theme: 'dark', confirmDelete: true }, windows: [], recents: [] })
+  })
+})
+
+describe('git', () => {
+  let dir
+  afterEach(() => rm(dir, { recursive: true, force: true }))
+
+  it('publish: the vault committed as You and pushed to a new bare origin, upstream set — with none of this machine’s git config', async () => {
+    dir = await mkdtemp(path.join(tmpdir(), 'seedkit-'))
+    const vault = path.join(dir, 'vault')
+    write(vault, 'Board.excalidraw', scene('t', []))
+    publish(vault, path.join(dir, 'origin.git'), 'seed it')
+    expect(git(vault, ['log', '--format=%an %s'])).toBe('You seed it')
+    expect(git(vault, ['rev-parse', '--abbrev-ref', '@{u}'])).toBe('origin/main')
+    expect(git(path.join(dir, 'origin.git'), ['ls-tree', '--name-only', 'main'])).toBe('Board.excalidraw')
+    expect(git(vault, ['config', '--list', '--show-scope']).split('\n').every((line) => line.startsWith('local\t'))).toBe(true)
   })
 })
