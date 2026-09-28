@@ -4,6 +4,7 @@
  * packaged bundle. Pure over the paths it is handed, so the suite drives it against temp dirs.
  */
 import { execFileSync, spawnSync } from 'node:child_process'
+import { createHash } from 'node:crypto'
 import { closeSync, existsSync, openSync, readFileSync, readSync, readdirSync, statSync } from 'node:fs'
 import { join, posix } from 'node:path'
 
@@ -28,7 +29,11 @@ export function walk(root, rel = '') {
   return out
 }
 
-/** `app.asar`'s file index (path → size), read from its header: `[u32 4][u32 pickle][u32 payload][u32 jsonLen][json]`. */
+/**
+ * `app.asar`'s file index, read from its header `[u32 4][u32 pickle][u32 payload][u32 jsonLen][json]`:
+ * path → size and the byte offset of the file's contents in the archive (they follow the pickle;
+ * null for a file kept outside it in `app.asar.unpacked`).
+ */
 export function asarIndex(file) {
   const fd = openSync(file, 'r')
   try {
@@ -36,12 +41,13 @@ export function asarIndex(file) {
     readSync(fd, head, 0, 16, 0)
     const json = Buffer.alloc(head.readUInt32LE(12))
     readSync(fd, json, 0, json.length, 16)
+    const dataStart = 8 + head.readUInt32LE(4)
     const files = new Map()
     const visit = (node, prefix) => {
       for (const [name, child] of Object.entries(node.files ?? {})) {
         const p = prefix ? `${prefix}/${name}` : name
         if (child.files) visit(child, p)
-        else files.set(p, child.size ?? 0)
+        else files.set(p, { size: child.size ?? 0, offset: child.unpacked ? null : dataStart + Number(child.offset) })
       }
     }
     visit(JSON.parse(json.toString('utf8')), '')
@@ -111,8 +117,10 @@ export function measure({ out, app, dmg }) {
     m.lprojCount = existsSync(res) ? readdirSync(res).filter((n) => n.endsWith('.lproj')).length : null
     // Chromium's own UI strings, one locale.pak per language (🔒 D3 trims these, never the app .lproj above).
     m.chromiumLocaleBytes = existsSync(fwRes) ? readdirSync(fwRes).filter((n) => n.endsWith('.lproj')).reduce((n, d) => n + (bytes(join(fwRes, d, 'locale.pak')) ?? 0), 0) : null
+    m.chromiumLocaleCount = existsSync(fwRes) ? readdirSync(fwRes).filter((n) => n.endsWith('.lproj')).length : null
     const asar = join(res, 'app.asar')
     m.asarNodeModulesFiles = existsSync(asar) ? [...asarIndex(asar).keys()].filter((k) => k.startsWith('node_modules/')).length : null
+    m.duplicateBytes = existsSync(asar) ? duplicateBytes(asar, join(res, 'share-viewer')) : null
   }
   const r = join(out, 'renderer')
   if (existsSync(join(r, 'index.html'))) {
@@ -120,11 +128,36 @@ export function measure({ out, app, dmg }) {
     const g = chunkGraph(r, js)
     m.rendererEagerJsBytes = [...g.eager].reduce((n, f) => n + (bytes(join(r, f)) ?? 0), 0)
     m.rendererEagerCssBytes = css.reduce((n, f) => n + (bytes(join(r, f)) ?? 0), 0)
+    m.rendererReachableChunks = [...g.all].filter((f) => /\.m?js$/.test(f)).length
     m.rendererTotalBytes = bytes(r)
     m.rendererMapBytes = walk(r).filter((f) => f.endsWith('.map')).reduce((n, f) => n + statSync(join(r, f)).size, 0)
   }
   m.mainBundleBytes = bytes(join(out, 'main'))
   return m
+}
+
+const sha1 = (buf) => createHash('sha1').update(buf).digest('hex')
+
+/**
+ * Bytes the bundle carries twice (size-forensics #8): share-viewer files byte-identical to a file
+ * in `app.asar`, at any size — v0.1.11's second font set is 247 files of under 100 KB each. A
+ * ceiling rather than a failure: 3C brings it to 0, and any new copy after that turns the gate red.
+ */
+export function duplicateBytes(asar, dir) {
+  if (!existsSync(dir)) return 0
+  const fd = openSync(asar, 'r')
+  const inAsar = new Set()
+  try {
+    for (const { size, offset } of asarIndex(asar).values()) {
+      if (size === 0 || offset === null) continue
+      const buf = Buffer.alloc(size)
+      readSync(fd, buf, 0, size, offset)
+      inAsar.add(sha1(buf))
+    }
+  } finally {
+    closeSync(fd)
+  }
+  return walk(dir).map((f) => readFileSync(join(dir, f))).filter((b) => b.length > 0 && inAsar.has(sha1(b))).reduce((n, b) => n + b.length, 0)
 }
 
 /** The 13 families the engine fetches from `app://yaseen/excalidraw-assets/fonts`; a missing one silently falls back to the esm.sh CDN. */

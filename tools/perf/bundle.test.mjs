@@ -2,7 +2,8 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { EXCALIDRAW_FONT_FAMILIES, REQUIRED_OUT, asarIndex, checkOut, chunkGraph, importsOf, measure, overBudget } from './lib/bundle.mjs'
+import { execFileSync } from 'node:child_process'
+import { EXCALIDRAW_FONT_FAMILIES, REQUIRED_OUT, asarIndex, checkApp, checkOut, chunkGraph, duplicateBytes, importsOf, measure, overBudget } from './lib/bundle.mjs'
 
 let dir
 beforeEach(() => {
@@ -87,16 +88,69 @@ describe('measure', () => {
   })
 })
 
+/** A real-format asar holding `files` (path → contents). */
+function asar(rel, files) {
+  const tree = { files: {} }
+  let offset = 0
+  for (const [p, body] of Object.entries(files)) {
+    const parts = p.split('/')
+    let node = tree
+    for (const dirName of parts.slice(0, -1)) node = node.files[dirName] ??= { files: {} }
+    node.files[parts.at(-1)] = { size: Buffer.byteLength(body), offset: String(offset) }
+    offset += Buffer.byteLength(body)
+  }
+  const header = Buffer.from(JSON.stringify(tree))
+  const head = Buffer.alloc(16)
+  head.writeUInt32LE(4, 0)
+  head.writeUInt32LE(header.length + 8, 4)
+  head.writeUInt32LE(header.length + 4, 8)
+  head.writeUInt32LE(header.length, 12)
+  put(rel, Buffer.concat([head, header, ...Object.values(files).map((b) => Buffer.from(b))]))
+  return path.join(dir, rel)
+}
+
 describe('asarIndex', () => {
-  it('reads file paths and sizes from the archive header', () => {
-    const header = Buffer.from(JSON.stringify({ files: { out: { files: { main: { files: { 'index.js': { size: 12, offset: '0' } } } } }, 'package.json': { size: 3, offset: '12' } } }))
-    const head = Buffer.alloc(16)
-    head.writeUInt32LE(4, 0)
-    head.writeUInt32LE(header.length + 8, 4)
-    head.writeUInt32LE(header.length + 4, 8)
-    head.writeUInt32LE(header.length, 12)
-    put('app.asar', Buffer.concat([head, header]))
-    expect(asarIndex(path.join(dir, 'app.asar'))).toEqual(new Map([['out/main/index.js', 12], ['package.json', 3]]))
+  it('reads every file path, size and content offset from the archive header', () => {
+    const file = asar('app.asar', { 'out/main/index.js': 'main();', 'package.json': '{}' })
+    const idx = asarIndex(file)
+    expect([...idx.keys()]).toEqual(['out/main/index.js', 'package.json'])
+    const bytes = fs.readFileSync(file)
+    const { size, offset } = idx.get('package.json')
+    expect(bytes.subarray(offset, offset + size).toString()).toBe('{}')
+  })
+})
+
+describe('duplicateBytes', () => {
+  it('counts share-viewer files byte-identical to one in the asar, at any size', () => {
+    const file = asar('app.asar', { 'out/renderer/fonts/a.woff2': 'AAAA', 'out/renderer/b.js': 'bb' })
+    put('sv/fonts/a.woff2', 'AAAA')
+    put('sv/fonts/c.woff2', 'CCCCCC')
+    expect(duplicateBytes(file, path.join(dir, 'sv'))).toBe(4)
+  })
+})
+
+/** A packaged-looking `.app`: an Info.plist, an asar with everything `checkApp` requires, a share viewer. Unsigned. */
+function fakeApp(plist) {
+  const app = path.join(dir, 'Fake.app')
+  put('Fake.app/Contents/Info.plist', JSON.stringify(plist))
+  execFileSync('plutil', ['-convert', 'xml1', path.join(app, 'Contents/Info.plist')])
+  const files = Object.fromEntries([...REQUIRED_OUT, 'drawio/img/a.png', 'drawio/math4/b.js', 'main/storageWorker-D.js', ...EXCALIDRAW_FONT_FAMILIES.map((f) => `renderer/excalidraw-assets/fonts/${f}/a.woff2`)].map((p) => [`out/${p}`, 'x']))
+  asar('Fake.app/Contents/Resources/app.asar', files)
+  for (const p of ['viewer.js', 'fonts/a.woff2', 'drawio/config.js', 'drawio/fonts.css']) put(`Fake.app/Contents/Resources/share-viewer/${p}`)
+  return app
+}
+const docType = (ext) => ({ CFBundleTypeExtensions: [ext], CFBundleTypeRole: 'Editor', LSHandlerRank: 'Owner' })
+const PLIST = { CFBundleIdentifier: 'com.yasinarshad.yaseendraw', CFBundleURLTypes: [{ CFBundleURLSchemes: ['yaseendraw'] }], CFBundleDocumentTypes: [docType('excalidraw'), docType('drawio')] }
+
+describe('checkApp', () => {
+  it('passes a complete bundle except for the seal, which only a real build has', () => {
+    expect(checkApp(fakeApp(PLIST)).filter((f) => !f.startsWith('codesign'))).toEqual([])
+  })
+
+  it('fails when .drawio is no longer an Owner document type, or the link scheme is gone', () => {
+    const fails = checkApp(fakeApp({ ...PLIST, CFBundleURLTypes: [], CFBundleDocumentTypes: [docType('excalidraw'), { ...docType('drawio'), LSHandlerRank: 'Alternate' }] }))
+    expect(fails).toContain('Info.plist: CFBundleURLSchemes lacks yaseendraw')
+    expect(fails).toContain('Info.plist: .drawio is not an Owner/Editor document type')
   })
 })
 

@@ -17,7 +17,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "perf": "node tools/perf/run.mjs",
-    "perf:budget": "node tools/perf/budget.mjs"
+    "perf:budget": "node tools/perf/measureBudget.mjs",
+    "perf:budget:ci": "node tools/perf/measureBudget.mjs --out-only"
   },
   "devDependencies": {
     "jsdom": "^30.0.1",

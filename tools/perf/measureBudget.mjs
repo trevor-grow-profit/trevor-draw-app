@@ -1,11 +1,12 @@
 #!/usr/bin/env node
 /**
- * USAGE: npm run perf:budget [-- --out-only] [-- --json] [-- --app <.app> --dmg <.dmg> --out <desktop/out>]
+ * USAGE: npm run perf:budget [-- --json] [-- --app <.app> --dmg <.dmg> --out <desktop/out>]
+ *        npm run perf:budget:ci   (= --out-only)
  *
  * The size and integrity gate (YAZ-2073 1A, 🔒 D17). Measures the build against `budget.json` and
  * checks what no unit test sees; exits 1 on an integrity failure or a metric over its ceiling.
  *   default     — after `npm run desktop:build`: desktop/out + the packaged .app and .dmg (macOS)
- *   --out-only  — after `npm run build`: desktop/out alone (what CI runs; no packaging needed)
+ *   --out-only  — after `npm run build`: desktop/out alone (CI, `perf:budget:ci`; no packaging needed)
  * THE RATCHET: a change that shrinks a metric lowers its ceiling in budget.json in the same PR;
  * raising a ceiling needs Yasin's OK in the PR description. Read-only: never writes anywhere.
  */
