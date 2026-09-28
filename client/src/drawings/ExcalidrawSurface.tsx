@@ -256,8 +256,13 @@ export function ExcalidrawSurface({
    * disabled for the life of the mount.
    */
   const [imperativeApi, setImperativeApi] = useState<ImperativeApi | null>(null)
-  /** ⌘F's counter: every press is a fresh request to focus the Images tab's search field. */
-  const [searchFocusRequest, setSearchFocusRequest] = useState(0)
+  /**
+   * ⌘F's one-shot request to focus the Images tab's search field (🔒 YAZ-1990). A flag the tab
+   * clears, never a counter: the tab re-mounts on every reopen and must not re-read an old press.
+   * Per surface, not in the shared session, so a hidden drawing tab can never consume it.
+   */
+  const [searchFocusPending, setSearchFocusPending] = useState(false)
+  const onSearchFocused = useCallback(() => setSearchFocusPending(false), [])
   /**
    * Whether the canvas holds a selection, for the Components tab's "Save selection" (YAZ-1819).
    * The web app read it with the engine's `useUIAppState()` hook inside the panel; here it is read
@@ -391,10 +396,11 @@ export function ExcalidrawSurface({
       if (busy || appState.cursorButton === 'down' || Object.keys((appState.selectedElementIds ?? {}) as Record<string, unknown>).length > 0) return
       event.preventDefault()
       event.stopPropagation()
-      rail.openTab(tab)
       // ⌘F does not just open the tab, it puts the caret in the search field — the web app's
-      // `onRequestImageStudioSearch` (`AppSidebar.tsx:1071-1072`), as a counter the tab watches.
-      if (tab === 'image-studio') setSearchFocusRequest((request) => request + 1)
+      // `onRequestImageStudioSearch` (`AppSidebar.tsx:1071-1072`). Only when this press OPENS it:
+      // the active tab's own shortcut closes the panel, and must leave nothing pending behind.
+      if (tab === 'image-studio' && rail.getState().activeTab !== tab) setSearchFocusPending(true)
+      rail.openTab(tab)
     },
     [rail],
   )
@@ -541,12 +547,13 @@ export function ExcalidrawSurface({
           onClose={closePanel}
           onDock={onDock}
           excalidrawAPI={imperativeApi}
-          searchFocusRequest={searchFocusRequest}
+          searchFocusPending={searchFocusPending}
+          onSearchFocused={onSearchFocused}
           hasSelection={hasSelection}
           onStartPresentation={startPresentation}
         />
       ),
-    [engine, activeTab, closePanel, onDock, imperativeApi, searchFocusRequest, hasSelection, startPresentation],
+    [engine, activeTab, closePanel, onDock, imperativeApi, searchFocusPending, onSearchFocused, hasSelection, startPresentation],
   )
 
   // The frame held while the engine chunk is arriving; `.drawing-editor__canvas > div` sizes it.

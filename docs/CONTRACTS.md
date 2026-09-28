@@ -27,7 +27,7 @@ nothing to do with each other. A bare `D3` would be unresolvable, so there are n
 | `client/src/diagrams/` | the draw.io diagram document (YAZ-1802): `DrawioEditor` (the iframe host), `drawioProtocol.ts` (the postMessage dialect and the configure object) and `renderDiagram.ts` (the D9 renderer: the hover picture, Version history's pictures, Export Image…) |
 | `desktop/drawio-overlay/` | OUR files laid over the draw.io webapp by `tools/packDrawio.mjs`: the `PreConfig.js` / `PostConfig.js` config hooks (page view off, ⌘-wheel zoom, the keymap) and the preview page `yaseen-render.html` — draw.io's own files are never modified |
 | `client/src/drawings/presentation/` | the canvas panel's Present tab: the slide rules, the panel and the full-pane player |
-| `client/src/image-studio/` | the canvas panel's Images tab: the Image Studio, the shapes catalog, both insert paths |
+| `client/src/image-studio/` | the canvas panel's Images tab: the Image Studio, its session (the state that outlives the panel, YAZ-1990), the shapes catalog, both insert paths |
 | `client/src/components-library/` | the canvas panel's Components tab: the saved-component library, its capture, import, preview and insert (named so it is never confused with `client/src/components/`) |
 | `client/src/sidebar/` | the file tree, its context menu, rename/move/trash, favorites, vault switcher (one-line rows with a hover ⓘ full path and vault display names since YAZ-2056) and its right-click vault menu (items as data in `vaultMenuSections.ts`) |
 | `client/src/tabs/` | the tab strip |
@@ -462,6 +462,14 @@ viewport) and `imageStudio.css`. ⌘F opens the tab AND focuses its search field
 shows a passive line while Shapes, Favorites and Recent keep working — previews from the cache
 where main still has them, a placeholder where it does not.
 
+**The tab remembers (🔒 YAZ-1990).** Closing the canvas panel UNMOUNTS the tab, so what it was
+doing lives at module scope in `imageStudioSession.ts`: the view, both queries, the source, the
+results and every page loaded so far, the kept Favorites / Recent / Smart Shapes (so their rows
+paint at once on reopen), and a scroll offset per view. The search itself (`runSearch`, its request
+id and the cursors already asked for) lives there too, so a page that lands after a close still
+lands and an older search can never overwrite a newer one. One session per window, shared by that
+window's drawing tabs; memory only, so an app restart starts empty — nothing is written to settings.
+
 ### Saved components (🔒 YAZ-1775 D5)
 
 The canvas panel's **Components** tab is the web app's Saved Components, and the library is a
@@ -508,6 +516,9 @@ does not have two. Rename and delete are inline in the card rather than `window.
 `window.confirm`, and 🔒 `confirmDelete` (Settings › Files) decides whether the delete asks first.
 A rename shows the name the STORE answered with, never an optimistic one: a refusal leaves the old
 name on the card beside the reason.
+Like the Images tab, the tab remembers (🔒 YAZ-1990 D5): the list, the query, the rows grown to
+and the scroll live at module scope in `SavedComponents.tsx`, so closing the panel loses none of
+them; a new query starts again at one page, and the list is still re-listed on every open.
 
 **Import JSON** (YAZ-1833) is the same library through a different door: the button opens the
 native open-file dialog (`dialog:open-file`, `.excalidraw` filter), `componentImport.ts` parses
@@ -1036,7 +1047,8 @@ Renderer-owned chords (`client/src/lib/*Hotkey.ts`, all gated by `ownsWindowChor
 or an open modal keeps the key): ⌘B toggles the sidebar (YAZ-1280); ⌘X / ⌘C / ⌘V drive the
 sidebar's file clipboard when the selection owns them. Inside a focused canvas, ⌘F and ⌘C open the
 canvas panel's Images and Components tabs — and ⌘F additionally puts the caret in the Images tab's
-search field (YAZ-1818, the web app's `onRequestImageStudioSearch`, as a counter the tab watches)
+search field with its kept query selected (YAZ-1818, the web app's `onRequestImageStudioSearch`; 🔒 YAZ-1990 D4), through a
+one-shot flag the surface sets only when that press OPENS the tab and the tab clears once focused
 — bound on the drawing's own element in the capture
 phase, never `window`, and suppressed whenever the keystroke could have meant something else (an
 editable target, a live selection, a gesture in flight, a dialog, or anything selected on the

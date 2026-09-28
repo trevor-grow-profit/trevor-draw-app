@@ -20,31 +20,34 @@
  * WHAT AN INSERT COSTS ON DISK: nothing, here. The bytes go to the engine, its files map grows an
  * id the store does not hold, and `drawing:save` writes it into `assets/` before the scene names
  * it (🔒 YAZ-1775 D3).
+ *
+ * WHAT IT REMEMBERS LIVES ELSEWHERE (🔒 YAZ-1990). Closing the canvas panel unmounts this tab, so
+ * the view, the queries, the results and the scroll are `imageStudioSession.ts`'s; this component
+ * only renders them and keeps what one click has in flight.
  */
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { PIXABAY_SECRET, type MediaBytesProvider, type MediaSearchSource, type StoredMediaItem, type StudioItem } from '@shared/types'
-import { api, BridgeRequestError } from '../api'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
+import { PIXABAY_SECRET, type MediaBytesProvider, type MediaSearchSource, type StudioItem } from '@shared/types'
+import { api } from '../api'
 import { createPreviewCache } from '../lib/previewCache'
 import { loadExcalidrawElement } from '../drawings/engine'
 import { insertImage, insertShape, fileFromImport, type InsertEngine, type InsertTarget } from './insertShape'
 import { buildShapeCatalog, filterShapeCatalog, getShape, type ShapeCatalogItem, type ShapePreview, type SmartShapeApi } from './shapes'
+import { getErrorMessage, imageStudioSession, OFFLINE_NOTICE, runSearch, scrollTops, wasRequested, type StudioView } from './imageStudioSession'
 import './imageStudio.css'
 
-type StudioView = 'search' | 'shapes' | 'favorites' | 'recent'
 const STUDIO_VIEWS: readonly StudioView[] = ['search', 'shapes', 'favorites', 'recent']
 
 const VIEW_LABELS: Record<StudioView, string> = { search: 'Search', shapes: 'Shapes', favorites: 'Favorites', recent: 'Recent' }
-
-/** What the Search view says when the machine could not reach a provider (🔒 YAZ-1775 D4's offline half). */
-export const OFFLINE_NOTICE = "You're offline. Shapes, Favorites and Recent still work."
 
 export interface ImageStudioProps {
   /** The two engine values an insert needs; the panel only exists once the engine has loaded. */
   engine: InsertEngine
   /** The engine's imperative handle; `CanvasSidebar` does not render a tab without one. */
   excalidrawAPI: InsertTarget
-  /** Bumped by ⌘F: switch to Search and put the caret in the field (the web app's own pattern). */
-  searchFocusRequest?: number
+  /** Set by a ⌘F that opened the tab: switch to Search and put the caret in the field (the web app's own pattern). */
+  searchFocusPending?: boolean
+  /** Called once the field has the focus, so the request is taken exactly once (🔒 YAZ-1990). */
+  onSearchFocused?: () => void
 }
 
 /** A catalog shape as a studio item, so one grid renders all four views. */
@@ -56,10 +59,6 @@ const shapeItem = (shape: ShapeCatalogItem): StudioItem => ({
   title: shape.title,
   collectionName: 'Shapes',
 })
-
-const dedupeItems = (items: StudioItem[]) => [...new Map(items.map((item) => [item.itemKey, item])).values()]
-
-const getErrorMessage = (error: unknown, fallback: string): string => (error instanceof Error && error.message ? error.message : fallback)
 
 /**
  * The tile pictures. Keyed `provider:id` — the same key main's 24 h disk cache uses, so the two
@@ -116,43 +115,24 @@ function ShapeTile({ preview }: { preview: ShapePreview }) {
   )
 }
 
-export function ImageStudio({ engine, excalidrawAPI, searchFocusRequest = 0 }: ImageStudioProps) {
-  const [view, setView] = useState<StudioView>('search')
-  const [query, setQuery] = useState('')
-  const [source, setSource] = useState<MediaSearchSource>('all')
-  const [shapeQuery, setShapeQuery] = useState('')
-  const [searchedQuery, setSearchedQuery] = useState('')
-  const [results, setResults] = useState<StudioItem[]>([])
-  const [cursor, setCursor] = useState<string | null>(null)
-  const [warnings, setWarnings] = useState<string[]>([])
-  const [isSearching, setIsSearching] = useState(false)
-  const [offline, setOffline] = useState(false)
-  const [pageError, setPageError] = useState<string | null>(null)
+export function ImageStudio({ engine, excalidrawAPI, searchFocusPending = false, onSearchFocused }: ImageStudioProps) {
+  // The session outlives this component (🔒 YAZ-1990 D2): closing the panel unmounts it, reopening reads it back.
+  const { view, query, source, shapeQuery, searchedQuery, results, cursor, warnings, isSearching, offline, pageError, error, pixabayAvailable, favorites, recent, smart } =
+    useSyncExternalStore(imageStudioSession.subscribe, imageStudioSession.getState)
+  const { set } = imageStudioSession
   const [insertingKey, setInsertingKey] = useState<string | null>(null)
   const [busyFavoriteKey, setBusyFavoriteKey] = useState<string | null>(null)
-  const [error, setError] = useState<string | null>(null)
-  const [pixabayAvailable, setPixabayAvailable] = useState(true)
-  const [favorites, setFavorites] = useState<StoredMediaItem[]>([])
-  const [recent, setRecent] = useState<StoredMediaItem[]>([])
-  const [smart, setSmart] = useState<SmartShapeApi | null>(null)
 
-  const searchRequestId = useRef(0)
-  /** The cursors already asked for this search; a page is never requested twice. */
-  const requestedCursors = useRef(new Set<string>())
-  /** The same fact as `isSearching`, readable synchronously inside `runSearch`'s own guard. */
-  const isSearchingRef = useRef(false)
   const searchInputRef = useRef<HTMLInputElement>(null)
   const searchGridRef = useRef<HTMLDivElement>(null)
   const searchSentinelRef = useRef<HTMLDivElement>(null)
-  const loadNextPageRef = useRef<() => void>(() => {})
-
 
   // The library lists, and the ONE push that keeps them true in every window and every vault.
   useEffect(() => {
     let live = true
     const refresh = () => {
-      void api.media.favorites({ op: 'list' }).then((list) => live && setFavorites(list))
-      void api.media.recent({ op: 'list' }).then((list) => live && setRecent(list))
+      void api.media.favorites({ op: 'list' }).then((list) => live && set({ favorites: list }))
+      void api.media.recent({ op: 'list' }).then((list) => live && set({ recent: list }))
     }
     refresh()
     const off = api.media.onChanged(refresh)
@@ -167,7 +147,7 @@ export function ImageStudio({ engine, excalidrawAPI, searchFocusRequest = 0 }: I
   useEffect(() => {
     let live = true
     void api.secrets.has({ name: PIXABAY_SECRET }).then(
-      (has) => live && setPixabayAvailable(has),
+      (has) => live && set({ pixabayAvailable: has }),
       () => undefined,
     )
     return () => {
@@ -179,7 +159,7 @@ export function ImageStudio({ engine, excalidrawAPI, searchFocusRequest = 0 }: I
   useEffect(() => {
     let live = true
     void loadExcalidrawElement().then(
-      (mod) => live && setSmart(mod as unknown as SmartShapeApi),
+      (mod) => live && set({ smart: mod as unknown as SmartShapeApi }),
       () => undefined,
     )
     return () => {
@@ -189,7 +169,7 @@ export function ImageStudio({ engine, excalidrawAPI, searchFocusRequest = 0 }: I
 
   // A source that is no longer offered cannot stay selected.
   useEffect(() => {
-    if (!pixabayAvailable && source === 'pixabay') setSource('all')
+    if (!pixabayAvailable && source === 'pixabay') set({ source: 'all' })
   }, [pixabayAvailable, source])
 
   const catalog = useMemo(() => buildShapeCatalog(smart), [smart])
@@ -199,86 +179,31 @@ export function ImageStudio({ engine, excalidrawAPI, searchFocusRequest = 0 }: I
   const displayedItems: StudioItem[] = view === 'shapes' ? shapes : view === 'favorites' ? favorites : view === 'recent' ? recent : results
 
   useEffect(() => {
-    if (searchFocusRequest > 0) setView('search')
-  }, [searchFocusRequest])
+    if (searchFocusPending) set({ view: 'search' })
+  }, [searchFocusPending])
 
   useEffect(() => {
-    if (searchFocusRequest > 0 && view === 'search') searchInputRef.current?.focus()
-  }, [searchFocusRequest, view])
+    // The kept query arrives selected (🔒 YAZ-1990 D4): typing replaces it, an arrow key keeps it.
+    if (!searchFocusPending || view !== 'search') return
+    searchInputRef.current?.focus()
+    searchInputRef.current?.select()
+    onSearchFocused?.()
+  }, [searchFocusPending, view, onSearchFocused])
 
-  /**
-   * One page. `append` is the infinite scroll's next page and keeps what is on screen; a fresh
-   * search clears everything, including the cursors already asked for — which is what stops the
-   * observer from re-firing the page it just loaded.
-   */
-  const runSearch = useCallback(
-    async ({
-      append = false,
-      retry = false,
-      nextQuery,
-      nextSource,
-    }: { append?: boolean; retry?: boolean; nextQuery?: string; nextSource?: MediaSearchSource } = {}) => {
-      const askedQuery = nextQuery ?? (append ? searchedQuery : query.trim())
-      const askedSource = nextSource ?? source
-      if (askedQuery.length < 2) {
-        setError('Type at least two characters.')
-        return
-      }
-      const requestedCursor = append ? cursor : null
-      if (append && (requestedCursor === null || isSearchingRef.current || (!retry && requestedCursors.current.has(requestedCursor)))) return
-      const requestId = append ? searchRequestId.current : ++searchRequestId.current
-      isSearchingRef.current = true
-      setIsSearching(true)
-      if (requestedCursor !== null) {
-        requestedCursors.current.add(requestedCursor)
-        setPageError(null)
-      } else {
-        requestedCursors.current.clear()
-        setError(null)
-        setPageError(null)
-        setOffline(false)
-        setResults([])
-        setCursor(null)
-        setWarnings([])
-        setSearchedQuery(askedQuery)
-      }
-      try {
-        const response = await api.media.search({ q: askedQuery, source: askedSource, cursor: requestedCursor })
-        if (requestId !== searchRequestId.current) return
-        setResults((current) => dedupeItems(append ? [...current, ...response.items] : response.items))
-        setCursor(response.nextCursor)
-        setWarnings(response.warnings)
-        setPixabayAvailable(response.pixabayAvailable)
-        setOffline(false)
-      } catch (cause) {
-        if (requestId !== searchRequestId.current) return
-        const isOffline = cause instanceof BridgeRequestError && cause.code === 'OFFLINE'
-        const message = getErrorMessage(cause, 'Image search failed')
-        if (isOffline) setOffline(true)
-        if (append) setPageError(isOffline ? OFFLINE_NOTICE : message)
-        else if (!isOffline) setError(message)
-      } finally {
-        if (requestId === searchRequestId.current) {
-          isSearchingRef.current = false
-          setIsSearching(false)
-        }
-      }
-    },
-    [cursor, query, searchedQuery, source],
-  )
-
-  useEffect(() => {
-    loadNextPageRef.current = () => void runSearch({ append: true })
-  }, [runSearch])
+  // Back where this view was left (🔒 YAZ-1990 D3). Tiles are a fixed 112 px and the rows come from
+  // the session, so they exist on the first paint and the offset cannot overshoot.
+  useLayoutEffect(() => {
+    if (searchGridRef.current) searchGridRef.current.scrollTop = scrollTops[view]
+  }, [view])
 
   // The infinite scroll: one observer on a sentinel at the end of the grid, re-armed whenever the
   // cursor moves. It is never armed for a cursor already asked for, so a page cannot load twice.
   useEffect(() => {
     const sentinel = searchSentinelRef.current
-    if (view !== 'search' || !cursor || pageError || isSearching || requestedCursors.current.has(cursor) || !sentinel || typeof IntersectionObserver === 'undefined') return
+    if (view !== 'search' || !cursor || pageError || isSearching || wasRequested(cursor) || !sentinel || typeof IntersectionObserver === 'undefined') return
     const observer = new IntersectionObserver(
       ([entry]) => {
-        if (entry.isIntersecting) loadNextPageRef.current()
+        if (entry.isIntersecting) void runSearch({ append: true })
       },
       { root: searchGridRef.current, rootMargin: '160px 0px' },
     )
@@ -291,7 +216,7 @@ export function ImageStudio({ engine, excalidrawAPI, searchFocusRequest = 0 }: I
   const addItem = async (item: StudioItem) => {
     if (insertingKey !== null) return
     setInsertingKey(item.itemKey)
-    setError(null)
+    set({ error: null })
     try {
       let recorded = item
       if (item.provider === 'shape') {
@@ -305,9 +230,9 @@ export function ImageStudio({ engine, excalidrawAPI, searchFocusRequest = 0 }: I
         // row — layered over the caller's, which knows the pretty collection name a search gave it.
         recorded = { ...item, ...imported.item }
       }
-      setRecent(await api.media.recent({ op: 'record', item: recorded }))
+      set({ recent: await api.media.recent({ op: 'record', item: recorded }) })
     } catch (cause) {
-      setError(getErrorMessage(cause, 'Could not add item'))
+      set({ error: getErrorMessage(cause, 'Could not add item') })
     } finally {
       setInsertingKey(null)
     }
@@ -316,11 +241,11 @@ export function ImageStudio({ engine, excalidrawAPI, searchFocusRequest = 0 }: I
   const toggleFavorite = async (item: StudioItem) => {
     if (busyFavoriteKey !== null) return
     setBusyFavoriteKey(item.itemKey)
-    setError(null)
+    set({ error: null })
     try {
-      setFavorites(favoriteKeys.has(item.itemKey) ? await api.media.favorites({ op: 'remove', itemKey: item.itemKey }) : await api.media.favorites({ op: 'add', item }))
+      set({ favorites: favoriteKeys.has(item.itemKey) ? await api.media.favorites({ op: 'remove', itemKey: item.itemKey }) : await api.media.favorites({ op: 'add', item }) })
     } catch (cause) {
-      setError(getErrorMessage(cause, 'Could not change favorites'))
+      set({ error: getErrorMessage(cause, 'Could not change favorites') })
     } finally {
       setBusyFavoriteKey(null)
     }
@@ -336,7 +261,7 @@ export function ImageStudio({ engine, excalidrawAPI, searchFocusRequest = 0 }: I
       </header>
       <nav className="image-studio__nav" aria-label="Image Studio sections">
         {STUDIO_VIEWS.map((tab) => (
-          <button type="button" key={tab} className={view === tab ? 'is-active' : undefined} aria-pressed={view === tab} onClick={() => setView(tab)}>
+          <button type="button" key={tab} className={view === tab ? 'is-active' : undefined} aria-pressed={view === tab} onClick={() => set({ view: tab })}>
             {VIEW_LABELS[tab]}
           </button>
         ))}
@@ -355,7 +280,7 @@ export function ImageStudio({ engine, excalidrawAPI, searchFocusRequest = 0 }: I
             value={source}
             onChange={(event) => {
               const nextSource = event.target.value as MediaSearchSource
-              setSource(nextSource)
+              set({ source: nextSource })
               if (searchedQuery) void runSearch({ nextQuery: searchedQuery, nextSource })
             }}
           >
@@ -370,7 +295,7 @@ export function ImageStudio({ engine, excalidrawAPI, searchFocusRequest = 0 }: I
             aria-label="Search graphics, icons, and logos"
             placeholder="Search graphics, icons, and logos"
             value={query}
-            onChange={(event) => setQuery(event.target.value)}
+            onChange={(event) => set({ query: event.target.value })}
           />
           <button type="submit" disabled={isSearching}>
             {isSearching ? '…' : 'Search'}
@@ -379,7 +304,7 @@ export function ImageStudio({ engine, excalidrawAPI, searchFocusRequest = 0 }: I
       )}
       {view === 'shapes' && (
         <div className="image-studio__search">
-          <input type="search" aria-label="Search shapes" placeholder="Search shapes" value={shapeQuery} onChange={(event) => setShapeQuery(event.target.value)} />
+          <input type="search" aria-label="Search shapes" placeholder="Search shapes" value={shapeQuery} onChange={(event) => set({ shapeQuery: event.target.value })} />
         </div>
       )}
 
@@ -391,7 +316,13 @@ export function ImageStudio({ engine, excalidrawAPI, searchFocusRequest = 0 }: I
       {view === 'search' && warnings.length > 0 && <div className="image-studio__warning">{warnings.join(' ')}</div>}
       {error && <div className="image-studio__error">{error}</div>}
 
-      <div className="image-studio__grid" ref={searchGridRef}>
+      <div
+        className="image-studio__grid"
+        ref={searchGridRef}
+        onScroll={(event) => {
+          scrollTops[view] = event.currentTarget.scrollTop
+        }}
+      >
         {displayedItems.map((item) => {
           const catalogShape = item.provider === 'shape' ? getShape(catalog, item.providerId) : undefined
           const favorited = favoriteKeys.has(item.itemKey)

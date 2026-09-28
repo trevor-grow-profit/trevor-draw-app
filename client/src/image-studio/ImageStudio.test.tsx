@@ -20,7 +20,8 @@ vi.mock('../drawings/engine', () => ({ loadExcalidrawElement: vi.fn() }))
 
 import { api, BridgeRequestError } from '../api'
 import { loadExcalidrawElement } from '../drawings/engine'
-import { clearPreviewMemo, ImageStudio, OFFLINE_NOTICE } from './ImageStudio'
+import { clearPreviewMemo, ImageStudio } from './ImageStudio'
+import { OFFLINE_NOTICE, resetImageStudioSession } from './imageStudioSession'
 import type { InsertEngine, InsertTarget } from './insertShape'
 import type { SmartShapeApi } from './shapes'
 
@@ -70,6 +71,7 @@ let container: HTMLElement | null = null
 
 beforeEach(() => {
   clearPreviewMemo()
+  resetImageStudioSession()
   media.favorites.mockReset().mockResolvedValue([])
   media.recent.mockReset().mockResolvedValue([])
   media.onChanged.mockReset().mockReturnValue(() => {})
@@ -403,15 +405,107 @@ describe('favorites', () => {
 })
 
 describe('⌘F', () => {
-  it('switches to Search and focuses the field on every fresh request', async () => {
+  const field = (host: HTMLElement) => byLabel(host, 'Search graphics, icons, and logos') as HTMLInputElement
+
+  it('switches to Search, focuses the field, and takes the request exactly once', async () => {
+    const onSearchFocused = vi.fn()
     const { container: host } = await mount()
     await click(byText(host, 'Shapes'))
     expect(byText(host, 'Shapes')?.getAttribute('aria-pressed')).toBe('true')
 
     await act(async () => {
-      root!.render(<ImageStudio engine={engine} excalidrawAPI={fakeCanvas().api} searchFocusRequest={1} />)
+      root!.render(<ImageStudio engine={engine} excalidrawAPI={fakeCanvas().api} searchFocusPending onSearchFocused={onSearchFocused} />)
     })
     expect(byText(host, 'Search')?.getAttribute('aria-pressed')).toBe('true')
-    expect(document.activeElement).toBe(byLabel(host, 'Search graphics, icons, and logos'))
+    expect(document.activeElement).toBe(field(host))
+    expect(onSearchFocused).toHaveBeenCalledTimes(1)
+  })
+
+  it('arrives with the kept query selected, so typing replaces it (🔒 YAZ-1990 D4)', async () => {
+    await search((await mount()).container, 'mountain')
+    act(() => root!.unmount())
+    container!.remove()
+    const { container: host } = await mount({ searchFocusPending: true, onSearchFocused: () => {} })
+    expect(field(host).value).toBe('mountain')
+    expect([field(host).selectionStart, field(host).selectionEnd]).toEqual([0, 'mountain'.length])
+  })
+
+  it('leaves the view and the focus alone when the panel opens any other way', async () => {
+    const { container: host } = await mount()
+    await click(byText(host, 'Favorites'))
+    act(() => root!.unmount())
+    container!.remove()
+    const reopened = (await mount({ searchFocusPending: false })).container
+    expect(byText(reopened, 'Favorites')?.getAttribute('aria-pressed')).toBe('true')
+    expect(document.activeElement).toBe(document.body)
+  })
+})
+
+describe('closing and reopening the panel (🔒 YAZ-1990)', () => {
+  /** What the engine does when the panel closes: the tab is unmounted, then mounted fresh on reopen. */
+  async function reopen() {
+    act(() => root!.unmount())
+    container!.remove()
+    return (await mount()).container
+  }
+  const grid = (host: HTMLElement) => host.querySelector<HTMLElement>('.image-studio__grid')!
+  const titles = (host: HTMLElement) => [...host.querySelectorAll('.image-studio__meta strong')].map((node) => node.textContent)
+
+  it('comes back with the query, the results and the next page it had', async () => {
+    media.search.mockResolvedValue({ items: [item()], nextCursor: 'PAGE2', pixabayAvailable: false, warnings: [] })
+    await search((await mount()).container, 'mountain')
+    const host = await reopen()
+    expect((byLabel(host, 'Search graphics, icons, and logos') as HTMLInputElement).value).toBe('mountain')
+    expect(titles(host)).toEqual(['money bag'])
+    expect(host.querySelector('.image-studio__search-sentinel')).not.toBeNull()
+    expect(media.search).toHaveBeenCalledTimes(1)
+  })
+
+  it('comes back on the view it was left on', async () => {
+    let host = (await mount()).container
+    await click(byText(host, 'Favorites'))
+    host = await reopen()
+    expect(byText(host, 'Favorites')?.getAttribute('aria-pressed')).toBe('true')
+  })
+
+  it('puts each view back at its own scroll offset (🔒 D3)', async () => {
+    media.search.mockResolvedValue({ items: [item()], nextCursor: null, pixabayAvailable: false, warnings: [] })
+    let host = (await mount()).container
+    await search(host)
+    await act(async () => {
+      grid(host).scrollTop = 480
+      grid(host).dispatchEvent(new Event('scroll'))
+    })
+    await click(byText(host, 'Recent'))
+    expect(grid(host).scrollTop).toBe(0)
+    await act(async () => {
+      grid(host).scrollTop = 120
+      grid(host).dispatchEvent(new Event('scroll'))
+    })
+
+    host = await reopen()
+    expect(grid(host).scrollTop).toBe(120)
+    await click(byText(host, 'Search'))
+    expect(grid(host).scrollTop).toBe(480)
+  })
+
+  it('shows a page that landed while the panel was closed', async () => {
+    let release: (value: Awaited<ReturnType<typeof media.search>>) => void = () => {}
+    media.search.mockReturnValue(new Promise((resolve) => (release = resolve)))
+    const host = (await mount()).container
+    await search(host, 'mountain')
+    act(() => root!.unmount())
+    await act(async () => release({ items: [item()], nextCursor: null, pixabayAvailable: false, warnings: [] }))
+    expect(titles(await reopen())).toEqual(['money bag'])
+  })
+
+  it('paints the kept favorites at once, then re-lists them', async () => {
+    media.favorites.mockResolvedValue([stored()])
+    let host = (await mount()).container
+    await click(byText(host, 'Favorites'))
+    media.favorites.mockReturnValue(new Promise(() => {}))
+    host = await reopen()
+    expect(titles(host)).toEqual(['money bag'])
+    expect(media.favorites).toHaveBeenLastCalledWith({ op: 'list' })
   })
 })

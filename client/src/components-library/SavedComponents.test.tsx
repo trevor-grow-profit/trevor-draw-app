@@ -23,7 +23,7 @@ vi.mock('../lib/storage', () => ({ storage: { getSettings: vi.fn(), subscribe: v
 import { api } from '../api'
 import { loadExcalidrawElement } from '../drawings/engine'
 import { storage } from '../lib/storage'
-import { clearComponentPreviewMemo, EMPTY_LIBRARY, PAGE_SIZE, SavedComponents } from './SavedComponents'
+import { clearComponentPreviewMemo, EMPTY_LIBRARY, PAGE_SIZE, resetComponentsSession, SavedComponents } from './SavedComponents'
 import type { ComponentElementApi, ComponentEngine, ComponentTarget } from './componentData'
 import type { PreviewEngine } from '../lib/scenePreview'
 
@@ -67,6 +67,7 @@ let container: HTMLElement | null = null
 
 beforeEach(() => {
   clearComponentPreviewMemo()
+  resetComponentsSession()
   components.list.mockReset().mockResolvedValue([])
   components.save.mockReset().mockResolvedValue(item())
   components.read.mockReset().mockResolvedValue({ fragmentJson: JSON.stringify({ elements: [rect('a')], files: {} }) })
@@ -451,5 +452,46 @@ describe('SavedComponents — insert, rename, delete', () => {
     await click(byPrefix(el, 'Delete'))
     expect(el.querySelector('[role="alertdialog"]')).toBe(null)
     expect(components.delete).toHaveBeenCalledExactlyOnceWith({ slug: 'a-card' })
+  })
+})
+
+describe('SavedComponents — closing and reopening the panel (🔒 YAZ-1990 D5)', () => {
+  const many = Array.from({ length: PAGE_SIZE + 5 }, (_, n) => item({ slug: `c-${n + 1}`, name: `Card ${n + 1}` }))
+  async function reopen() {
+    act(() => root!.unmount())
+    container!.remove()
+    return (await mount()).el
+  }
+  const content = (el: HTMLElement) => el.querySelector<HTMLElement>('.saved-components__content')!
+
+  it('comes back with the query, the rows it had grown to, and the scroll', async () => {
+    const observer = captureObserver()
+    try {
+      components.list.mockResolvedValue(many)
+      let { el } = await mount()
+      await observer.scrollToEnd()
+      await act(async () => {
+        content(el).scrollTop = 300
+        content(el).dispatchEvent(new Event('scroll'))
+      })
+      el = await reopen()
+      expect(el.querySelectorAll('.saved-components__card')).toHaveLength(many.length)
+      expect(content(el).scrollTop).toBe(300)
+
+      await type(el.querySelector<HTMLInputElement>('input[type="search"]')!, 'card 1')
+      el = await reopen()
+      expect(el.querySelector<HTMLInputElement>('input[type="search"]')!.value).toBe('card 1')
+    } finally {
+      observer.restore()
+    }
+  })
+
+  it('paints the kept list at once, then re-lists it', async () => {
+    components.list.mockResolvedValue([item()])
+    await mount()
+    components.list.mockReturnValue(new Promise(() => {}))
+    const el = await reopen()
+    expect(el.querySelectorAll('.saved-components__card')).toHaveLength(1)
+    expect(components.list).toHaveBeenCalledTimes(2)
   })
 })
