@@ -3,7 +3,7 @@ import { mkdir, mkdtemp, open, readdir, readFile, rm, stat, utimes, writeFile } 
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { MAX_DRAWING_BYTES } from '@shared/types'
-import { BOARD_META_KEY, ORPHAN_MAX_AGE_MS } from '@shared/drawingAssets'
+import { BOARD_META_KEY, ORPHAN_MAX_AGE_MS, referencedFileIds, unpersistedFiles } from '@shared/drawingAssets'
 import { sweepOrphanAssets } from '../drawings/orphanSweep'
 import { loadDrawing, saveDrawing } from './drawing'
 import { blockOf, failure, withoutBlock } from './testFixture'
@@ -199,6 +199,27 @@ describe('🔒 YAZ-1775 D3 — the image store on load', () => {
     const res = await loadDrawing({ root, path: 'Legacy.excalidraw' })
     expect(res.files.emb).toEqual({ mimeType: 'image/png', dataURL: dataUrl() })
     expect(res.stored).toEqual([])
+  })
+
+  it('sends a LEGACY scene`s bytes once: `json` comes back with an empty files map, every other key as on disk (🔒 YAZ-2073 D7)', async () => {
+    const onDisk = { [BOARD_META_KEY]: { createdAt: 1, updatedAt: 2 }, type: 'excalidraw', version: 2, elements: [imageEl('emb')], appState: { viewBackgroundColor: '#123456' }, files: { emb: { mimeType: 'image/png', dataURL: dataUrl() } } }
+    const file = await seed('Legacy.excalidraw', JSON.stringify(onDisk))
+    const before = await readFile(file)
+    const res = await loadDrawing({ root, path: 'Legacy.excalidraw' })
+    expect(JSON.parse(res.json)).toEqual({ ...onDisk, files: {} })
+    expect(res.json).not.toContain(PNG_B64)
+    expect(res.files.emb).toEqual({ mimeType: 'image/png', dataURL: dataUrl() })
+    expect(await readFile(file)).toEqual(before) // opening writes nothing
+    expect(await readdir(root)).toEqual(['Legacy.excalidraw'])
+  })
+
+  it('answers a board with nothing embedded exactly as it sits on disk — spacing, key order and all', async () => {
+    await seedAsset('pic.png', 'stored')
+    const body = `{"elements":[${JSON.stringify(imageEl('pic'))}],   "files":{} ,"appState":{}}`
+    await seed('Board.excalidraw', body)
+    const res = await loadDrawing({ root, path: 'Board.excalidraw' })
+    expect(res.json).toBe(body)
+    expect(res.files.pic).toEqual({ mimeType: 'image/png', dataURL: `data:image/png;base64,${Buffer.from('stored').toString('base64')}` })
   })
 
   it('prefers the store over an embedded copy of the same id', async () => {
@@ -452,8 +473,11 @@ describe('end to end on a temp vault', () => {
     expect(opened.stored).toEqual([]) // nothing in the store yet; the bytes came from the file
     expect(opened.files.sha1id.dataURL).toBe(dataUrl())
 
-    // The renderer would send the file it holds and no longer has on disk.
-    const saved = await saveDrawing({ root, path: 'Boards/Legacy.excalidraw', json: opened.json, expectedMtime: opened.mtime, newFiles: [] })
+    // What the renderer sends (`DrawingEditor`): the engine's scene, which never carries a files map
+    // (🔒 YAZ-2073 D7 sends it lean anyway), and every live picture the store does not hold yet.
+    const { elements } = JSON.parse(opened.json) as { elements: unknown[] }
+    const newFiles = unpersistedFiles(opened.files, referencedFileIds(elements), new Set(opened.stored))
+    const saved = await saveDrawing({ root, path: 'Boards/Legacy.excalidraw', json: scene(elements), expectedMtime: opened.mtime, newFiles })
     expect(saved.persisted).toEqual(['sha1id'])
     expect(saved.size).toBeLessThan(opened.size)
     expect(await readdir(path.join(root, 'assets'))).toEqual(['sha1id.png'])

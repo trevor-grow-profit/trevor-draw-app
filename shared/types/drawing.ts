@@ -23,7 +23,10 @@ export interface DrawingLoadRequest {
 export interface DrawingLoadResponse {
   /** Absolute path that was read — what every later save addresses. */
   path: string
-  /** The file's bytes as UTF-8 text, exactly as they sit on disk. */
+  /**
+   * The file's bytes as UTF-8 text, exactly as they sit on disk — except that a LEGACY scene's
+   * embedded `files` map comes back empty (🔒 YAZ-2073 D7): those bytes travel once, in `files`.
+   */
   json: string
   /** Disk mtime of the read: the `expectedMtime` the first save goes back with. */
   mtime: number

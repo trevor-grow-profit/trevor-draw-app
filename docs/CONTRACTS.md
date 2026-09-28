@@ -95,7 +95,8 @@ Two kinds of BOARD, one extension each (🔒 YAZ-1802 D1 / D2).
   `drawing:load` / `drawing:save`. The id is Excalidraw's own — the SHA-1 of the bytes — so an
   asset is immutable, rename-proof and shared by every board that uses the picture. The scene is
   always written with `files: {}`; a legacy file that still embeds its images is extracted on its
-  first save. `assets/` is hidden from the sidebar tree (the TOP-LEVEL one only: a folder the
+  first save. Until then `drawing:load` answers its scene with the embedded map emptied and the
+  bytes in `files` alone, so they cross the bridge once (🔒 YAZ-2073 D7); opening writes nothing. `assets/` is hidden from the sidebar tree (the TOP-LEVEL one only: a folder the
   user called `assets` inside a subfolder is theirs and shows).
 - There is ONE door that makes a board, and it is the sidebar's context menu: the Create group is
   **New Excalidraw drawing**, **New dated Excalidraw drawing** (🔒 YAZ-1999 D3), **New draw.io

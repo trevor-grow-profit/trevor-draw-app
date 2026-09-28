@@ -24,7 +24,8 @@
  * bytes sit at `<root>/assets/<fileId>.<ext>` (the engine's own SHA-1 id, the mime's extension).
  * An asset is IMMUTABLE — the same bytes always get the same name — so a save never rewrites one
  * (`wx`; EEXIST means it is already exactly these bytes). A LEGACY export that still embeds
- * `files` opens (its entries pass straight through the load) and SHRINKS on its first save:
+ * `files` opens — its entries come back in `files`, and its `json` without them, so the bytes cross
+ * the bridge once (🔒 YAZ-2073 D7); opening it writes nothing — and SHRINKS on its first save:
  * `liftEmbedded` takes the referenced bytes out of the scene and `landAssets` writes them into the
  * store, then the scene is written lean. Settings › Storage's "Move pictures out" (`shrink.ts`,
  * YAZ-1801 D5) runs the same two helpers over every legacy board at once.
@@ -121,8 +122,14 @@ export async function loadDrawing(req: DrawingLoadRequest): Promise<DrawingLoadR
   const { dir, file } = target(req)
   await requireDir(dir)
   const snapshot = await readBoundedRegularFile(file, MAX_DRAWING_BYTES, TOO_LARGE)
-  const json = snapshot.data.toString('utf8')
-  const { files, stored } = await sceneFiles(dir, json, sceneElements(json, file, 'IO_ERROR'))
+  const text = snapshot.data.toString('utf8')
+  // The ONE parse: the outline check, the embedded pictures and the lean text all come from it.
+  const { scene, elements } = parseScene(text, file, 'IO_ERROR')
+  const { lean, embedded } = stripEmbeddedScene(scene)
+  const { files, stored } = await resolveFiles(dir, embedded, elements)
+  // 🔒 YAZ-2073 D7: a legacy scene's pictures travel once, in `files` — the renderer replaces the
+  // scene's own map with them anyway. Every other board's text is sent exactly as it sits on disk.
+  const json = Object.keys(embedded).length === 0 ? text : serializeBoard(lean)
   return { path: file, json, mtime: snapshot.mtime, size: snapshot.size, files, stored }
 }
 
@@ -132,7 +139,11 @@ export async function loadDrawing(req: DrawingLoadRequest): Promise<DrawingLoadR
  * (YAZ-1897 D4), so an old version draws its pictures exactly the way the open board does.
  */
 export async function sceneFiles(dir: string, json: string, elements: readonly unknown[]): Promise<{ files: Record<string, DrawingFileEntry>; stored: string[] }> {
-  const { embedded } = stripEmbeddedFiles(json)
+  return resolveFiles(dir, stripEmbeddedFiles(json).embedded, elements)
+}
+
+/** `sceneFiles` over a scene's embedded entries already in hand. */
+async function resolveFiles(dir: string, embedded: Record<string, DrawingFileEntry>, elements: readonly unknown[]): Promise<{ files: Record<string, DrawingFileEntry>; stored: string[] }> {
   const store = await listStore(dir)
   const files: Record<string, DrawingFileEntry> = {}
   const stored: string[] = []
