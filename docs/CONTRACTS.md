@@ -1325,7 +1325,10 @@ but for two config hooks, inside an iframe on its OWN origin.
   entry is the share viewer's built assets (`share/dist/assets` → `Contents/Resources/share-viewer`,
   YAZ-1883), which main uploads at share setup; `viewerAssetsDir` in `ipc/share.ts` reads there when
   packaged and from the repo checkout in dev.
-- The renderer serves from the custom `app://yaseen/` protocol; Excalidraw's fonts are copied
+- The renderer serves from the custom `app://yaseen/` protocol, registered with `codeCache` (and
+  `app://drawio/` with it: `appScheme.ts`, 🔒 YAZ-2073 D13), so V8 keeps compiled code in
+  `<userData>/Code Cache` across launches — ~15 MB once draw.io has opened, Chromium's own LRU —
+  instead of recompiling every script on every launch. Excalidraw's fonts are copied
   beside the bundle at build time so a scene with text never reaches a CDN (🔒 the offline rule).
   The draw.io webapp (~47 MB, 2 660 files) is copied from the pack cache into `out/drawio` the same
   way (`drawioAssets()` in `electron.vite.config.ts`, replaced whole on every build) and served as
