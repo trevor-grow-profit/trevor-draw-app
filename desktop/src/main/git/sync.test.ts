@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto'
-import { createReadStream, existsSync } from 'node:fs'
+import { createReadStream, existsSync, readFileSync } from 'node:fs'
 import { mkdtemp, rm, truncate, unlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
@@ -7,7 +7,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { GIT_TIMEOUT_CODE, git, type GitResult } from './exec'
 import { makeBareRemote, makeGitRepo, REAL_GIT_TIMEOUT_MS, requireGit, wireOrigin, type BareRemote, type GitRepo } from './gitFixture'
 import { GITHUB_FILE_LIMIT_BYTES } from '@shared/types'
-import { classifyGitFailure, commitMessage, syncPass, TRANSFER_TIMEOUT_MS } from './sync'
+import { classifyGitFailure, commitMessage, remoteMoved, syncPass, TRANSFER_TIMEOUT_MS } from './sync'
 
 /** A file's SHA-1, streamed (the D12 test's file is 95 MiB). */
 async function sha1(file: string): Promise<string> {
@@ -260,6 +260,20 @@ describe('syncPass', { timeout: REAL_GIT_TIMEOUT_MS }, () => {
     expect(calls.filter(([, , args]) => args[0] !== 'fetch' && args[0] !== 'push').every(([, , , opts]) => opts?.timeoutMs === undefined)).toBe(true)
   })
 
+  it('asks git where the merge rule lives once per vault, and still puts back a rule someone deleted (YAZ-2073 5H)', async () => {
+    const { repo } = await pushedRepo()
+    await repo.write('a.md', '# a\n')
+    expect((await syncPass(repo.root)).state).toBe('synced')
+    const attributes = path.join(repo.root, '.git', 'info', 'attributes')
+    await unlink(attributes)
+    await repo.write('b.md', '# b\n')
+    vi.mocked(git).mockClear()
+    expect((await syncPass(repo.root)).state).toBe('synced')
+    const gitPath = vi.mocked(git).mock.calls.filter(([, root, args]) => root === repo.root && args.includes('--git-path'))
+    expect(gitPath).toEqual([])
+    expect(readFileSync(attributes, 'utf8')).toContain('-merge')
+  })
+
   it('summarises past three files in the subject', async () => {
     const { repo } = await pushedRepo()
     for (const name of ['a.md', 'b.md', 'c.md', 'd.md', 'e.md']) await repo.write(name, `# ${name}\n`)
@@ -353,6 +367,49 @@ describe('syncPass', { timeout: REAL_GIT_TIMEOUT_MS }, () => {
     expect(status.state).toBe('pending')
     expect(status.message).toMatch(/does not appear to be a git repository/)
     expect(await repo.run(['log', '-1', '--format=%s'])).toBe('sync: offline.md')
+  })
+})
+
+/**
+ * The idle pull's cheap look (YAZ-2073 5H): `fetch` + `rev-list`, two spawns where a full pass
+ * makes nine. It answers false ONLY when both sides are provably level; anything else — news on
+ * the remote, an unpushed commit, a look that failed — hands the root to the full pass.
+ */
+describe('remoteMoved', { timeout: REAL_GIT_TIMEOUT_MS }, () => {
+  const spawns = (root: string) => vi.mocked(git).mock.calls.filter(([, r]) => r === root).map(([, , args]) => args[0])
+
+  it('level with the remote: false, from a fetch and one rev-list and nothing else', async () => {
+    const { repo } = await pushedRepo()
+    vi.mocked(git).mockClear()
+    expect(await remoteMoved(repo.root)).toBe(false)
+    expect(spawns(repo.root)).toEqual(['fetch', 'rev-list'])
+  })
+
+  it('the other machine pushed: true, and the full pass then brings it in', async () => {
+    const { repo, remote } = await pushedRepo()
+    const other = await secondClone(remote)
+    const bin = await requireGit()
+    await writeFile(path.join(other, 'theirs.md'), 'from the other machine\n', 'utf8')
+    for (const args of [['add', '-A'], ['commit', '-m', 'other'], ['push']]) expect((await git(bin, other, args)).code).toBe(0)
+    expect(await remoteMoved(repo.root)).toBe(true)
+    expect((await syncPass(repo.root)).state).toBe('synced')
+    expect(await remoteMoved(repo.root)).toBe(false)
+  })
+
+  it('a local commit nobody pushed yet (made outside the app): true', async () => {
+    const { repo } = await pushedRepo()
+    await repo.write('by-hand.md', '# committed in a terminal\n')
+    await repo.run(['add', '-A'])
+    await repo.run(['commit', '-m', 'by hand'])
+    expect(await remoteMoved(repo.root)).toBe(true)
+  })
+
+  it('a look that cannot tell — no upstream yet, or an unreachable remote — is true, so the full pass classifies it', async () => {
+    const { repo } = await pushedRepo()
+    await repo.run(['branch', '--unset-upstream'])
+    expect(await remoteMoved(repo.root)).toBe(true)
+    await repo.run(['remote', 'set-url', 'origin', path.join(tmpdir(), 'yaseendraw-no-such-remote')])
+    expect(await remoteMoved(repo.root)).toBe(true)
   })
 })
 

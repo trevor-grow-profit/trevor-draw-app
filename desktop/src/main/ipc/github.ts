@@ -6,7 +6,7 @@ import { detectRepo } from '../git/detect'
 import { resolveGit } from '../git/exec'
 import { boardHistory, boardVersion, restoreBoardVersion } from '../git/history'
 import { createGitSync, type GitSyncManager } from '../git/manager'
-import { syncPass } from '../git/sync'
+import { remoteMoved, syncPass } from '../git/sync'
 import type { Store } from '../store'
 import { readConfig, subscribeConfig, writeConfig } from '../vaultConfig'
 import { broadcastAll } from './broadcast'
@@ -55,6 +55,7 @@ export function registerGithubIpc(store: Store): GitSyncManager {
     // Every live window hears about every vault; renderers filter by `status.root` (the `state:changed` posture).
     onStatus: (status) => broadcastAll(CH.githubStatusChanged, status),
     syncPass,
+    remoteMoved,
     inspect,
   })
 

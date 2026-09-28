@@ -246,18 +246,10 @@ export async function syncPass(root: string, opts?: { candidates?: readonly stri
     if (fetched.code !== 0) return withTooLarge(fromFailure(root, repo, fetched), tooLarge)
   }
 
-  // `--left-right --count @{u}...HEAD` prints "<behind>\t<ahead>" in one call. The command FAILING
-  // is itself the answer to a different question: a branch with no upstream (never pushed), which
-  // has nothing to rebase onto and everything to push.
-  const counts = await git(bin, root, ['rev-list', '--left-right', '--count', '@{u}...HEAD'])
-  const hasUpstream = counts.code === 0
-  let behind = 0
-  let ahead = 1 // no upstream ⇒ treat the branch as unpushed
-  if (hasUpstream) {
-    const [b = '', a = ''] = counts.stdout.trim().split(/\s+/)
-    behind = Number.parseInt(b, 10) || 0
-    ahead = Number.parseInt(a, 10) || 0
-  }
+  const level = await divergence(bin, root)
+  const hasUpstream = level !== null
+  const behind = level?.behind ?? 0
+  const ahead = level?.ahead ?? 1 // no upstream ⇒ treat the branch as unpushed
 
   // ---------- 3. replay our commits on top of theirs (never a merge; see D12 for the one stash) ----------
   let merged: GithubSyncMerge[] = []
@@ -289,6 +281,33 @@ export async function syncPass(root: string, opts?: { candidates?: readonly stri
   // The words are the renderer's (`syncAttention.ts`), built from the list, so there is no `message`.
   if (tooLarge.length > 0) return done({ root, state: 'attention', attention: 'too-large', repo })
   return done({ root, state: 'synced', repo })
+}
+
+/**
+ * `--left-right --count @{u}...HEAD` prints "<behind>\t<ahead>" in one call. The command FAILING
+ * is itself the answer to a different question: a branch with no upstream (never pushed), which
+ * has nothing to rebase onto and everything to push — null.
+ */
+async function divergence(bin: string, root: string): Promise<{ behind: number; ahead: number } | null> {
+  const counts = await git(bin, root, ['rev-list', '--left-right', '--count', '@{u}...HEAD'])
+  if (counts.code !== 0) return null
+  const [b = '', a = ''] = counts.stdout.trim().split(/\s+/)
+  return { behind: Number.parseInt(b, 10) || 0, ahead: Number.parseInt(a, 10) || 0 }
+}
+
+/**
+ * The idle pull's cheap look (YAZ-2073 5H): `fetch` + one `rev-list`, two spawns where a full pass
+ * makes nine. The idle pull only runs while no watcher event has arrived since a `synced` pass,
+ * so the working tree is known clean and only the two branch tips can have moved. False ONLY when
+ * both sides are provably level; news on the remote, an unpushed commit (one made in a terminal,
+ * say), no upstream, or a look that failed are all true — the full pass does and classifies those.
+ */
+export async function remoteMoved(root: string): Promise<boolean> {
+  const bin = await resolveGit()
+  if (bin === null) return true
+  if ((await git(bin, root, ['fetch', 'origin'], { timeoutMs: TRANSFER_TIMEOUT_MS })).code !== 0) return true
+  const level = await divergence(bin, root)
+  return level === null || level.behind > 0 || level.ahead > 0
 }
 
 /**

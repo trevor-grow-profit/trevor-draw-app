@@ -621,7 +621,9 @@ YAZ-1897; the scenario catalogue (S1–S28) is the 📘 comment there.
   points at the pre-rebase commit (local only, replaced by the next merge).
 - **D6 — the idle pull.** A vault whose last pass ended `synced` runs a quiet pass every 60 s
   (`pollMs`): no `syncing` broadcast first, no broadcast at all when nothing changed, never while
-  edits are settling, `pending` or `attention`.
+  edits are settling, `pending` or `attention`. It looks before it passes (YAZ-2073 5H):
+  `remoteMoved` runs `fetch` + one `rev-list` (2 git spawns; a full pass makes 9), and only a
+  remote that moved, an unpushed commit, no upstream or a failed look escalates to the full pass.
 - **D4 — seeing it.** A merge puts up one notice ("Merged Sam's changes into “Roadmap” · 2 shapes
   edited on both — kept the newest.") with **See changes**; a notice with an action waits to be
   dismissed. Right-click a board › **Version history** (`client/src/history/`) lists its versions;
