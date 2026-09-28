@@ -117,6 +117,7 @@ function DrawingHost({ root, path, loaded, watch, sync, onSyncNow, canvasPrefs, 
   /** Ids the store holds: load's `stored`, grown by every save's `persisted` (🔒 YAZ-1775 D3). */
   const persisted = useRef(new Set(loaded.stored))
 
+  // Fresh closures every render are fine: the hook reads them through its `engine` ref, never stale.
   const board = useBoardDocument({
     root,
     path,
