@@ -14,118 +14,34 @@
  * Boards only — nothing here is about any other feature. `--dir` IS REQUIRED AND ITS FOUR
  * CHILDREN ARE WIPED (the `seedDemoVault.mjs` rule): an existing vault is refused without `--force`.
  */
-import { createHash, randomBytes } from 'node:crypto'
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import zlib from 'node:zlib'
+import { asset as assetIn, cli, elementKit, embedded, gradientPNG, noisePNG, refuseExisting, scene as sceneOf, solidPNG, stripesPNG, wipe, write as writeIn, writeProfile } from './lib/seedKit.mjs'
+import { fileIdFor } from './lib/seedDemoVault.mjs'
 
 const USAGE = 'usage: node tools/seedShareDemoVault.mjs --dir <demo-dir> [--port 8787] [--force]'
-const args = process.argv.slice(2)
-const flag = (name) => {
-  const i = args.indexOf(name)
-  return i === -1 ? undefined : (args[i + 1] ?? '')
-}
-const DIR = flag('--dir') && path.resolve(flag('--dir'))
-const PORT = Number(flag('--port') ?? 8787)
-if (!DIR) {
-  console.error(USAGE)
-  process.exit(2)
-}
+const args = cli(USAGE, { '--dir': 'dir', '--port': 'value' }, ['--dir'])
+const DIR = args.dir
+const PORT = Number(args.port ?? 8787)
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const VAULT = path.join(DIR, 'Share Button (YAZ-1799)')
 const PROFILE = path.join(DIR, 'profile')
 const FAKE = path.join(DIR, 'fake-cloudflare')
-if (fs.existsSync(VAULT) && !args.includes('--force')) {
-  console.error(`refusing to wipe an existing vault: ${VAULT}\npass --force if that is really what you want\n${USAGE}`)
-  process.exit(2)
-}
-for (const d of [VAULT, PROFILE, FAKE, path.join(DIR, 'logs')]) fs.rmSync(d, { recursive: true, force: true })
+refuseExisting(VAULT, USAGE, { what: 'vault', force: args.force })
+wipe(VAULT, PROFILE, FAKE, path.join(DIR, 'logs'))
 fs.mkdirSync(VAULT, { recursive: true })
 
-// ---------------------------------------------------------------- PNG (node built-ins only)
-const CRC = new Uint32Array(256).map((_, n) => {
-  let c = n
-  for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1
-  return c >>> 0
-})
-const crc32 = (buf) => {
-  let c = 0xffffffff
-  for (const b of buf) c = CRC[(c ^ b) & 0xff] ^ (c >>> 8)
-  return (c ^ 0xffffffff) >>> 0
-}
-const chunk = (type, data) => {
-  const len = Buffer.alloc(4)
-  len.writeUInt32BE(data.length)
-  const body = Buffer.concat([Buffer.from(type, 'ascii'), data])
-  const crc = Buffer.alloc(4)
-  crc.writeUInt32BE(crc32(body))
-  return Buffer.concat([len, body, crc])
-}
-const pngFromRaw = (w, h, raw, level = 6) => {
-  const ihdr = Buffer.alloc(13)
-  ihdr.writeUInt32BE(w, 0)
-  ihdr.writeUInt32BE(h, 4)
-  ihdr[8] = 8
-  ihdr[9] = 2
-  return Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), chunk('IHDR', ihdr), chunk('IDAT', zlib.deflateSync(raw, { level })), chunk('IEND', Buffer.alloc(0))])
-}
-function png(w, h, pixel) {
-  const stride = 1 + w * 3
-  const raw = Buffer.alloc(stride * h)
-  for (let y = 0; y < h; y++)
-    for (let x = 0; x < w; x++) raw.set(pixel(x, y), y * stride + 1 + x * 3)
-  return pngFromRaw(w, h, raw)
-}
-/** Random noise: incompressible, so the file is ~w×h×3 bytes — how the big boards get big. */
-function noisePng(w, h) {
-  const stride = 1 + w * 3
-  const raw = randomBytes(stride * h)
-  for (let y = 0; y < h; y++) raw[y * stride] = 0
-  return pngFromRaw(w, h, raw, 1)
-}
-const gradient = (w, h, a, b) => png(w, h, (x, y) => a.map((v, i) => Math.round(v + (b[i] - v) * ((x / w + y / h) / 2))))
-const solid = (w, h, rgb) => png(w, h, () => rgb)
-const dataURL = (bytes) => `data:image/png;base64,${bytes.toString('base64')}`
-
 // ---------------------------------------------------------------- Excalidraw elements (seedPreviewDemoVault's)
-let n = 0
-const seed = () => 1 + Math.floor(Math.random() * 2 ** 30)
-const idx = (i) => `a${String(i).padStart(5, '0')}`
-const base = (extra = {}) => ({
-  id: `s-${(n++).toString(36)}`, angle: 0, strokeColor: '#1e1e1e', backgroundColor: 'transparent', fillStyle: 'solid',
-  strokeWidth: 2, strokeStyle: 'solid', roughness: 1, opacity: 100, groupIds: [], frameId: null, index: idx(n),
-  roundness: null, seed: seed(), version: 1, versionNonce: seed(), isDeleted: false, boundElements: null,
-  updated: 1, link: null, locked: false, ...extra,
-})
-const rect = (x, y, w, h, bg = '#a5d8ff', extra = {}) => ({ ...base({ roundness: { type: 3 }, backgroundColor: bg, ...extra }), type: 'rectangle', x, y, width: w, height: h })
-const ellipse = (x, y, w, h, bg = '#ffc9c9') => ({ ...base({ backgroundColor: bg }), type: 'ellipse', x, y, width: w, height: h })
-const diamond = (x, y, w, h, bg = '#b2f2bb') => ({ ...base({ backgroundColor: bg }), type: 'diamond', x, y, width: w, height: h })
-const arrow = (x, y, dx, dy) => ({ ...base({ roundness: { type: 2 } }), type: 'arrow', x, y, width: Math.abs(dx), height: Math.abs(dy), points: [[0, 0], [dx, dy]], startArrowhead: null, endArrowhead: 'arrow', startBinding: null, endBinding: null, elbowed: false })
-const text = (x, y, str, size = 20, extra = {}) => {
-  const lines = str.split('\n')
-  return { ...base({ strokeWidth: 1, roughness: 0, ...extra }), type: 'text', x, y, width: Math.ceil(Math.max(...lines.map((l) => l.length)) * size * 0.55), height: Math.ceil(lines.length * size * 1.25), text: str, originalText: str, fontSize: size, fontFamily: 5, textAlign: 'left', verticalAlign: 'top', autoResize: true, lineHeight: 1.25, containerId: null }
-}
-const image = (x, y, w, h, fileId, extra = {}) => ({ ...base({ strokeColor: 'transparent', roughness: 0, ...extra }), type: 'image', x, y, width: w, height: h, status: 'saved', fileId, scale: [1, 1], crop: null })
-const frame = (x, y, w, h, name) => ({ ...base({ roughness: 0, strokeWidth: 1 }), type: 'frame', x, y, width: w, height: h, name })
+const { rect, ellipse, diamond, arrow, text, image, frame } = elementKit('s')
 const label = (title, sub) => [text(0, -110, title, 32), text(0, -60, sub, 18, { strokeColor: '#868e96' })]
 
 // ---------------------------------------------------------------- writers
-const scene = (elements, { bg = '#ffffff', files = {} } = {}) => ({ type: 'excalidraw', version: 2, source: 'yaz-1799-demo', elements, appState: { viewBackgroundColor: bg, gridSize: 20 }, files })
-function write(rel, content) {
-  const file = path.join(VAULT, rel)
-  fs.mkdirSync(path.dirname(file), { recursive: true })
-  fs.writeFileSync(file, typeof content === 'string' || Buffer.isBuffer(content) ? content : `${JSON.stringify(content, null, 2)}\n`)
-  return file
-}
+const scene = (elements, opts) => sceneOf('yaz-1799-demo', elements, opts)
+const write = (rel, content) => writeIn(VAULT, rel, content)
 const board = (rel, elements, opts) => write(`${rel}.excalidraw`, scene(elements, opts))
-/** An image in `assets/<sha1>.png`, the way the app stores them (🔒 YAZ-1775 D3). */
-function asset(bytes) {
-  const id = createHash('sha1').update(bytes).digest('hex')
-  write(`assets/${id}.png`, bytes)
-  return id
-}
-const fileEntry = (id, bytes) => ({ mimeType: 'image/png', id, dataURL: dataURL(bytes), created: 1, lastRetrieved: 1 })
+const asset = (bytes) => assetIn(VAULT, bytes)
+const fileEntry = (id, bytes) => embedded(id, bytes, { created: 1, lastRetrieved: 1 })
 
 // ---------------------------------------------------------------- 01 simple
 board('01 Simple — shapes, arrows and text', [
@@ -137,19 +53,19 @@ board('01 Simple — shapes, arrows and text', [
 ])
 
 // ---------------------------------------------------------------- 02 lean images (assets/)
-const lean1 = asset(gradient(480, 320, [255, 107, 107], [77, 171, 247]))
-const lean2 = asset(png(600, 240, (x) => (Math.floor(x / 40) % 2 ? [255, 190, 11] : [58, 134, 255])))
-const lean3 = asset(gradient(1600, 1000, [20, 20, 60], [250, 200, 80]))
+const lean1 = asset(gradientPNG(480, 320, [255, 107, 107], [77, 171, 247]))
+const lean2 = asset(stripesPNG(600, 240))
+const lean3 = asset(gradientPNG(1600, 1000, [20, 20, 60], [250, 200, 80]))
 board('02 Lean images — pictures live in assets, must arrive embedded', [
   ...label('02 Three images from assets/', 'The vault file holds no bytes; the shared copy must carry all three.'),
   image(0, 0, 480, 320, lean1), image(520, 0, 600, 240, lean2), image(0, 360, 800, 500, lean3),
 ])
 
 // ---------------------------------------------------------------- 03 legacy (embedded base64)
-const legacyA = gradient(300, 300, [40, 200, 120], [250, 250, 250])
-const legacyB = solid(200, 200, [230, 73, 128])
-const legacyAId = createHash('sha1').update(legacyA).digest('hex')
-const legacyBId = createHash('sha1').update(legacyB).digest('hex')
+const legacyA = gradientPNG(300, 300, [40, 200, 120], [250, 250, 250])
+const legacyB = solidPNG(200, 200, [230, 73, 128])
+const legacyAId = fileIdFor(legacyA)
+const legacyBId = fileIdFor(legacyB)
 board('03 Legacy — images embedded as base64 in the file itself', [
   ...label('03 Legacy board', 'Images are inside this file (an upstream export). Shared copy keeps them.'),
   image(0, 0, 300, 300, legacyAId), image(340, 50, 200, 200, legacyBId),
@@ -157,14 +73,14 @@ board('03 Legacy — images embedded as base64 in the file itself', [
 
 // ---------------------------------------------------------------- 04 big (~45 MB shared)
 console.log('writing noise images for 04 and 05 (≈120 MB)…')
-const big = [0, 1, 2, 3].map(() => asset(noisePng(1800, 1560)))
+const big = [0, 1, 2, 3].map(() => asset(noisePNG(1800, 1560)))
 board('04 Big — about 45 MB once shared (slow upload, must succeed)', [
   ...label('04 Big board: four noise images', '≈34 MB of PNG on disk → ≈45 MB once base64-packed. Under the 100 MB cap.'),
   ...big.map((id, i) => image((i % 2) * 940, Math.floor(i / 2) * 820, 900, 780, id)),
 ])
 
 // ---------------------------------------------------------------- 05 over the limit (~115 MB shared)
-const huge = Array.from({ length: 10 }, () => asset(noisePng(1800, 1600)))
+const huge = Array.from({ length: 10 }, () => asset(noisePNG(1800, 1600)))
 board('05 Too big — about 115 MB once shared (must be refused before upload)', [
   ...label('05 Over the limit: ten noise images', '≈86 MB of PNG → ≈115 MB packed. The app must refuse BEFORE uploading, and say why.'),
   ...huge.map((id, i) => image((i % 5) * 920, Math.floor(i / 5) * 820, 900, 800, id)),
@@ -174,10 +90,10 @@ board('05 Too big — about 115 MB once shared (must be refused before upload)',
 board('06 Empty — no elements at all', [])
 
 // ---------------------------------------------------------------- 07 deleted images must not ship
-const keepA = asset(solid(240, 240, [64, 192, 87]))
-const keepB = asset(solid(240, 240, [34, 139, 230]))
-const goneABytes = solid(240, 240, [250, 82, 82])
-const goneBBytes = gradient(240, 240, [250, 82, 82], [0, 0, 0])
+const keepA = asset(solidPNG(240, 240, [64, 192, 87]))
+const keepB = asset(solidPNG(240, 240, [34, 139, 230]))
+const goneABytes = solidPNG(240, 240, [250, 82, 82])
+const goneBBytes = gradientPNG(240, 240, [250, 82, 82], [0, 0, 0])
 const goneA = asset(goneABytes)
 const goneB = asset(goneBBytes)
 board('07 Deleted images — the red ones were deleted and must NOT be shipped', [
@@ -310,16 +226,8 @@ not seen — Settings flags it like board 12.
 `)
 
 // ---------------------------------------------------------------- isolated profile (LAUNCH.md recipe)
-fs.mkdirSync(PROFILE, { recursive: true })
 const first = path.join(VAULT, '01 Simple — shapes, arrows and text.excalidraw')
-fs.writeFileSync(path.join(PROFILE, 'yaseendraw.json'), `${JSON.stringify({
-  version: 1,
-  settings: { theme: 'light', confirmDelete: true },
-  sidebarWidth: 340,
-  recents: [{ path: VAULT, lastOpened: now }],
-  windows: [{ id: 'w1', root: VAULT, file: first, tabs: [first], sidebarCollapsed: false, sidebarLens: 'files', focusDirs: [], focusFavorites: [], bounds: { x: 60, y: 60, width: 1440, height: 900 } }],
-  folders: {},
-}, null, 2)}\n`)
+writeProfile(PROFILE, VAULT, { theme: 'light', sidebarWidth: 340, lastOpened: now, file: first, tabs: [first] })
 
 // ---------------------------------------------------------------- start / stop scripts
 fs.mkdirSync(path.join(DIR, 'logs'), { recursive: true })

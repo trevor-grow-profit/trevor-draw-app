@@ -19,6 +19,7 @@
  * still uploads, under the new path. The upload names its link (`id`), so main lands it on the
  * record even when the rename overtakes it.
  */
+import { isWithin } from '@shared/paths'
 import { api } from '../api'
 import { buildShareContent } from './shareContent'
 
@@ -49,7 +50,7 @@ export function onLiveShareChange(listener: () => void): () => void {
   return () => listeners.delete(listener)
 }
 
-/** Called by `DrawingEditor` and `DrawioEditor` after every successful save. Cheap: it only (re)arms a timer. */
+/** Called by `useBoardDocument` after every successful save, for both kinds of board. Cheap: it only (re)arms a timer. */
 export function noteBoardSaved(root: string, path: string, settleMs = SETTLE_MS): void {
   const b = boards.get(path) ?? { root, path, timer: null, inFlight: false, again: false }
   b.root = root
@@ -66,7 +67,7 @@ export function noteBoardSaved(root: string, path: string, settleMs = SETTLE_MS)
 export function noteBoardRenamed(oldPath: string, newPath: string): void {
   let moved = false
   for (const [path, b] of [...boards]) {
-    if (path !== oldPath && !path.startsWith(`${oldPath}/`)) continue
+    if (!isWithin(oldPath, path)) continue
     boards.delete(path)
     b.path = newPath + path.slice(oldPath.length)
     boards.set(b.path, b)

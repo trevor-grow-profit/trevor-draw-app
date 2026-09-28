@@ -6,8 +6,9 @@
  */
 import { randomBytes } from 'node:crypto'
 import { rm } from 'node:fs/promises'
-import { CLOUDFLARE_TOKEN_SECRET, SHARE_UPLOAD_PASSWORD_SECRET, type ShareSetupProgress, type ShareSetupStep, type ShareStatus } from '@shared/types'
-import { BridgeFailure, requireAbsPath } from '../fs/fsUtils'
+import { CLOUDFLARE_TOKEN_SECRET, SHARE_UPLOAD_PASSWORD_SECRET, type ShareAccount, type ShareSetupProgress, type ShareSetupStep, type ShareStatus } from '@shared/types'
+import { BridgeFailure } from '../fs/fsUtils'
+import { requireAbsPath } from '../fs/validate'
 import { CloudflareError, createCloudflareClient, STEP_PERMISSION, type CloudflareClient } from './cloudflare'
 import { newShareId, type ShareContext, type SharingConfig } from './config'
 import { updateShares } from './shareLinks'
@@ -78,7 +79,7 @@ export function subdomainFor(accountName: string): string {
 export function createSetup(ctx: ShareContext) {
   const { deps, doFetch, now, sleep, readConfig, writeConfig, linkOrigin, worker, status } = ctx
 
-  async function accounts(token: string): Promise<{ id: string; name: string }[]> {
+  async function accounts(token: string): Promise<ShareAccount[]> {
     const cf = createCloudflareClient(token.trim(), deps.apiBase, doFetch)
     try {
       await cf.verifyToken()

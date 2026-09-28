@@ -23,6 +23,7 @@ nothing to do with each other. A bare `D3` would be unresolvable, so there are n
 |---|---|
 | `client/` | the renderer: React 19, Vite. Talks to nothing but `window.yaseenDraw`. |
 | `client/src/drawings/` | the drawing document: the engine seam (`ExcalidrawSurface`, the ONE importer of the package), its host, and what a scene is |
+| `client/src/documents/` | what both board documents share (🔒 YAZ-2073 D16): `useBoardDocument` (autosave, the watcher rule and conflict bar, the quit/unmount flush, rename continuity, the menu's board commands, the tab-reveal focus, the chips; `BoardDocumentProps` is both editors' base props), `BoardDocumentShell` (load, then the error pane or the host), and the chrome both wear — `ConflictBar`, `SaveIndicator` and `SyncIndicator` (`statusChips.css`), `boardCommand.ts`, `focusHandoff.ts`; `boardTestKit.ts` is their suites' kit |
 | `client/src/diagrams/` | the draw.io diagram document (YAZ-1802): `DrawioEditor` (the iframe host), `drawioProtocol.ts` (the postMessage dialect and the configure object) and `renderDiagram.ts` (the D9 renderer: the hover picture, Version history's pictures, Export Image…) |
 | `desktop/drawio-overlay/` | OUR files laid over the draw.io webapp by `tools/packDrawio.mjs`: the `PreConfig.js` / `PostConfig.js` config hooks (page view off, ⌘-wheel zoom, the keymap) and the preview page `yaseen-render.html` — draw.io's own files are never modified |
 | `client/src/drawings/presentation/` | the canvas panel's Present tab: the slide rules, the panel and the full-pane player |
@@ -35,10 +36,12 @@ nothing to do with each other. A bare `D3` would be unresolvable, so there are n
 | `client/src/search/` | ⌘K title search and the one ranking matcher |
 | `client/vendor/` | the five vendored `yaseendraw-*-<forkCommit>.tgz` engine tarballs (🔒 YAZ-1775 D2) |
 | `desktop/` | the Electron shell: `src/main` (files, state, windows, menu, git sync), `src/preload` (the bridge) |
-| `shared/` | types and pure helpers imported by BOTH sides (`@shared/*`); the contracts are grouped by domain under `shared/types/` behind the `@shared/types` barrel, so no consumer depends on the grouping |
-| `tools/` | `packEngine.mjs` (bump the vendored engine), `packDesktop.mjs` (electron-builder), `seedDemoVault.mjs` (the stress-test vault the behaviour checks run against), `seedSortDemoVault.mjs` / `seedPreviewDemoVault.mjs` (the demo vaults behind YAZ-1835 and YAZ-1800, each proved by an integration test); the pure halves of `packEngine` and `seedDemoVault` live in `tools/lib/` beside their tests |
-| `docs/` | this file |
+| `shared/` | types and pure helpers imported by BOTH sides (`@shared/*`): `ipc.ts` is the bridge as data (`CONTRACT`, "Bridge API"), and the contracts are grouped by domain under `shared/types/` behind the `@shared/types` barrel, so no consumer depends on the grouping |
+| `tools/` | `packEngine.mjs` (bump the vendored engine), `packDrawio.mjs` (the pinned draw.io pack), `packDesktop.mjs` (electron-builder, then the lzma dmg: `lib/dmg.mjs`), `buildShareViewer.mjs`; the demo vaults — `seedDemoVault.mjs` (the stress-test vault the behaviour checks run against) and one `seed<Feature>DemoVault.mjs` each for Sort, Preview, Merge, Drawio, Share and Storage — all on `lib/seedKit.mjs` (the strict CLI parser, the PNG encoder, scene builders, git and the isolated profile); `fakeCloudflare.mjs` (the share demo's Cloudflare); `lib/excalidrawFonts.mjs` (the fonts lookup, `shared/excalidrawFonts.ts` restated for plain node); the pure halves live in `tools/lib/` beside their tests; `perf/` is the size gate, the perf harness and the pixel check (YAZ-2073, below) |
+| `e2e/` | the Playwright E2E suite (🔒 YAZ-2073 D17): `*.spec.ts` by feature area, `support/` for the launcher fixture, vault builders and the main-process hook that keeps OS hand-offs inside the test's sandbox |
+| `docs/` | this file, and `REGRESSION.md` — the hand-scenario list (stable IDs, ★ core) |
 | `thoughts/ledgers/` | continuity ledgers for in-flight work |
+| `thoughts/yaz-2073-scope/` | the speed project's `decisions.md` (what each "🔒 YAZ-2073 Dn" says, and whether it shipped, was parked or declined) and the research behind it (`research/`) |
 
 ### Scripts
 
@@ -48,14 +51,24 @@ nothing to do with each other. A bare `D3` would be unresolvable, so there are n
 | `npm run dev` | `electron-vite dev` in `desktop/`: main + preload built, renderer served with HMR |
 | `npm test` | vitest, three projects — `client` (jsdom), `desktop` (node), `tools` (node) |
 | `npm run test:watch` | the same suites, re-run on save |
-| `npm run typecheck` | `tsc --noEmit` over client, shared and desktop |
+| `npm run typecheck` | `tsc --noEmit` over client, shared, desktop and e2e |
 | `npm run drawio:pack` | `tools/packDrawio.mjs`: download the pinned draw.io release once (sha256-checked), unpack it into `desktop/.cache/drawio/<tag>/` (gitignored) and lay the overlay over it — idempotent; `desktop`'s `dev` and `build` run it first |
 | `npm run build` | `electron-vite build` into `desktop/out`, then `tools/buildShareViewer.mjs` into `share/dist/assets` (wiped first, gitignored) |
-| `npm run desktop:build` | build + electron-builder → `desktop/dist-app` (`--win` variant for Windows) |
+| `npm run desktop:build` | build + electron-builder → `desktop/dist-app`: the arm64 `.app` and its lzma dmg; `desktop:build:win` makes the Windows installer |
+| `npm run perf:budget` | `tools/perf/measureBudget.mjs`, the size and integrity gate (YAZ-2073 1A): the packaged app's bytes against `tools/perf/budget.json`, plus what no unit test sees (Info.plist types and scheme, the ad-hoc seal, every lazy chunk shipped, the 13 font families, the draw.io files, the storage worker, bytes shipped twice). `perf:budget:ci` (`--out-only`) checks `desktop/out` alone, in CI |
+| `npm run perf -- <scenario…\|all>` | `tools/perf/run.mjs`, the perf harness (YAZ-2073 1B): the packaged app (`--dev`: `desktop/out`) on seeded fixtures in an isolated profile, driven over the DevTools protocol; per-metric median / p95 / noise as JSON against the `perf` ceilings. Local only — it opens windows. Scenarios and flags: `LAUNCH.md` |
+| `npm run perf:pixels` | `tools/perf/exportPixels.mjs`, the no-pixel-change proof for an engine bump ("Packaging", below) |
+| `npm run e2e` | build, then the Playwright suite in `e2e/` against the BUILT app (`desktop/out`); `E2E_PACKAGED=1` with `npx playwright test -c e2e/playwright.config.ts` runs it against `desktop/dist-app` instead. The knobs (`E2E_WORKERS`, `E2E_SHOW`, `E2E_KEEP`) are in `LAUNCH.md` |
 
-There is no e2e script. 🔒 (OD1 on YAZ-1805, resolved by Yasin at execution start): behaviour is
-verified by launching the dev app in an isolated profile against a test vault and running a
-scenario list by hand — never by a UI driver, by an agent or in CI.
+⚡ YAZ-2073 D17 amends 🔒 OD1 on YAZ-1805 ("no UI driver"): Yasin turned Playwright ON as the
+no-feature-loss guarantee for the speed project. `npm run e2e` is a local command, not a CI step.
+Every test launches the app on its own throwaway profile and sandboxed vaults under the OS temp
+dir, never the real ones, and `e2e/support/mainHook.cjs` keeps the OS out of it: Trash, Finder,
+default-app and browser hand-offs are recorded in the sandbox instead of run, and an unpackaged
+launch never registers `yaseendraw://` (a packaged bundle has done so before the hook loads). Under
+`E2E_PACKAGED=1` the share specs skip: their endpoint overrides are unpackaged-only. What the suite
+cannot see is [`docs/REGRESSION.md`](REGRESSION.md)'s to list; every bundle/shell PR runs that hand
+pass (★ core + the areas it touched) and cites it by ID.
 
 ## Supported file capabilities
 
@@ -95,8 +108,10 @@ Two kinds of BOARD, one extension each (🔒 YAZ-1802 D1 / D2).
   `drawing:load` / `drawing:save`. The id is Excalidraw's own — the SHA-1 of the bytes — so an
   asset is immutable, rename-proof and shared by every board that uses the picture. The scene is
   always written with `files: {}`; a legacy file that still embeds its images is extracted on its
-  first save. `assets/` is hidden from the sidebar tree (the TOP-LEVEL one only: a folder the
-  user called `assets` inside a subfolder is theirs and shows).
+  first save. Until then `drawing:load` answers its scene with the embedded map emptied and the
+  bytes in `files` alone, so they cross the bridge once (🔒 YAZ-2073 D7); opening writes nothing.
+  `assets/` is hidden from the sidebar tree (the TOP-LEVEL one only: a folder the user called
+  `assets` inside a subfolder is theirs and shows).
 - There is ONE door that makes a board, and it is the sidebar's context menu: the Create group is
   **New Excalidraw drawing**, **New dated Excalidraw drawing** (🔒 YAZ-1999 D3), **New draw.io
   diagram** (🔒 YAZ-1802 D13), New folder, New dated folder, in that order, on a row or on blank
@@ -129,14 +144,21 @@ Two kinds of BOARD, one extension each (🔒 YAZ-1802 D1 / D2).
 ## Bridge API
 
 The renderer is sandboxed (`contextIsolation: true`, `nodeIntegration: false`, `sandbox: true`).
-Its ONLY door to the machine is `window.yaseenDraw`, defined by `desktop/src/preload/index.ts`
-over the channels in `desktop/src/channels.ts`, typed by `YaseenDrawApi` in `shared/types/`.
+Its ONLY door to the machine is `window.yaseenDraw`, declared once as data: `CONTRACT` in
+`shared/ipc.ts` names every channel, its kind (an invoke main answers, or a push main sends) and
+its types (🔒 YAZ-2073 D16). The preload builds the bridge from it, main registers each handler
+against its entry (so a missing or mistyped door fails `npm run typecheck`, and
+`main/ipc/index.test.ts` pins one handler per invoke), and `YaseenDrawApi` is derived from it;
+`watch` and `window.onFlush` are the two hand-written specials. A handler sees the renderer's
+arguments as `unknown` (the envelope's `Unchecked`) and checks them with `fs/validate.ts`
+(`requireRequest`, `strArray`, `requireAbsPath`, …); main pushes to one window through
+`sendPush(target, door, …payload)` (`ipc/push.ts`) and to every window through `broadcastAll`.
 Every `ipcMain.handle` answers with an `Envelope<T>`: `{ ok: true, value }` or
 `{ ok: false, error }` carrying a structured `BridgeError` (`code`, `message`, optional `path` /
 `mtime`), which the preload rethrows. Electron flattens a thrown Error to its message, which is
-why failure travels as data. `client/src/api.ts` re-wraps it as a `BridgeRequestError` for the
-calls that go through it; `state`, `window`, `menu`, `link` and `watch` are called straight off
-`window.yaseenDraw` and reject with the plain object. The codes are `BridgeErrorCode`
+why failure travels as data. The renderer reaches the bridge only through `api`
+(`client/src/api.ts`), the same table over `window.yaseenDraw`, which re-wraps every rejection as a
+`BridgeRequestError`. The codes are `BridgeErrorCode`
 (`shared/types/errors.ts`); sharing added `NOT_SET_UP` (Settings › Sharing has not been set up).
 
 | `window.yaseenDraw` | Channel | What it does |
@@ -144,7 +166,7 @@ calls that go through it; `state`, `window`, `menu`, `link` and `watch` are call
 | `tree(root)` | `fs:tree` | the folder tree; dot-entries and `node_modules` are invisible; a board carries `meta` (its dates) when its head has a trustworthy block or `<mxfile>` attributes (🔒 YAZ-1834 D6, 🔒 YAZ-1802 D7) |
 | `createDir(path)` | `fs:create-dir` | never overwrites (`ALREADY_EXISTS`) |
 | `createFile(req)` | `fs:create-file` | `.excalidraw` or `.drawio` only; `{ path, content }`, content-at-create under `wx`; a drawing's content must be a JSON object, a diagram's a whole `<mxfile>` (else `BAD_REQUEST`), and either is born stamped with `createdAt = updatedAt = now` (🔒 YAZ-1834 D3, 🔒 YAZ-1802 D7) |
-| `drawing.load(req)` | `drawing:load` | one `.excalidraw` AS A DOCUMENT: its bytes, its mtime, and the images it names |
+| `drawing.load(req)` | `drawing:load` | one `.excalidraw` AS A DOCUMENT: its bytes, its mtime, and the images it names; with `imageMaxPx` (a picture of it, never an editor) the images come back preview-sized (🔒 YAZ-2073 D6) |
 | `drawing.save(req)` | `drawing:save` | images first, then the scene, atomically; `expectedMtime` → `CONFLICT` with NOTHING written; the scene lands with its `yaseendraw` block first, `createdAt` carried from the file, `updatedAt` = now (🔒 YAZ-1834 D3) |
 | `diagram.load(req)` / `diagram.save(req)` | `diagram:load` / `diagram:save` | 🔒 YAZ-1802 D6: one `.drawio` AS A DOCUMENT — `{ root, path }` → `{ path, xml, mtime, size }`; a file that is empty, not XML, not draw.io or cut short is `IO_ERROR` with the reason. `{ root, path, xml, expectedMtime }` → `{ path, mtime, size }`, atomic, `CONFLICT` with NOTHING written, `yaseendraw-created` / `-updated` stamped on the root `<mxfile>` (D7); any other extension is `UNSUPPORTED_EXTENSION` |
 | `drawing.libraryFolder()` | `drawing:library-folder` | the RESOLVED library folder — the setting, or `<userData>/library` (🔒 YAZ-1775 D5) |
@@ -152,7 +174,7 @@ calls that go through it; `state`, `window`, `menu`, `link` and `watch` are call
 | `dialog.openDrawing()` | `dialog:open-file` | the native OPEN-FILE dialog, `.excalidraw` filter → `{ path, name, content }` or `{ cancelled: true }`; the bytes come back because the picked file is outside the vault |
 | `dialog.saveDrawing(req)` | `dialog:save-file` | the native SAVE sheet AND the atomic write behind it → `{ path }` or `{ cancelled: true }`; the only path ever written is the one the user just typed |
 | `dialog.saveImage(req)` | `dialog:save-image` | the same one door for a draw.io diagram's Export Image… (🔒 YAZ-1802 D9): `{ defaultName, png, svg }` (both data URLs, both drawn before the sheet opens); a PNG / SVG sheet, and the picked name's extension decides which is written — any other is `UNSUPPORTED_EXTENSION` |
-| `watch(root, cb)` | `watch:*` | chokidar under the root; `ready` / `change` / `add` / `unlink` / `error` |
+| `watch(root, cb)` | `watch:*` | one recursive watcher under the root (`fs/treeWatcher.ts`, YAZ-2073 5F); `ready` / `change` / `add` / `unlink` / `addDir` / `unlinkDir` / `error` |
 | `file.rename(req)` | `fs:rename` | same-parent rename or a move; never overwrites |
 | `file.delete(req)` | `fs:delete` | `shell.trashItem` ONLY — never `fs.rm`, no permanent fallback |
 | `file.clip` / `paste` / `clipState` | `fs:clip*`, `fs:paste` | main owns the ONE app-wide file clipboard |
@@ -182,9 +204,9 @@ calls that go through it; `state`, `window`, `menu`, `link` and `watch` are call
 | `secrets.set(req)` / `has(req)` | `secrets:set` / `secrets:has` | `{ name, value \| null }` writes or clears a secret — `pixabayApiKey` only, any other name is `BAD_REQUEST`; `{ name }` → boolean. NO channel answers a value (🔒 YAZ-1775 D4, YAZ-1842 D1) |
 | `github.status` / `syncNow` / `setEnabled` / `onStatus` | `github:*` | per-vault GitHub sync; a pass that merged carries `merged` (below) |
 | `github.history` / `version` / `restore` | `github:history` / `github:version` / `github:restore` | Version history (YAZ-1897 D4): `(root, path)` → a board's versions newest first; `(root, path, ref)` → one version's `{ kind: 'drawing', json, files }` (pictures from `assets/`, as `drawing:load`) or `{ kind: 'diagram', xml }` (🔒 YAZ-1802 D10, a version that is no diagram is `IO_ERROR`); a diagram restores through `diagram:save`'s write; `(root, path, ref)` writes it over the board. `ref` is opaque (`<sha>:<path>`), anything else is `BAD_REQUEST` |
-| `share.status` / `accounts` / `setup` / `onSetupProgress` / `openCloudflare` | `share:status` / `share:accounts` / `share:setup` / `share:setup-progress` / `share:open-cloudflare` | Share links (YAZ-1799, below): the setup status (no secret), the accounts a pasted key sees, set up from `{ token, accountId? }` with progress pushed to the asking window, and the pre-filled token page in the browser |
-| `share.get` / `list` / `publish` / `setPermission` / `stop` | `share:get` / `share:list` / `share:publish` / `share:set-permission` / `share:stop` | one board's record; the vault's records (`{ root, check? }` — `check: false` skips the live check); share or re-upload `{ root, path, content, id? }`; flip the download flag on the same link; stop. `NOT_SET_UP` before setup, `TOO_LARGE` over 100 MB |
-| `share.setDomain` / `disconnect` / `onChanged` | `share:set-domain` / `share:disconnect` / `share:changed` | attach or remove the custom domain; forget the key (or delete everything first); any status or shares.json change, pushed to EVERY window |
+| `share.status` / `accounts` / `setup` / `onSetupProgress` / `openCloudflare` | `share:status` / `share:accounts` / `share:setup` / `share:setup-progress` / `share:open-cloudflare` | Share links (YAZ-1799, below): the setup status (no secret), the accounts a pasted key sees (`accounts(token)` → `ShareAccount[]`), `setup(token, accountId?)` with progress pushed to the asking window, and the pre-filled token page in the browser |
+| `share.get` / `list` / `publish` / `setPermission` / `stop` | `share:get` / `share:list` / `share:publish` / `share:set-permission` / `share:stop` | one board's record; the vault's records (`list(root, check?)` — `check: false` skips the live check); share or re-upload `{ root, path, content, id? }`; flip the download flag on the same link; stop. `NOT_SET_UP` before setup, `TOO_LARGE` over 100 MB |
+| `share.setDomain` / `disconnect` / `onChanged` | `share:set-domain` / `share:disconnect` / `share:changed` | `setDomain(hostname)` attaches the custom domain (`null` removes it); `disconnect(root, deleteEverything)` forgets the key, deleting everything first when asked; any status or shares.json change, pushed to EVERY window |
 | `storage.stats(root)` / `storage.shrink(root, skip)` | `storage:stats` / `storage:shrink` | Settings › Storage (YAZ-1801): the vault's sizes from the disk and the LOCAL git (never the network), measured on a worker thread (D8), and "Move pictures out of boards" (on the same worker, 🔒 D11) — every legacy board rewritten lean, pictures into `assets/`, its `yaseendraw` block kept verbatim (`updatedAt` does not move); `skip` = absolute paths with unsaved edits in a tab → `{ shrunk, skipped, bytesMoved }` |
 
 Rules that hold across the whole surface:
@@ -192,9 +214,24 @@ Rules that hold across the whole surface:
 - **Main owns the disk and the state file.** The renderer never touches either directly.
 - **Never overwrite.** Create and rename use `wx` / exclusive semantics; a collision is
   `ALREADY_EXISTS`, not a silent clobber.
-- **Atomic writes.** Every write is tmp-file + rename, so a crash cannot truncate a drawing.
+- **Atomic, durable writes.** Every write is tmp-file + fsync + rename, and a new asset is fsynced
+  before the scene naming it lands, so neither a crash nor a power loss can truncate a drawing
+  (🔒 YAZ-2073 D12). A crash mid-write leaves at most the tmp sibling, `<file>.tmp-<12 hex>`
+  (`isAtomicTmp` in `shared/fileKind.ts`): the tree never lists it, no watcher announces it, the
+  vault's `.gitignore` keeps it out of sync commits, and the orphan sweep trashes one in `assets/`
+  once it is past the sweep's age guard.
 - **Echo suppression by mtime.** A write's own watcher event is recognised by the mtime the write
   returned and ignored; a genuine external change while the buffer is dirty raises the conflict bar.
+- **One watcher engine** (`fs/treeWatcher.ts`, 🔒 YAZ-2073 D9) under the vault, `.yaseendraw/` and
+  library watches: one recursive `fs.watch` per folder (no fd per file), each path looked at once it
+  has been quiet 100 ms (`SETTLE_MS`) and classified by `lstat` against what it knew, `ready` after
+  one walk of what is there and only once macOS's FSEvents stream is live (YAZ-2073 5F1), the app's
+  own `atomicWrite` tmp files never announced. A folder that does not exist yet is waited for. On a
+  macOS network volume (no `local` in `mount`'s table, read at most once per 5 s), or where
+  `fs.watch` throws — at the start, or on a folder that arrives but cannot be watched (`EACCES`) —
+  chokidar polling (1 s) runs instead, loaded only then, and what the folder holds still arrives.
+  What consumers see is pinned by `watchConformance.test.ts`, which passed against chokidar before
+  the switch.
 - **One door per direction, per kind.** Where a kind has a dedicated pair (`drawing:load` /
   `drawing:save`), nothing else may read or write those bytes. A save is an ORDER as well as a
   write: the images the scene names land before the scene that names them, and the dates ride
@@ -204,8 +241,10 @@ Rules that hold across the whole surface:
   own size check — because they all have to open legacy scenes that still embed their images as
   base64. There is no separate text-read ceiling any more (the markdown layer that had one went
   in YAZ-1808); `fs:tree` reads only a board's first KB (`BOARD_META_HEAD_BYTES`).
-- **Assets are immutable and append-only.** A save writes an asset with `wx` and treats EEXIST as
-  success; nothing but the orphan sweep ever removes one.
+- **Assets are immutable and append-only.** A save lands an asset on a tmp sibling, fsyncs it, then
+  `link`s it to its content-addressed name (a volume without hard links renames), so a torn write
+  never sits under a valid name; EEXIST is success (🔒 YAZ-2073 D12). Nothing but the orphan sweep
+  ever removes one.
 - **The renderer never reaches a provider** (🔒 YAZ-1775 D4). Iconify and Pixabay are fetched by MAIN, which
   holds the key, does the curation, keeps the cache and enforces the import cap. The renderer's
   whole knowledge of the key is the boolean `pixabayAvailable`.
@@ -310,8 +349,11 @@ there is only what the engine writes into the file itself — `viewBackgroundCol
 `gridStep`. The VIEW is never kept, per board or anywhere (🔒 YAZ-1855 D2/D3): the engine exports
 no zoom or scroll, and every fresh mount opens fitted to the board's live elements (🔒 YAZ-1855 D1 —
 `initialState.viewport` with `fit: 'scale-down'`: never past 100%, floored at the engine's 10%; an
-empty board stays at 100%). A tab already mounted keeps its live zoom; a reload from disk keeps it too. None of the web app's localStorage keys are carried over; the one engine key this app
-touches is `excalidraw.desktopUIMode`, WRITTEN before every mount and never read (⚡ YAZ-1775 R4/R5).
+empty board stays at 100%). A tab already mounted keeps its live zoom; a reload from disk keeps it
+too.
+
+None of the web app's localStorage keys are carried over; the one engine key this app touches is
+`excalidraw.desktopUIMode`, WRITTEN before every mount and never read (⚡ YAZ-1775 R4/R5).
 
 Invariants: `file ∈ tabs` whenever `file` is non-null, and `tabs: []` ⇔ `file: null`.
 `sidebarCollapsed`, `sidebarLens` and both focus lists are WINDOW identity — a duplicate inherits
@@ -355,7 +397,7 @@ The rules are pure (`shared/mediaLibrary.ts`); the disk half (`desktop/src/main/
 follows the app's file idioms: a read never creates the file, a mutation that changes nothing does
 not write, writes are tmp + rename and serialised, a file that is not a version-1 library is moved
 aside as `media.json.corrupt-<epoch>`, and a bad ROW in a good file is dropped rather than costing
-the rest. ONE chokidar watches the library folder (depth 0, `media.json` only), re-pointed when
+the rest. ONE watcher watches the library folder (depth 0, `media.json` only), re-pointed when
 `settings.libraryFolder` changes; an own write notifies every window synchronously and its echo is
 dropped by mtime, an external write (the other machine, through a synced vault) notifies as usual.
 `media:changed` carries no payload because every window re-lists regardless of its vault — that is
@@ -393,7 +435,8 @@ another search is `BAD_REQUEST`, never a silent restart.
   a provider that answered and refused is `PROVIDER_FAILED`; a non-image is `UNSUPPORTED_TYPE`;
   past 20 MB is `TOO_LARGE`, checked on `Content-Length` AND on the bytes that actually arrived.
 - **Previews travel as dataURLs.** No custom protocol, no renderer fetch. A stored `previewUrl` is
-  never read: every tile asks `media:preview` by `provider` + `providerId`.
+  never read: every tile asks `media:preview` by `provider` + `providerId`. The renderer keeps the
+  300 most recently shown in memory (YAZ-2073 5J); an evicted tile refills from main's disk cache.
 - **An import is not cached and does not touch the disk here.** Its bytes go to the engine's
   `insertImages`, and the SAVE path (🔒 YAZ-1775 D3, YAZ-1811) writes them into `<vault>/assets/` before the scene
   names them.
@@ -445,7 +488,7 @@ has gone drops out, an unreadable fragment is skipped rather than offered as a t
 inserted, and an index that is missing or is not a version-1 index is rebuilt from the folder — the
 bad one moved aside as `components.json.corrupt-<epoch>`. A READ NEVER WRITES: the reconciliation is
 in memory and only a mutation puts it on disk, so listing costs a read-only disk nothing and does
-not churn a synced folder. One chokidar watches the library folder at depth 1 (the index, and the
+not churn a synced folder. One watcher watches the library folder at depth 1 (the index, and the
 two files a component is — an `atomicWrite` tmp file is silence), own writes are echo-suppressed by
 path + mtime, and `components:changed` carries no payload because every window re-lists regardless
 of its vault. A delete is `shell.trashItem`, never `fs.rm`, and a trash that fails leaves the row.
@@ -621,7 +664,11 @@ YAZ-1897; the scenario catalogue (S1–S28) is the 📘 comment there.
   points at the pre-rebase commit (local only, replaced by the next merge).
 - **D6 — the idle pull.** A vault whose last pass ended `synced` runs a quiet pass every 60 s
   (`pollMs`): no `syncing` broadcast first, no broadcast at all when nothing changed, never while
-  edits are settling, `pending` or `attention`.
+  edits are settling, `pending` or `attention`. It looks before it passes (YAZ-2073 5H):
+  `lookAtRemote` runs `fetch` + one `rev-list` (2 git spawns; a full pass makes 9) and answers
+  `level` (a pass with nothing to do), `moved` (news on the remote, an unpushed commit or no
+  upstream — origin already fetched, so the full pass that follows does not fetch again) or
+  `unknown` (the look failed; the full pass does it all).
 - **D4 — seeing it.** A merge puts up one notice ("Merged Sam's changes into “Roadmap” · 2 shapes
   edited on both — kept the newest.") with **See changes**; a notice with an action waits to be
   dismissed. Right-click a board › **Version history** (`client/src/history/`) lists its versions;
@@ -638,8 +685,8 @@ app's first sync on open meets every case).
 ### Secrets (🔒 YAZ-1775 D4, ⚡ YAZ-1842 D1)
 
 `<userData>/secrets.json` = `{ version: 2, values: Record<name, value> }`, plain text, file mode
-`0600`, owned by `desktop/src/main/secrets.ts`. It is NOT part of the app state file and never rides
-`state:changed`; the renderer can write and ask, never read. It is plain text on purpose: version 1
+`0600` from the tmp file's creation on, owned by `desktop/src/main/secrets.ts`. It is NOT part of
+the app state file and never rides `state:changed`; the renderer can write and ask, never read. It is plain text on purpose: version 1
 encrypted values with Electron's `safeStorage`, which on macOS binds a Keychain item to the app's
 code identity — and an ad-hoc-signed app (locked: no Developer ID) is a new identity on every
 build, so a key saved by one release was unreadable by the next. A version-1 file is moved aside as
@@ -797,7 +844,7 @@ of the engine's main menu by 🔒 YAZ-1775 D10 (there is no `<MainMenu>` in a dr
 trigger is hidden). Main enables them only while the window a menu action would target has a
 board of their kind in front, rebuilding the menu when any window's active file changes and when focus
 moves between windows. Each is pushed to that window's renderer, which dispatches it as a DOM
-event on the VISIBLE drawing layer (`client/src/drawings/boardCommand.ts`) — several tabs are
+event on the VISIBLE drawing layer (`client/src/documents/boardCommand.ts`) — several tabs are
 mounted at once, each with its own engine, so a prop or a `window` listener would reach the wrong
 canvas. The drawing then calls the engine's own door: `openDialog: { name: 'imageExport' }` (the
 engine's PNG / SVG export dialog), or `viewBackgroundColor`, which the engine writes into the
@@ -826,7 +873,10 @@ the store cache, which `state:changed` refreshes.
 **🔒 D4 — the tree refreshes on EVERY watcher event.** A save is a `change`, and a save is what
 moves `updatedAt`; the Sidebar used to skip `change`. One tree walk per save (one stat and a 1 KB
 head read per board), with no own-write echo guard on purpose: our own save is the reorder we want.
-Walks overlap, so an answer older than the tree on screen is dropped by `generatedAt`.
+Walks overlap, so an answer older than the tree on screen is dropped by `generatedAt`. Coalesced
+(YAZ-2073 5E): main runs one walk per root at a time and callers arriving mid-walk share ONE trailing
+walk, and the Sidebar waits out 120 ms of watcher quiet (`WATCH_REFRESH_MS`; `ready` refreshes at
+once), so a 230-file sync pull is a couple of walks, not 230 concurrent ones.
 
 **🔒 D5 — the control.** One button (`.sidebar__sort`) in the lens row, Files lens only, hidden
 while a query is typed; it opens the same `ContextMenu` the rows use with three items and a `✓`
@@ -851,8 +901,13 @@ save" for the two dates (🔒 YAZ-1834 D7). No new IPC. The demo vault behind th
 **🔒 D1 — drawn on the first hover, in the renderer, kept in memory.** No new IPC: the picture is
 `drawing:load` → `parseSceneText` → `restoreElements` → `visibleElements` → `createScenePreviewPng`
 (`lib/scenePreview.ts`) fit to 1200 × 800 with 16 px padding. Nothing visible answers `''` ("Empty
-board"); a refused load or a failed draw is the cache's `null` ("Preview unavailable"). Nothing is
-written to the vault or to userData; a relaunch redraws. The key is `root \n path \n mtime \n
+board"); a refused load or a failed draw is the cache's `null` ("Preview unavailable"). The load
+passes `imageMaxPx` (the picture's longest side, 1200): main answers each plain PNG at the next
+power of two at or above the size it is drawn in the picture — never smaller, never upscaled; a
+cropped, colour-profiled, EXIF-rotated or animated PNG and every other type keep their bytes —
+cached per immutable asset as `<userData>/thumbs/<fileId>-<px>.png`, reused across launches, the
+least recently used dropped past 256 MiB (🔒 YAZ-2073 D6). Nothing is written to the vault and no
+board's picture is stored; a relaunch redraws. The key is `root \n path \n mtime \n
 theme \n diagramDarkColors` — mtime, not the `updatedAt` block, because every write moves it and
 the block's one advantage (surviving a clone) means nothing to a memory cache. A draw.io diagram
 is `diagram:load` → the D9 renderer instead (🔒 YAZ-1802 D9), same bounds, `''` and `null`.
@@ -869,7 +924,7 @@ toggle, the row leaving the tree, and a capture-phase Escape that touches nothin
 theme flip is a new key, swapped in place. Board rows drop the native path tooltip while previews
 are on.
 
-**🔒 D6 — bounded.** `createPreviewCache(fetch, { limit })` evicts the least recently seen picture;
+**🔒 YAZ-1800 D6 — bounded.** `createPreviewCache(fetch, { limit })` evicts the least recently seen picture;
 boards keep 32. The demo vault is `tools/seedPreviewDemoVault.mjs`, proved by
 `previewVault.integration.test.ts`.
 
@@ -970,8 +1025,8 @@ buttons painted over the active tab and took its clicks.
 **Focus on tab reveal** (🔒 the focus-handoff decision on YAZ-1812). Several tabs are mounted at
 once; the canvas has `autoFocus`, but that fires only at mount, so switching to an
 already-mounted tab used to leave the keyboard nowhere until the user clicked. The reveal effect in
-`DrawingEditor` (the `IntersectionObserver` that re-measures the canvas) now also hands it the
-keyboard through `DrawingSurfaceApi.focus()` — GATED by `drawings/focusHandoff.ts`: only when
+`useBoardDocument` (the `IntersectionObserver` that re-measures the canvas) now also hands it the
+keyboard through `DrawingSurfaceApi.focus()` — GATED by `documents/focusHandoff.ts`: only when
 `document.activeElement` is the body or nothing at all, or is inside the tab layer (the tab being
 left). The sidebar search bar, the vault switcher, a dialog and the tab strip keep what they have;
 a tab becoming visible must never pull ⌘K's caret out from under the user. The re-measure is
@@ -986,7 +1041,8 @@ search field (YAZ-1818, the web app's `onRequestImageStudioSearch`, as a counter
 phase, never `window`, and suppressed whenever the keystroke could have meant something else (an
 editable target, a live selection, a gesture in flight, a dialog, or anything selected on the
 canvas). That last gate is why ⌘C with a selection is still the engine's COPY and nothing else
-(YAZ-1819): the Components tab is what ⌘C means only when there is nothing to copy. Settings › Hotkeys lists every one of them and is the single place that copy lives.
+(YAZ-1819): the Components tab is what ⌘C means only when there is nothing to copy. Settings ›
+Hotkeys lists every one of them and is the single place that copy lives.
 
 **Inside a draw.io diagram** (🔒 YAZ-1802 D17) the keyboard belongs to the iframe, and no key
 pressed there reaches the renderer's document. The menu's accelerators (⌘K, ⌘W, ⌘O, ⌘⇧O, ⌘, , the
@@ -1157,10 +1213,13 @@ off for up to ~90 s while a fresh workers.dev address comes up).
 **The viewer** (🔒 YAZ-1799 D13). React and the SAME vendored Excalidraw the app draws with, bundled
 by `tools/buildShareViewer.mjs` into `share/dist/assets/` (part of `npm run build` and `npm run
 dev`), shipped as the `share-viewer` extraResource and uploaded as the Worker's static assets —
-fonts included, so nothing is fetched from a CDN at view time. View mode only; Download .excalidraw
-and Download PNG (2×) when allowed. Every page is sent with `script-src 'self'; connect-src 'self';
-frame-ancestors 'none'`, `nosniff` and `no-referrer`, and has no inline script (the board's details
-ride a JSON data block; `EXCALIDRAW_ASSET_PATH` is set by the bundle's first module).
+with Excalidraw's fonts under `/assets/fonts/`, so nothing is fetched from a CDN at view time. The
+app carries those fonts ONCE (YAZ-2073 3C): setup publishes the renderer's own copy
+(`excalidrawFontsDir` in `ipc/share.ts`, on the rule in `shared/excalidrawFonts.ts`), and the
+viewer build ships none. View mode only; Download .excalidraw and Download PNG (2×) when allowed.
+Every page is sent with `script-src 'self'; connect-src 'self'; frame-ancestors 'none'`,
+`nosniff` and `no-referrer`, and has no inline script (the board's details ride a JSON data block;
+`EXCALIDRAW_ASSET_PATH` is set by the bundle's first module).
 
 **The UI.** One Share dialog (🔒 YAZ-1799 D6, the Google Docs model) behind File › Share Link
 (⌘⇧L) and the sidebar's right-click Share: General access *Not shared* / *Anyone with the link*,
@@ -1187,7 +1246,11 @@ an unpackaged (dev) build — a shipped app always sends the real token to the r
   window from a disconnected monitor comes back on screen.
 - Closing runs the flush handshake: main holds the window open, pushes `app:flush`, and waits for
   `app:flushed` (5s cap) so an in-flight autosave lands before the process lets go. ⌘Q does the
-  same for every window, then writes the state file.
+  same for every window in parallel, then writes the state file and runs the last sync pass
+  (`runQuitSequence` in `quitSequence.ts`, 🔒 YAZ-2073 D11); a window whose flush fails skips
+  neither step, and the sequence always ends in `app.exit`. SIGTERM and SIGINT (a logout, `kill`,
+  ⌃C in a terminal) are the same quit: Electron turns them into `app.quit()`
+  (`e2e/autosave.spec.ts` pins it).
 - One running instance. A second launch focuses the first; a `yaseendraw://` URL in its argv
   routes instead of focusing.
 
@@ -1197,7 +1260,12 @@ an unpackaged (dev) build — a shipped app always sends the real token to the r
 `yaseendraw:///Users/me/vault/Board.excalidraw`, with an optional `?root=` (also a percent-encoded
 absolute path) naming the vault the link should open under. `shared/links.ts` owns the one
 encoding, so main's parser and the renderer's generator cannot drift; `#` and `?` are encoded on
-top of `encodeURI` because either would truncate the path on parse.
+top of `encodeURI` because either would truncate the path on parse. A Windows drive path rides
+the link the way `file:///C:/…` does — `C:\Vault\Board.excalidraw` ⇄
+`yaseendraw:///C:/Vault/Board.excalidraw` — and parses back to its native `\` form, so an
+Explorer double-click routes like a Finder one (YAZ-2073 2D). Path containment everywhere ("is
+this inside that vault or folder") goes through `shared/paths.ts` `isWithin`, which compares by
+whole segment in the base path's own separator.
 
 Main routes a link to the best window — one already on that vault, else the focused one, else a
 new one — and the renderer then treats it exactly like a sidebar click (activate the tab if the
@@ -1251,9 +1319,10 @@ but for two config hooks, inside an iframe on its OWN origin.
   end; comments after it are fine), so a broken file is an error pane and draw.io is never mounted
   on it — it cannot autosave over what it failed to read — and `diagram:save` refuses anything that
   is not a whole diagram (`BAD_REQUEST`) before touching the disk. The
-  host reuses `lib/autosave.ts` (500 ms), the watcher rule (echo / reload when clean / Reload–Keep
-  mine when dirty), the quit flush, the tab-close flush, rename continuity and `noteBoardSaved`
-  exactly as `DrawingEditor` does.
+  host shares `useBoardDocument` with `DrawingEditor` (🔒 YAZ-2073 D16): `lib/autosave.ts` (500 ms),
+  the watcher rule (echo / reload when clean / Reload–Keep mine when dirty), the quit flush, the
+  tab-close flush, rename continuity and `noteBoardSaved`; main's two doors share
+  `fs/boardDocument.ts` with `drawing:load` / `drawing:save`.
 - **🔒 D17 — the handshake.** Our `PostConfig.js` posts `{ event: 'yaseenReady' }` once its patches
   and fonts are in; the host answers draw.io's `configure` only after that (a 3 s fallback, so a
   missing overlay costs the keymap, never the document), then `init` → `load` with `autosave: 1`,
@@ -1306,28 +1375,56 @@ but for two config hooks, inside an iframe on its OWN origin.
 ## Packaging
 
 `npm run desktop:build` runs `electron-vite build` and then electron-builder through
-`tools/packDesktop.mjs`, which stamps the ROOT `package.json` version (`0.1.0`) into the bundle —
+`tools/packDesktop.mjs`, which stamps the ROOT `package.json` version (`<version>`) into the bundle —
 `desktop/package.json`'s own version is never what ships.
 
 - appId `com.yasinarshad.yaseendraw`, productName **Yaseen Draw**, icon from `desktop/build/`
   (one 1024² `icon.png`; electron-builder derives `Contents/Resources/icon.icns`).
 - macOS: arm64 `dmg` + `dir`, `identity: null` — ad-hoc signed by `desktop/build/adhocSign.cjs`,
-  never Developer-ID signed or notarized (out of scope). `codesign -dv` on the packed bundle reads
-  `Signature=adhoc` with `TeamIdentifier=not set`; `spctl -a -t install` therefore REJECTS it, and
-  that rejection is the expected result, not a defect — it is what the one-time **Open Anyway**
-  below answers.
+  never Developer-ID signed or notarized (out of scope). The dmg is lzma-compressed (ULMO, macOS
+  10.15+): electron-builder's own zlib image is converted by `packDesktop.mjs --mac`
+  (`tools/lib/dmg.mjs`, YAZ-2073 3A), which mounts the new image and verifies the app's seal before
+  replacing the old one, and drops the `.blockmap` (nothing reads it — no auto-update).
+  `codesign -dv` on the packed bundle reads `Signature=adhoc` with `TeamIdentifier=not set`;
+  `spctl -a -t install` therefore REJECTS it, and that rejection is the expected result, not a
+  defect — it is what the one-time **Open Anyway** below answers.
 - The bundle declares what it owns: `CFBundleURLSchemes` `yaseendraw`, a `.excalidraw` document
   type named "Excalidraw Drawing" and a `.drawio` one named "draw.io Diagram" (🔒 YAZ-1802 D14),
   both with role `Editor` and `LSHandlerRank` `Owner`, so Finder hands both to this app (🔒 YAZ-1775 D1).
-- Windows: unsigned x64 NSIS installer.
+- Windows: unsigned x64 NSIS installer. `.github/workflows/windows.yml` builds it on every pull
+  request that touches `desktop/`, `shared/`, `share/`, the pack tools or the root package files
+  (build only — nothing is installed, signed or uploaded), so a break shows before a `v*` tag.
+- The app is English only, so Chromium's own locale paks ship in English only (🔒 YAZ-2073 D3,
+  YAZ-2087): `desktop/build/adhocSign.cjs` (`afterPack`, before the seal) keeps the framework's
+  `en*.lproj` folders on the Mac (8 of 220, 1.1 of 48.7 MB) and `locales/en-*.pak` on Windows
+  (2 of 55). The app's own 55 `Contents/Resources/*.lproj` markers stay, so AppKit's Open/Save
+  panels and system menu items still follow the OS language (`electronLanguages` would drop those
+  too). Known consequence on a non-English OS: Chromium-drawn strings (validation bubbles, the
+  file/date/colour pickers) are English, and `navigator.language` and the default `Intl` locale are
+  en-US — the sidebar's Name sort (`shared/treeSort.ts` `byName`) uses English collation, and
+  whatever the engine formats with the default locale (numbers) reads English. Dates were already
+  pinned to en (`client/src/lib/format.ts`, `relativeTime.ts`).
 - `files: ["out/**"]` is the whole app payload: the main bundle carries its dependencies (chokidar is
-  pure JS and gets bundled), so the packaged app ships no `node_modules`. The one `extraResources`
-  entry is the share viewer's built assets (`share/dist/assets` → `Contents/Resources/share-viewer`,
-  YAZ-1883), which main uploads at share setup; `viewerAssetsDir` in `ipc/share.ts` reads there when
-  packaged and from the repo checkout in dev.
-- The renderer serves from the custom `app://yaseen/` protocol; Excalidraw's fonts are copied
-  beside the bundle at build time so a scene with text never reaches a CDN (🔒 the offline rule).
-  The draw.io webapp (~47 MB, 2 660 files) is copied from the pack cache into `out/drawio` the same
+  pure JS and gets bundled), so the packaged app ships no `node_modules`. That holds because
+  `desktop/package.json` has no `dependencies` (electron-builder packs those; chokidar is a
+  devDependency) and `externalizeDeps` is off for main and preload; `tools/mainBundle.test.mjs`
+  builds both and fails on any `require` but Node built-ins and electron (YAZ-2073 3E). The one
+  `extraResources` entry is the share viewer's built assets (`share/dist/assets` →
+  `Contents/Resources/share-viewer`, YAZ-1883), which main uploads at share setup;
+  `viewerAssetsDir` in `ipc/share.ts` reads there when packaged and from the repo checkout in dev.
+- The renderer is minified (esbuild, as Vite ships it) with `sourcemap: 'hidden'`; the build moves
+  every `.map` to the gitignored `desktop/.maps/<version>/` (`renderSourcemapsAside()` in
+  `electron.vite.config.ts`, 🔒 YAZ-2073 D14), so none ships and a minified stack trace from that
+  version can still be symbolicated on the machine that built it. Each build replaces the folder
+  for its version, so a later build of the SAME version drops the release's maps: copy a release's
+  `desktop/.maps/<version>/` away before building that version again.
+- The renderer serves from the custom `app://yaseen/` protocol, registered with `codeCache` (and
+  `app://drawio/` with it: `appScheme.ts`, 🔒 YAZ-2073 D13), so V8 keeps compiled code in
+  `<userData>/Code Cache` across launches — ~15 MB once draw.io has opened, Chromium's own LRU —
+  instead of recompiling every script on every launch. Excalidraw's fonts are copied
+  beside the bundle at build time, under `EXCALIDRAW_ASSET_DIR` (`shared/excalidrawFonts.ts`), so a
+  scene with text never reaches a CDN (🔒 the offline rule).
+  The draw.io webapp (46.4 MB, 2 660 files) is copied from the pack cache into `out/drawio` the same
   way (`drawioAssets()` in `electron.vite.config.ts`, replaced whole on every build) and served as
   `app://drawio/` (🔒 YAZ-1802 D5). It is PRUNED to what the editor, the picture page and the share
   viewer load (YAZ-1973: a deny list with reasons in `tools/lib/drawioPack.mjs`, the request set
@@ -1340,7 +1437,10 @@ but for two config hooks, inside an iframe on its OWN origin.
   `LICENSE-drawio.txt` (jgraph/drawio's `LICENSE` at the pinned tag) at its root, and no `LICENSE`
   anywhere in the war is ever pruned (`stencils/`, `shapes/`, `templates/`, `img/`,
   `js/libavoid-js/`).
-- Size (v0.1.8, YAZ-1973): the `.app` is ~375 MB and the dmg ~175 MB (from ~528 MB / ~208 MB).
+- Size, as `npm run perf:budget` measures it (MB = 10⁶ bytes): the YAZ-2073 build's `.app` is
+  319.9 MB and its dmg 116.1 MB, from v0.1.11's 387.2 MB / 172.5 MB. The ceilings are in
+  `tools/perf/budget.json`, under the ratchet (🔒 YAZ-2073 D17): a change that shrinks a metric
+  lowers its ceiling in the same PR, and raising one needs Yasin's OK.
 - `.github/workflows/release.yml` builds both on a `v*` tag (node 22, `CSC_IDENTITY_AUTO_DISCOVERY:
   false`, `fail_on_unmatched_files: true`) and attaches them to that tag's release.
 - 🔒 **Releases are Yasin's call.** No tag, no GitHub release and no `npm version` without him
@@ -1349,9 +1449,14 @@ but for two config hooks, inside an iframe on its OWN origin.
 
 Bumping the vendored engine is `node tools/packEngine.mjs --commit <sha>` followed by `npm ci` —
 see `client/vendor/README.md` for the two traps that script exists to defuse.
+A bump that must change no pixels proves it with `node tools/perf/exportPixels.mjs --dev --out <a>`
+on the old build and `--out <b> --compare <a>` on the new: PNG, JPEG, WebP, GIF and SVG images,
+cropped, flipped and rotated, and text, exported (PNG and SVG) and on the live canvas, in both
+themes (YAZ-2073 5A/5B). Off-thread image decode (🔒 YAZ-2073 D5) was tried and closed on YAZ-2126:
+it failed the memory and long-task gates (fork branch `yaz-2073-5b1`); next idea is YAZ-2134.
 
 ## Out of scope (locked)
 
 No browser mode — the app runs only inside Electron. No path jail in the file layer. No
 Developer-ID signing or notarization, no auto-update, no Intel or universal builds. No end-to-end
-UI-driver suite, by agents or in CI.
+suite in CI (the Playwright suite is local — ⚡ YAZ-2073 D17, "Scripts" above).

@@ -4,23 +4,16 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { BrowserWindow, ipcMain } from 'electron'
 import { MEDIA_LIBRARY_FILE, type MediaItem } from '@shared/types'
-import { CH, type Envelope } from '../../channels'
+import { CONTRACT } from '@shared/ipc'
 import type { MediaStore } from '../library/mediaStore'
 import { createStore, type Store } from '../store'
 import { registerMediaLibraryIpc } from './mediaLibrary'
+import { registered } from './ipcFixture'
 
 vi.mock('electron', () => ({
   ipcMain: { handle: vi.fn(), on: vi.fn() },
   BrowserWindow: { getAllWindows: vi.fn(() => []) },
 }))
-
-type Handler = (event: unknown, ...args: unknown[]) => Promise<Envelope<unknown>>
-
-function registered(channel: string): Handler {
-  const call = vi.mocked(ipcMain.handle).mock.calls.find(([ch]) => ch === channel)
-  if (call === undefined) throw new Error(`no handler registered for ${channel}`)
-  return call[1] as unknown as Handler
-}
 
 const ok = (value: unknown) => ({ ok: true, value })
 const bad = (code: string) => expect.objectContaining({ ok: false, error: expect.objectContaining({ code }) })
@@ -59,14 +52,10 @@ afterEach(async () => {
   await rm(dir, { recursive: true, force: true })
 })
 
-const favorites = (req: unknown) => registered(CH.mediaFavorites)({ sender }, req)
-const recent = (req: unknown) => registered(CH.mediaRecent)({ sender }, req)
+const favorites = (req: unknown) => registered(CONTRACT.media.favorites)({ sender }, req)
+const recent = (req: unknown) => registered(CONTRACT.media.recent)({ sender }, req)
 
 describe('registerMediaLibraryIpc (🔒 YAZ-1775 D4 / D5, YAZ-1817)', () => {
-  it('registers exactly the two media channels', () => {
-    expect(vi.mocked(ipcMain.handle).mock.calls.map(([ch]) => ch).sort()).toEqual([CH.mediaFavorites, CH.mediaRecent].sort())
-  })
-
   it('reads and writes `<userData>/library/media.json` by default (🔒 YAZ-1775 D5), every verb answering its list', async () => {
     expect(await favorites({ op: 'list' })).toEqual(ok([]))
     const added = await favorites({ op: 'add', item: item() })
@@ -101,11 +90,11 @@ describe('registerMediaLibraryIpc (🔒 YAZ-1775 D4 / D5, YAZ-1817)', () => {
     vi.mocked(BrowserWindow.getAllWindows).mockReturnValue([a, b] as unknown as BrowserWindow[])
     await new Promise((r) => setTimeout(r, 300)) // let the poller anchor
     await favorites({ op: 'add', item: item() })
-    expect(a.webContents.send).toHaveBeenCalledExactlyOnceWith(CH.mediaChanged)
-    expect(b.webContents.send).toHaveBeenCalledExactlyOnceWith(CH.mediaChanged)
+    expect(a.webContents.send).toHaveBeenCalledExactlyOnceWith(CONTRACT.media.onChanged.channel)
+    expect(b.webContents.send).toHaveBeenCalledExactlyOnceWith(CONTRACT.media.onChanged.channel)
     a.webContents.send.mockClear()
     await writeFile(path.join(userData, 'library', MEDIA_LIBRARY_FILE), JSON.stringify({ version: 1, favorites: [], recent: [] }))
-    await until(() => a.webContents.send.mock.calls.some(([ch]) => ch === CH.mediaChanged))
+    await until(() => a.webContents.send.mock.calls.some(([ch]) => ch === CONTRACT.media.onChanged.channel))
     expect(await favorites({ op: 'list' })).toEqual(ok([]))
   })
 
@@ -118,7 +107,7 @@ describe('registerMediaLibraryIpc (🔒 YAZ-1775 D4 / D5, YAZ-1817)', () => {
     await writeFile(path.join(chosen, MEDIA_LIBRARY_FILE), JSON.stringify({ version: 1, favorites: [{ ...item({ itemKey: 'chosen', providerId: 'c' }), updatedAt: 1 }], recent: [] }))
     a.webContents.send.mockClear()
     store.setSettings({ ...store.get().settings, libraryFolder: chosen })
-    expect(a.webContents.send).toHaveBeenCalledWith(CH.mediaChanged)
+    expect(a.webContents.send).toHaveBeenCalledWith(CONTRACT.media.onChanged.channel)
     expect(await favorites({ op: 'list' })).toEqual(ok([expect.objectContaining({ itemKey: 'chosen' })]))
     // A settings change that leaves the folder alone is not a library change.
     a.webContents.send.mockClear()

@@ -16,7 +16,9 @@
  * Fixing it needs a main-side broadcast the rename path does not have today.
  */
 
-/** What a mounted editor exposes to the rename/delete flows (registered by `DrawingEditor`). */
+import { isWithin } from '@shared/paths'
+
+/** What a mounted editor exposes to the rename/delete flows (registered by `useBoardDocument`). */
 export interface RenameContinuityHandle {
   /** Push the live scene through autosave and resolve once it is on disk (or blocked). */
   flush(): Promise<void>
@@ -46,8 +48,7 @@ export function flushRenamedPath(path: string): Promise<void> {
  * so each scene is on disk and travels with its file. No editors there → no-op.
  */
 export function flushRenamedDir(dir: string): Promise<void> {
-  const prefix = `${dir}/`
-  return Promise.all([...handles].filter(([path]) => path.startsWith(prefix)).map(([, handle]) => handle.flush())).then(() => undefined)
+  return Promise.all([...handles].filter(([path]) => isWithin(dir, path, true)).map(([, handle]) => handle.flush())).then(() => undefined)
 }
 
 /** The `file:renamed` / `file:deleted` step, run BEFORE the workspace remap unmounts the editor. */
@@ -57,8 +58,7 @@ export function retirePath(path: string): void {
 
 /** The kind-`dir` twin: every editor under `dir` retires. */
 export function retireDir(dir: string): void {
-  const prefix = `${dir}/`
-  for (const [path, handle] of handles) if (path.startsWith(prefix)) handle.retire()
+  for (const [path, handle] of handles) if (isWithin(dir, path, true)) handle.retire()
 }
 
 /**

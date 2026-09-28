@@ -9,24 +9,17 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { BrowserWindow, ipcMain } from 'electron'
 import { LIBRARY_COMPONENTS_DIR } from '@shared/types'
-import { CH, type Envelope } from '../../channels'
+import { CONTRACT } from '@shared/ipc'
 import type { ComponentStore } from '../library/componentStore'
 import { createStore, type Store } from '../store'
 import { registerComponentsIpc } from './components'
+import { registered } from './ipcFixture'
 
 vi.mock('electron', () => ({
   ipcMain: { handle: vi.fn(), on: vi.fn() },
   BrowserWindow: { getAllWindows: vi.fn(() => []) },
   shell: { trashItem: vi.fn(async () => undefined) },
 }))
-
-type Handler = (event: unknown, ...args: unknown[]) => Promise<Envelope<unknown>>
-
-function registered(channel: string): Handler {
-  const call = vi.mocked(ipcMain.handle).mock.calls.find(([ch]) => ch === channel)
-  if (call === undefined) throw new Error(`no handler registered for ${channel}`)
-  return call[1] as unknown as Handler
-}
 
 const ok = (value: unknown) => ({ ok: true, value })
 const bad = (code: string) => expect.objectContaining({ ok: false, error: expect.objectContaining({ code }) })
@@ -73,23 +66,14 @@ afterEach(async () => {
   await rm(dir, { recursive: true, force: true })
 })
 
-const list = () => registered(CH.componentsList)({ sender })
-const save = (req: unknown) => registered(CH.componentsSave)({ sender }, req)
-const read = (req: unknown) => registered(CH.componentsRead)({ sender }, req)
-const renameIt = (req: unknown) => registered(CH.componentsRename)({ sender }, req)
-const remove = (req: unknown) => registered(CH.componentsDelete)({ sender }, req)
-const preview = (req: unknown) => registered(CH.componentsPreview)({ sender }, req)
+const list = () => registered(CONTRACT.components.list)({ sender })
+const save = (req: unknown) => registered(CONTRACT.components.save)({ sender }, req)
+const read = (req: unknown) => registered(CONTRACT.components.read)({ sender }, req)
+const renameIt = (req: unknown) => registered(CONTRACT.components.rename)({ sender }, req)
+const remove = (req: unknown) => registered(CONTRACT.components.delete)({ sender }, req)
+const preview = (req: unknown) => registered(CONTRACT.components.preview)({ sender }, req)
 
 describe('registerComponentsIpc (🔒 YAZ-1775 D5, YAZ-1819)', () => {
-  it('registers exactly the six component channels', () => {
-    expect(
-      vi
-        .mocked(ipcMain.handle)
-        .mock.calls.map(([ch]) => ch)
-        .sort(),
-    ).toEqual([CH.componentsDelete, CH.componentsList, CH.componentsPreview, CH.componentsRead, CH.componentsRename, CH.componentsSave].sort())
-  })
-
   it('save → list → read → preview → rename → delete, all under `<userData>/library` by default (🔒 YAZ-1775 D5)', async () => {
     const saved = await save({ name: 'A card', fragmentJson: fragment(), previewPng: PNG })
     expect(saved).toEqual(ok(expect.objectContaining({ slug: 'a-card', name: 'A card', elementCount: 1 })))
@@ -146,10 +130,10 @@ describe('registerComponentsIpc (🔒 YAZ-1775 D5, YAZ-1819)', () => {
     const b = fakeWindow()
     vi.mocked(BrowserWindow.getAllWindows).mockReturnValue([a, b] as unknown as BrowserWindow[])
     await save({ name: 'A card', fragmentJson: fragment(), previewPng: PNG })
-    expect(a.webContents.send).toHaveBeenCalledWith(CH.componentsChanged)
-    expect(b.webContents.send).toHaveBeenCalledWith(CH.componentsChanged)
+    expect(a.webContents.send).toHaveBeenCalledWith(CONTRACT.components.onChanged.channel)
+    expect(b.webContents.send).toHaveBeenCalledWith(CONTRACT.components.onChanged.channel)
     // No payload: a window re-lists regardless of its root, because the library is one folder.
-    expect(a.webContents.send).toHaveBeenCalledExactlyOnceWith(CH.componentsChanged)
+    expect(a.webContents.send).toHaveBeenCalledExactlyOnceWith(CONTRACT.components.onChanged.channel)
   })
 
   it('a change of `settings.libraryFolder` re-points the store AND counts as a change of the library', async () => {
@@ -160,7 +144,7 @@ describe('registerComponentsIpc (🔒 YAZ-1775 D5, YAZ-1819)', () => {
     vi.mocked(BrowserWindow.getAllWindows).mockReturnValue([win] as unknown as BrowserWindow[])
     store.setSettings({ ...store.get().settings, libraryFolder: other })
     await until(() => win.webContents.send.mock.calls.length > 0)
-    expect(win.webContents.send).toHaveBeenCalledWith(CH.componentsChanged)
+    expect(win.webContents.send).toHaveBeenCalledWith(CONTRACT.components.onChanged.channel)
     expect(await list()).toEqual(ok([]))
     store.setSettings({ ...store.get().settings, libraryFolder: null })
     expect(await list()).toEqual(ok([expect.objectContaining({ slug: 'a-card' })]))

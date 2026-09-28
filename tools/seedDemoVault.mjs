@@ -22,111 +22,30 @@
  * and `yaseendraw.json`'s schema is the app's own business (see LAUNCH.md "Behaviour checks" for
  * the isolated-profile recipe).
  */
-import { randomFillSync } from 'node:crypto'
-import { execFileSync } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
-import zlib from 'node:zlib'
-import { assetFileName, fileIdFor, fracIndex, parseArgs } from './lib/seedDemoVault.mjs'
+import { assetFileName, fileIdFor } from './lib/seedDemoVault.mjs'
+import { cli, embedded, git as runGit, gradientPNG, indexedKit, noisePNG, refuseExisting, rnd, scene, solidPNG, wipe, write } from './lib/seedKit.mjs'
 
 // ---------------------------------------------------------------- paths
 const USAGE = 'usage: node tools/seedDemoVault.mjs --vault <dir> [--origin <bare-dir>] [--force]'
 
-let args
-try {
-  args = parseArgs(process.argv.slice(2))
-} catch (err) {
-  console.error(`${err.message}\n${USAGE}`)
-  process.exit(2)
-}
-if (args.help) {
-  console.log(USAGE)
-  process.exit(0)
-}
+const args = cli(USAGE, { '--vault': 'dir', '--origin': 'dir' }, ['--vault'])
 const VAULT = args.vault
-const ORIGIN = args.origin
+const ORIGIN = args.origin ?? `${VAULT} (origin).git`
 const ASSETS = path.join(VAULT, 'assets')
 
 // A target that already exists is somebody's data until they say otherwise.
-for (const [label, target] of [
-  ['vault', VAULT],
-  ['origin', ORIGIN],
-]) {
-  if (fs.existsSync(target) && !args.force) {
-    console.error(`refusing to wipe an existing ${label}: ${target}\npass --force if that is really what you want\n${USAGE}`)
-    process.exit(2)
-  }
-}
+refuseExisting(VAULT, USAGE, { what: 'vault', force: args.force })
+refuseExisting(ORIGIN, USAGE, { what: 'origin', force: args.force })
 
-/** `git` is found on PATH like every other tool here; `GIT` overrides it for an odd install. */
-const GIT = process.env.GIT || 'git'
 const NOW = Date.now()
 
 // ---------------------------------------------------------------- tiny image encoders
-const CRC_TABLE = new Uint32Array(256).map((_, n) => {
-  let c = n
-  for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1
-  return c >>> 0
-})
-function crc32(buf) {
-  let c = 0xffffffff
-  for (let i = 0; i < buf.length; i++) c = CRC_TABLE[(c ^ buf[i]) & 0xff] ^ (c >>> 8)
-  return (c ^ 0xffffffff) >>> 0
-}
-function pngChunk(type, data) {
-  const len = Buffer.alloc(4)
-  len.writeUInt32BE(data.length)
-  const typeAndData = Buffer.concat([Buffer.from(type, 'ascii'), data])
-  const crc = Buffer.alloc(4)
-  crc.writeUInt32BE(crc32(typeAndData))
-  return Buffer.concat([len, typeAndData, crc])
-}
-/** RGB 8-bit PNG. `pixel(x, y)` returns [r, g, b]; or pass `raw` (pre-filled scanlines incl. filter bytes). */
-function encodePNG(width, height, pixel, { level = 6, raw } = {}) {
-  const stride = 1 + width * 3
-  if (!raw) {
-    raw = Buffer.alloc(stride * height)
-    for (let y = 0; y < height; y++) {
-      const row = y * stride
-      raw[row] = 0 // filter: none
-      for (let x = 0; x < width; x++) {
-        const [r, g, b] = pixel(x, y)
-        const o = row + 1 + x * 3
-        raw[o] = r
-        raw[o + 1] = g
-        raw[o + 2] = b
-      }
-    }
-  }
-  const ihdr = Buffer.alloc(13)
-  ihdr.writeUInt32BE(width, 0)
-  ihdr.writeUInt32BE(height, 4)
-  ihdr[8] = 8 // bit depth
-  ihdr[9] = 2 // colour type: RGB
-  ihdr[10] = 0
-  ihdr[11] = 0
-  ihdr[12] = 0
-  return Buffer.concat([
-    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
-    pngChunk('IHDR', ihdr),
-    pngChunk('IDAT', zlib.deflateSync(raw, { level })),
-    pngChunk('IEND', Buffer.alloc(0)),
-  ])
-}
-const solidPNG = (w, h, [r, g, b]) => encodePNG(w, h, () => [r, g, b])
-const gradientPNG = (w, h, [r0, g0, b0], [r1, g1, b1]) =>
-  encodePNG(w, h, (x, y) => {
-    const t = (x / (w - 1) + y / (h - 1)) / 2
-    return [Math.round(r0 + (r1 - r0) * t), Math.round(g0 + (g1 - g0) * t), Math.round(b0 + (b1 - b0) * t)]
-  })
 /** Noisy (incompressible) RGB PNG of roughly the requested byte size. */
 function noisyPNG(targetBytes) {
   const side = Math.ceil(Math.sqrt(targetBytes / 3))
-  const stride = 1 + side * 3
-  const raw = Buffer.alloc(stride * side)
-  randomFillSync(raw)
-  for (let y = 0; y < side; y++) raw[y * stride] = 0
-  return encodePNG(side, side, null, { level: 1, raw })
+  return noisePNG(side, side)
 }
 function svgImage(label, fill) {
   return Buffer.from(
@@ -154,84 +73,10 @@ const TINY_JPEG = Buffer.from([
 
 // ---------------------------------------------------------------- Excalidraw helpers
 let idCounter = 1
-/** 1…2³¹: Excalidraw treats a `seed` of 0 as unset, so the range starts at one. */
-const rnd = () => 1 + Math.floor(Math.random() * (2 ** 31 - 1))
 const newId = () => `demo-${(idCounter++).toString(36).padStart(4, '0')}-${rnd().toString(36)}`
-const common = (i, roundness = null) => ({
-  angle: 0,
-  strokeColor: '#1e1e1e',
-  backgroundColor: 'transparent',
-  fillStyle: 'solid',
-  strokeWidth: 2,
-  strokeStyle: 'solid',
-  roughness: 1,
-  opacity: 100,
-  groupIds: [],
-  frameId: null,
-  index: fracIndex(i),
-  roundness,
-  seed: rnd(),
-  version: 1,
-  versionNonce: rnd(),
-  isDeleted: false,
-  boundElements: null,
-  updated: NOW,
-  link: null,
-  locked: false,
-})
-function rect(i, x, y, width, height, extra = {}) {
-  return { id: newId(), type: 'rectangle', x, y, width, height, ...common(i, { type: 3 }), ...extra }
-}
-function text(i, x, y, str, fontSize = 20) {
-  const lines = str.split('\n')
-  const width = Math.ceil(Math.max(...lines.map((l) => l.length)) * fontSize * 0.6)
-  const height = Math.ceil(lines.length * fontSize * 1.25)
-  return {
-    id: newId(),
-    type: 'text',
-    x,
-    y,
-    width,
-    height,
-    ...common(i),
-    strokeWidth: 1,
-    roughness: 0,
-    text: str,
-    originalText: str,
-    fontSize,
-    fontFamily: 5,
-    textAlign: 'left',
-    verticalAlign: 'top',
-    autoResize: true,
-    lineHeight: 1.25,
-    containerId: null,
-  }
-}
-function image(i, x, y, width, height, fileId) {
-  return {
-    id: newId(),
-    type: 'image',
-    x,
-    y,
-    width,
-    height,
-    ...common(i),
-    strokeColor: 'transparent',
-    strokeWidth: 1,
-    roughness: 0,
-    status: 'saved',
-    fileId,
-    scale: [1, 1],
-    crop: null,
-  }
-}
-function board(elements, { files = {}, viewBackgroundColor = '#ffffff' } = {}) {
-  return JSON.stringify(
-    { type: 'excalidraw', version: 2, source: 'yaseen-draw-demo', elements, appState: { viewBackgroundColor, gridSize: null }, files },
-    null,
-    2,
-  )
-}
+const { rect, text, image } = indexedKit({ newId, updated: NOW })
+const board = (elements, { files = {}, viewBackgroundColor = '#ffffff' } = {}) =>
+  JSON.stringify(scene('yaseen-draw-demo', elements, { bg: viewBackgroundColor, files, gridSize: null }), null, 2)
 
 // ---------------------------------------------------------------- asset registry
 /** name → { id, mime, bytes, file } ; `write: false` keeps the bytes OUT of assets/ (legacy / missing demos). */
@@ -244,31 +89,18 @@ function asset(name, mime, bytes, { write = true } = {}) {
 }
 
 // ---------------------------------------------------------------- build
-function wipe(p) {
-  fs.rmSync(p, { recursive: true, force: true })
-}
-function writeFile(rel, content) {
-  const abs = path.join(VAULT, rel)
-  fs.mkdirSync(path.dirname(abs), { recursive: true })
-  fs.writeFileSync(abs, content)
-  return abs
-}
-function git(args, cwd = VAULT) {
-  return execFileSync(GIT, ['-c', 'user.name=demo', '-c', 'user.email=demo@example.com', ...args], { cwd, stdio: ['ignore', 'pipe', 'pipe'] })
-    .toString()
-    .trim()
-}
+const writeFile = (rel, content) => write(VAULT, rel, content)
+const git = (args, cwd = VAULT) => runGit(cwd, ['-c', 'user.name=demo', '-c', 'user.email=demo@example.com', ...args])
 
 console.log(`== wiping previous output\n   vault:  ${VAULT}\n   origin: ${ORIGIN}`)
-wipe(VAULT)
-wipe(ORIGIN)
+wipe(VAULT, ORIGIN)
 fs.mkdirSync(ASSETS, { recursive: true })
 fs.mkdirSync(path.dirname(ORIGIN), { recursive: true })
 
 console.log('== generating images')
 const t0 = Date.now()
 const tinyId = asset('tiny-64x64.png', 'image/png', solidPNG(64, 64, [230, 60, 60]))
-const mediumId = asset('medium-1200x800.png', 'image/png', gradientPNG(1200, 800, [20, 120, 220], [250, 200, 40]))
+const mediumId = asset('medium-1200x800.png', 'image/png', gradientPNG(1200, 800, [20, 120, 220], [250, 200, 40], { toCorner: true }))
 const svgId = asset('vector-400x300.svg', 'image/svg+xml', svgImage('SVG', '#6c5ce7'))
 const bigId = asset('big-noise-~10MB.png', 'image/png', noisyPNG(10.8 * 1024 * 1024))
 asset('legacy-embedded-A (NOT in assets)', 'image/png', solidPNG(48, 48, [46, 204, 113]), { write: false })
@@ -279,7 +111,7 @@ const HEAVY_COLOURS = [
   [231, 76, 60], [230, 126, 34], [241, 196, 15], [46, 204, 113], [26, 188, 156],
   [52, 152, 219], [155, 89, 182], [52, 73, 94], [149, 165, 166], [255, 121, 198],
 ]
-HEAVY_COLOURS.forEach((c, i) => heavyIds.push(asset(`heavy-${String(i + 1).padStart(2, '0')}-300x200.png`, 'image/png', gradientPNG(300, 200, c, [255, 255, 255]))))
+HEAVY_COLOURS.forEach((c, i) => heavyIds.push(asset(`heavy-${String(i + 1).padStart(2, '0')}-300x200.png`, 'image/png', gradientPNG(300, 200, c, [255, 255, 255], { toCorner: true }))))
 asset('orphan-old (mtime 3 days ago)', 'image/png', solidPNG(32, 32, [90, 90, 90]))
 asset('orphan-fresh (mtime now)', 'image/png', solidPNG(32, 32, [200, 200, 200]))
 console.log(`   images generated in ${Date.now() - t0} ms`)
@@ -362,7 +194,7 @@ add(
   const a = assets.get('legacy-embedded-A (NOT in assets)')
   const b = assets.get('legacy-embedded-B (NOT in assets)')
   const files = {}
-  for (const f of [a, b]) files[f.id] = { mimeType: f.mime, id: f.id, dataURL: `data:${f.mime};base64,${f.bytes.toString('base64')}`, created: NOW }
+  for (const f of [a, b]) files[f.id] = embedded(f.id, f.bytes, { mime: f.mime, created: NOW })
   add(
     '03 Legacy embedded.excalidraw',
     board([image(0, 100, 100, 240, 240, a.id), image(1, 420, 100, 240, 240, b.id), text(2, 100, 380, 'Both images are embedded as dataURL in "files" — first save should extract them to assets/.')], { files }),

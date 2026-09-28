@@ -1,62 +1,54 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { ipcMain } from 'electron'
-import type { Envelope } from '../../channels'
+import { invoke } from '@shared/ipc'
 import { BridgeFailure } from '../fs/fsUtils'
 import { handle, handleWithEvent, toBridgeError } from './envelope'
+import { registered } from './ipcFixture'
 
 vi.mock('electron', () => ({ ipcMain: { handle: vi.fn(), on: vi.fn() } }))
-
-type Handler = (event: unknown, ...args: unknown[]) => Promise<Envelope<unknown>>
-
-/** The callback `handle` registered for `channel` with the mocked `ipcMain.handle`. */
-function registered(channel: string): Handler {
-  const call = vi.mocked(ipcMain.handle).mock.calls.find(([ch]) => ch === channel)
-  if (call === undefined) throw new Error(`no handler registered for ${channel}`)
-  return call[1] as unknown as Handler
-}
 
 beforeEach(() => vi.mocked(ipcMain.handle).mockClear())
 
 describe('handle', () => {
   it('wraps the resolved value in { ok: true, value } and forwards the args without the event', async () => {
-    const fn = vi.fn(async (a: string, b: number) => `${a}:${b}`)
-    handle('t:ok', fn)
-    expect(await registered('t:ok')({ sender: {} }, 'x', 2)).toEqual({ ok: true, value: 'x:2' })
+    const fn = vi.fn(async (a: unknown, b: unknown) => `${String(a)}:${String(b)}`)
+    handle(invoke('t:ok'), fn)
+    expect(await registered(invoke('t:ok'))({ sender: {} }, 'x', 2)).toEqual({ ok: true, value: 'x:2' })
     expect(fn).toHaveBeenCalledWith('x', 2)
   })
 
   it('a thrown BridgeFailure(CONFLICT, mtime) comes out as { ok: false, error: { code: CONFLICT, mtime } }', async () => {
-    handle('t:conflict', async () => {
+    handle(invoke('t:conflict'), async () => {
       throw new BridgeFailure('CONFLICT', 'file changed on disk since last read', { path: '/v/a.md', mtime: 42 })
     })
-    expect(await registered('t:conflict')({ sender: {} })).toEqual({
+    expect(await registered(invoke('t:conflict'))({ sender: {} })).toEqual({
       ok: false,
       error: { code: 'CONFLICT', message: 'file changed on disk since last read', path: '/v/a.md', mtime: 42 },
     })
   })
 
   it('an unknown Error maps to IO_ERROR with its message', async () => {
-    handle('t:boom', async () => {
+    handle(invoke('t:boom'), async () => {
       throw new Error('boom')
     })
-    expect(await registered('t:boom')({ sender: {} })).toEqual({ ok: false, error: { code: 'IO_ERROR', message: 'boom' } })
+    expect(await registered(invoke('t:boom'))({ sender: {} })).toEqual({ ok: false, error: { code: 'IO_ERROR', message: 'boom' } })
   })
 })
 
 describe('handleWithEvent', () => {
   it('passes the invoke event first, then the args, and wraps the result like handle', async () => {
-    const fn = vi.fn(async (e: unknown, a: string) => `${(e as { sender: { id: number } }).sender.id}:${a}`)
-    handleWithEvent('t:event', fn)
+    const fn = vi.fn(async (e: unknown, a: unknown) => `${(e as { sender: { id: number } }).sender.id}:${String(a)}`)
+    handleWithEvent(invoke('t:event'), fn)
     const event = { sender: { id: 7 } }
-    expect(await registered('t:event')(event, 'x')).toEqual({ ok: true, value: '7:x' })
+    expect(await registered(invoke('t:event'))(event, 'x')).toEqual({ ok: true, value: '7:x' })
     expect(fn).toHaveBeenCalledWith(event, 'x')
   })
 
   it('maps a thrown BridgeFailure to an error envelope too', async () => {
-    handleWithEvent('t:event-fail', async () => {
+    handleWithEvent(invoke('t:event-fail'), async () => {
       throw new BridgeFailure('PICKER_FAILED', 'no display')
     })
-    expect(await registered('t:event-fail')({ sender: {} })).toEqual({ ok: false, error: { code: 'PICKER_FAILED', message: 'no display' } })
+    expect(await registered(invoke('t:event-fail'))({ sender: {} })).toEqual({ ok: false, error: { code: 'PICKER_FAILED', message: 'no display' } })
   })
 })
 

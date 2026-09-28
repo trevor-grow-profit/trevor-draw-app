@@ -1,5 +1,6 @@
-# CI (YAZ-1775 🔒 D7): every pull request gets a typecheck and the unit-test suite.
-# No Playwright/e2e here — behaviour is verified by launching the dev app against a test vault.
+# CI (YAZ-1775 🔒 D7): every pull request gets a typecheck, the unit-test suite, a build and the size
+# and integrity gate on it (`perf:budget:ci`, YAZ-2073 1A). The Playwright suite (`npm run e2e`,
+# YAZ-2073 D17) is local, not run here: it drives the app's windows. Windows packaging is windows.yml.
 name: ci
 
 on:
@@ -26,3 +27,6 @@ jobs:
       - run: npm run typecheck
       - run: npm test
       - run: npm run build
+      # The size and integrity gate on the fresh build (YAZ-2073 1A): chunk closure, fonts, draw.io files, renderer
+      # and main bytes against tools/perf/budget.json. The packaged half (.app, DMG, Info.plist, seal) runs locally.
+      - run: npm run perf:budget:ci

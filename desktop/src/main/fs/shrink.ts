@@ -26,6 +26,7 @@
 import { stat } from 'node:fs/promises'
 import { MAX_DRAWING_BYTES, type ShrinkResult } from '@shared/types'
 import { isDrawing } from '@shared/fileKind'
+import { serializeBoard } from '@shared/drawingAssets'
 import { readBoundedRegularFile } from './boundedRead'
 import { landAssets, liftEmbedded } from './drawing'
 import { atomicWrite, vaultFiles } from './fsUtils'
@@ -64,7 +65,8 @@ async function shrinkOne(root: string, file: string, skip: ReadonlySet<string>):
   if (!hasEmbedded(record)) return { kind: 'none' }
   if (!Array.isArray(record.elements) || skip.has(file)) return { kind: 'skipped' }
   try {
-    const { lean, lifted } = liftEmbedded(json, record.elements)
+    const { lean: leanScene, lifted } = liftEmbedded(record, record.elements)
+    const lean = serializeBoard(leanScene)
     await landAssets(root, lifted)
     // The cheap guard against a writer that landed while we were decoding: the file must still be
     // the one we read. A tab that saved in between wins, and this board waits for the next click.

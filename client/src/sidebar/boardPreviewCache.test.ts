@@ -18,7 +18,7 @@ const { BOARD_PREVIEW_BOUNDS, boardPreviewKey, boardPreviews } = await import('.
 const board = (over: Partial<FileNode> = {}): FileNode => ({ type: 'file', name: 'a.excalidraw', path: '/v/a:b.excalidraw', size: 1, mtime: 5, kind: 'drawing', ...over })
 
 function installLoad(json: string, files: Record<string, { mimeType: string; dataURL: string }> = {}) {
-  const load = vi.fn(async (req: { root: string; path: string }) => ({ path: req.path, json, mtime: 1, size: 1, files, stored: [] }))
+  const load = vi.fn(async (req: { root: string; path: string; imageMaxPx?: number }) => ({ path: req.path, json, mtime: 1, size: 1, files, stored: [] }))
   Object.defineProperty(window, 'yaseenDraw', { value: { drawing: { load } }, configurable: true, writable: true })
   return load
 }
@@ -49,7 +49,8 @@ describe('boardPreviews', () => {
     const load = installLoad(JSON.stringify({ elements: [{ id: 'r' }], appState: { viewBackgroundColor: '#fafafa' } }), { img: { mimeType: 'image/png', dataURL: 'data:image/png;base64,AA' } })
     const dataURL = await boardPreviews.load(boardPreviewKey('/v', board(), 'dark', 'adapt'))
     expect(dataURL?.startsWith('data:image/png;base64,')).toBe(true)
-    expect(load).toHaveBeenCalledWith({ root: '/v', path: '/v/a:b.excalidraw' })
+    // A picture's load: images no bigger than they can appear in it, made in main (🔒 YAZ-2073 D6).
+    expect(load).toHaveBeenCalledWith({ root: '/v', path: '/v/a:b.excalidraw', imageMaxPx: Math.max(BOARD_PREVIEW_BOUNDS.maxWidth, BOARD_PREVIEW_BOUNDS.maxHeight) })
     const call = (engine.exportToBlob.mock.calls[0] as unknown as [Record<string, never>])[0] as Record<string, unknown>
     expect(call.exportPadding).toBe(BOARD_PREVIEW_BOUNDS.padding)
     expect(call.appState).toMatchObject({ viewBackgroundColor: '#fafafa', theme: 'dark', exportWithDarkMode: true })

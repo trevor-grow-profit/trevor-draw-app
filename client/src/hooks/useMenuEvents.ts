@@ -1,4 +1,5 @@
 import { useEffect } from 'react'
+import { api } from '../api'
 
 interface UseMenuEventsOptions {
   /** File › Open Folder… (⌘⇧O) targeted this window: run the pick-folder flow. */
@@ -32,7 +33,7 @@ interface UseMenuEventsOptions {
 /** Menu gestures from the main process (GRO-2161, tabs GRO-2232); main sends them to the focused window only. */
 export function useMenuEvents({ onOpenFolder, onOpenRoot, onSearch, onSwitchVault, onSettings, onToggleSidebar, onCloseTab, onNextTab, onPrevTab, onExportImage, onCanvasBackground, onExportDrawing, onShareLink }: UseMenuEventsOptions): void {
   useEffect(() => {
-    const menu = window.yaseenDraw.menu
+    const menu = api.menu
     const offs = [
       menu.onOpenFolder(onOpenFolder),
       menu.onOpenRoot(onOpenRoot),

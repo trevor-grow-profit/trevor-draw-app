@@ -1,13 +1,13 @@
-import type { AppState, GithubSyncStatus } from '@shared/types'
-import { CH } from '../../channels'
-import { BridgeFailure, requireAbsPath } from '../fs/fsUtils'
+import type { GithubSyncStatus } from '@shared/types'
+import { CONTRACT } from '@shared/ipc'
+import { bool, requireAbsPath } from '../fs/validate'
 import { subscribe } from '../fs/watchers'
 import { detectRepo } from '../git/detect'
 import { resolveGit } from '../git/exec'
 import { boardHistory, boardVersion, restoreBoardVersion } from '../git/history'
 import { createGitSync, type GitSyncManager } from '../git/manager'
-import { syncPass } from '../git/sync'
-import type { Store } from '../store'
+import { lookAtRemote, syncPass } from '../git/sync'
+import { openRoots, type Store } from '../store'
 import { readConfig, subscribeConfig, writeConfig } from '../vaultConfig'
 import { broadcastAll } from './broadcast'
 import { handle } from './envelope'
@@ -16,17 +16,12 @@ import { handle } from './envelope'
  * The `github.*` half of `window.yaseenDraw` (YAZ-1081 2C) — and the ONE place the Electron-free
  * sync core (`../git/`) is handed its production edges. `createGitSync` takes every edge as an
  * injected function, so this module is the whole seam: the vault-local config store, the shared
- * chokidar, the status broadcast, and the pass itself.
+ * vault watcher, the status broadcast, and the pass itself.
  *
- * Which roots exist is `AppState.windows` (null = Welcome), exactly the per-open-root idiom
- * `ipc/vaultConfig.ts` already uses — the manager subscribes, times and
- * drops per root off that one list, so a closed vault goes completely silent.
+ * Which roots exist is `openRoots` (`store.ts`), the per-open-root idiom `ipc/favorites.ts` uses
+ * too — the manager subscribes, times and drops per root off that one list, so a closed vault goes
+ * completely silent.
  */
-
-/** The open-vault roots, unique and non-null. Exported for its own test; the manager owns the rest. */
-export function rootsOf(state: AppState): string[] {
-  return [...new Set(state.windows.map((w) => w.root).filter((r): r is string => r !== null))]
-}
 
 /**
  * Read-only facts for a root the manager is NOT managing (sync off): the settings panel still
@@ -53,27 +48,27 @@ export function registerGithubIpc(store: Store): GitSyncManager {
     subscribeVault: subscribe,
     subscribeConfig,
     // Every live window hears about every vault; renderers filter by `status.root` (the `state:changed` posture).
-    onStatus: (status) => broadcastAll(CH.githubStatusChanged, status),
+    onStatus: (status) => broadcastAll(CONTRACT.github.onStatus, status),
     syncPass,
+    lookAtRemote,
     inspect,
   })
 
-  handle(CH.githubStatus, async (root: unknown) => manager.status(requireAbsPath(root, 'root')))
-  handle(CH.githubSyncNow, async (root: unknown) => manager.syncNow(requireAbsPath(root, 'root')))
-  handle(CH.githubSetEnabled, async (root: unknown, enabled: unknown) => {
+  handle(CONTRACT.github.status, async (root: unknown) => manager.status(requireAbsPath(root, 'root')))
+  handle(CONTRACT.github.syncNow, async (root: unknown) => manager.syncNow(requireAbsPath(root, 'root')))
+  handle(CONTRACT.github.setEnabled, async (root: unknown, enabled: unknown) => {
     const dir = requireAbsPath(root, 'root')
     // Off-by-default fails closed everywhere else too (`manager.ts` reads `{ enabled: true }` exactly);
     // here the boolean is a hard requirement, because this call WRITES the switch.
-    if (typeof enabled !== 'boolean') throw new BridgeFailure('BAD_REQUEST', "'enabled' must be a boolean")
-    return manager.setEnabled(dir, enabled)
+    return manager.setEnabled(dir, bool(enabled, 'enabled'))
   })
 
   // Version history (YAZ-1897 D4): every argument is validated in `history.ts`, like `drawing:load`'s.
-  handle(CH.githubHistory, async (root: unknown, path: unknown) => boardHistory(root, path))
-  handle(CH.githubVersion, async (root: unknown, path: unknown, ref: unknown) => boardVersion(root, path, ref))
-  handle(CH.githubRestore, async (root: unknown, path: unknown, ref: unknown) => restoreBoardVersion(root, path, ref))
+  handle(CONTRACT.github.history, async (root: unknown, path: unknown) => boardHistory(root, path))
+  handle(CONTRACT.github.version, async (root: unknown, path: unknown, ref: unknown) => boardVersion(root, path, ref))
+  handle(CONTRACT.github.restore, async (root: unknown, path: unknown, ref: unknown) => restoreBoardVersion(root, path, ref))
 
-  store.onChange((state) => manager.setOpenRoots(rootsOf(state)))
-  manager.setOpenRoots(rootsOf(store.get()))
+  store.onChange((state) => manager.setOpenRoots(openRoots(state)))
+  manager.setOpenRoots(openRoots(store.get()))
   return manager
 }

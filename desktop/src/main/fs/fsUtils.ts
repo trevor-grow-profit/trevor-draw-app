@@ -1,8 +1,8 @@
 import { randomBytes } from 'node:crypto'
-import { readdir, rename, stat, unlink, writeFile } from 'node:fs/promises'
+import { open, readdir, rename, stat, unlink } from 'node:fs/promises'
 import path from 'node:path'
 import type { BoardMeta, BridgeError, TreeNode } from '@shared/types'
-import { fileKind, isBoard, isDrawing } from '@shared/fileKind'
+import { ATOMIC_TMP_HEX_LEN, fileKind, isAtomicTmp, isBoard, isDrawing } from '@shared/fileKind'
 import { byName } from '@shared/treeSort'
 import { ASSETS_DIR } from '@shared/drawingAssets'
 import { readBoardHead } from './boardHead'
@@ -24,21 +24,6 @@ export class BridgeFailure extends Error {
     this.path = extra.path
     this.mtime = extra.mtime
   }
-}
-
-function isSafeAbsPath(p: unknown): p is string {
-  return typeof p === 'string' && path.isAbsolute(p) && !p.includes('\0')
-}
-
-/** Validates + normalises a path argument, throwing BAD_REQUEST / NOT_ABSOLUTE when missing/relative. */
-export function requireAbsPath(p: unknown, param: string): string {
-  if (p === undefined || p === '') {
-    throw new BridgeFailure('BAD_REQUEST', `missing '${param}'`)
-  }
-  if (!isSafeAbsPath(p)) {
-    throw new BridgeFailure('NOT_ABSOLUTE', `'${param}' must be an absolute path`, { path: String(p) })
-  }
-  return path.resolve(p)
 }
 
 /** Throws unless `p` is an Excalidraw drawing — the kind the Import / Export Drawing dialogs take (🔒 YAZ-1802 D2). */
@@ -143,7 +128,7 @@ export async function buildTree(dir: string): Promise<TreeNode[]> {
   const files: TreeNode[] = []
   await Promise.all(
     entries.map(async (e) => {
-      if (isSkipped(e.name)) return
+      if (isSkipped(e.name) || isAtomicTmp(e.name)) return
       const full = path.join(dir, e.name)
       if (e.isDirectory()) {
         const children = await buildTree(full).catch(() => null)
@@ -158,14 +143,32 @@ export async function buildTree(dir: string): Promise<TreeNode[]> {
 }
 
 /**
- * Writes `content` to `<file>.tmp-<rand>` then renames over `file`. Parent dir must exist.
+ * Writes `content` and fsyncs it before closing (YAZ-2073 D12; libuv issues F_FULLFSYNC on macOS): the
+ * bytes are on disk before anything — a rename, a board naming an asset — points at them, so a power
+ * loss can't surface an empty or torn file under the real name. `mode` applies from creation.
  * A string lands as UTF-8; bytes (a scene's images through `drawing:save`, 🔒 YAZ-1775 D3) land verbatim —
  * `writeFile` ignores the encoding for a view, so one call serves both.
  */
-export async function atomicWrite(file: string, content: string | Uint8Array): Promise<{ mtime: number; size: number }> {
-  const tmp = `${file}.tmp-${randomBytes(6).toString('hex')}`
+export async function writeDurable(file: string, content: string | Uint8Array, flag: 'w' | 'wx', mode?: number): Promise<void> {
+  const fh = await open(file, flag, mode)
   try {
-    await writeFile(tmp, content, 'utf8')
+    await fh.writeFile(content, 'utf8')
+    await fh.sync()
+  } finally {
+    await fh.close()
+  }
+}
+
+/** The sibling a write lands in before it takes `file`'s name — same dir, so a rename or link is atomic. */
+export function tmpSibling(file: string): string {
+  return `${file}.tmp-${randomBytes(ATOMIC_TMP_HEX_LEN / 2).toString('hex')}`
+}
+
+/** Writes `content` durably to `tmpSibling(file)` then renames over `file`. Parent dir must exist. */
+export async function atomicWrite(file: string, content: string | Uint8Array, mode?: number): Promise<{ mtime: number; size: number }> {
+  const tmp = tmpSibling(file)
+  try {
+    await writeDurable(tmp, content, 'w', mode)
     await rename(tmp, file)
   } catch (err) {
     await unlink(tmp).catch(() => undefined)

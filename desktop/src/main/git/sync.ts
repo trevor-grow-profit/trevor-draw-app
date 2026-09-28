@@ -44,9 +44,9 @@ const listFiles = async (bin: string, root: string, args: readonly string[]): Pr
 }
 
 /**
- * Keep the OS's droppings out of the commit `add -A` is about to make (YAZ-1829). `add -A` stages
- * everything, so Finder's `.DS_Store` ends up committed, pushed, and in the commit SUBJECT — which
- * is what this vault's history shows. Two steps, both idempotent and both no-ops until one of
+ * Keep the OS's droppings (and a crashed write's tmp file) out of the commit `add -A` is about to
+ * make (YAZ-1829). `add -A` stages everything, so Finder's `.DS_Store` ends up committed, pushed, and
+ * in the commit SUBJECT — which is what this vault's history shows. Two steps, both idempotent and both no-ops until one of
  * these files actually exists:
  *  - the vault's `.gitignore` gains the entry (APPEND-ONLY; the user's own file is not ours to
  *    reorganise, and a vault that already ignores it is not touched at all);
@@ -198,8 +198,11 @@ function fromFailure(root: string, repo: RepoRef, res: GitResult): GithubSyncSta
  * open does it anyway) and the push gets a short cap instead of the 30s wall, so a half-dead
  * network can never make quitting feel frozen. A push the remote rejects (it was ahead) is fine:
  * the commit is safe locally and the next open rebases and pushes it.
+ *
+ * `fetched: true` says the idle pull's look (`lookAtRemote`) fetched origin a moment ago and found
+ * news, so the pass rebases onto that fetch instead of making the same round trip again.
  */
-export async function syncPass(root: string, opts?: { candidates?: readonly string[]; flush?: boolean }): Promise<GithubSyncStatus> {
+export async function syncPass(root: string, opts?: { candidates?: readonly string[]; flush?: boolean; fetched?: boolean }): Promise<GithubSyncStatus> {
   // No git binary is a CLASSIFICATION, never an exception: a Mac without the Command Line Tools
   // or a PC without Git for Windows is an ordinary machine, and the app must be able to say
   // "install it" (`installGitHint`, per OS) rather than crash a pass.
@@ -241,23 +244,15 @@ export async function syncPass(root: string, opts?: { candidates?: readonly stri
 
   // ---------- 2. learn what the remote has (skipped on flush — see the doc comment) ----------
   const flush = opts?.flush === true
-  if (!flush) {
+  if (!flush && opts?.fetched !== true) {
     const fetched = await git(bin, root, ['fetch', 'origin'], { timeoutMs: TRANSFER_TIMEOUT_MS })
     if (fetched.code !== 0) return withTooLarge(fromFailure(root, repo, fetched), tooLarge)
   }
 
-  // `--left-right --count @{u}...HEAD` prints "<behind>\t<ahead>" in one call. The command FAILING
-  // is itself the answer to a different question: a branch with no upstream (never pushed), which
-  // has nothing to rebase onto and everything to push.
-  const counts = await git(bin, root, ['rev-list', '--left-right', '--count', '@{u}...HEAD'])
-  const hasUpstream = counts.code === 0
-  let behind = 0
-  let ahead = 1 // no upstream ⇒ treat the branch as unpushed
-  if (hasUpstream) {
-    const [b = '', a = ''] = counts.stdout.trim().split(/\s+/)
-    behind = Number.parseInt(b, 10) || 0
-    ahead = Number.parseInt(a, 10) || 0
-  }
+  const level = await divergence(bin, root)
+  const hasUpstream = level !== null
+  const behind = level?.behind ?? 0
+  const ahead = level?.ahead ?? 1 // no upstream ⇒ treat the branch as unpushed
 
   // ---------- 3. replay our commits on top of theirs (never a merge; see D12 for the one stash) ----------
   let merged: GithubSyncMerge[] = []
@@ -289,6 +284,37 @@ export async function syncPass(root: string, opts?: { candidates?: readonly stri
   // The words are the renderer's (`syncAttention.ts`), built from the list, so there is no `message`.
   if (tooLarge.length > 0) return done({ root, state: 'attention', attention: 'too-large', repo })
   return done({ root, state: 'synced', repo })
+}
+
+/**
+ * `--left-right --count @{u}...HEAD` prints "<behind>\t<ahead>" in one call. The command FAILING
+ * is itself the answer to a different question: a branch with no upstream (never pushed), which
+ * has nothing to rebase onto and everything to push — null.
+ */
+async function divergence(bin: string, root: string): Promise<{ behind: number; ahead: number } | null> {
+  const counts = await git(bin, root, ['rev-list', '--left-right', '--count', '@{u}...HEAD'])
+  if (counts.code !== 0) return null
+  const [b = '', a = ''] = counts.stdout.trim().split(/\s+/)
+  return { behind: Number.parseInt(b, 10) || 0, ahead: Number.parseInt(a, 10) || 0 }
+}
+
+/** What the idle pull's look found: both tips level, news fetched just now, or no answer at all. */
+export type RemoteLook = 'level' | 'moved' | 'unknown'
+
+/**
+ * The idle pull's cheap look (YAZ-2073 5H): `fetch` + one `rev-list`, two spawns where a full pass
+ * makes nine. The idle pull only runs while no watcher event has arrived since a `synced` pass,
+ * so the working tree is known clean and only the two branch tips can have moved. `level` ONLY
+ * when both sides provably are; news on the remote, an unpushed commit (one made in a terminal,
+ * say) or no upstream is `moved`, with origin already fetched; a look that failed is `unknown` —
+ * the full pass does, fetches and classifies both.
+ */
+export async function lookAtRemote(root: string): Promise<RemoteLook> {
+  const bin = await resolveGit()
+  if (bin === null) return 'unknown'
+  if ((await git(bin, root, ['fetch', 'origin'], { timeoutMs: TRANSFER_TIMEOUT_MS })).code !== 0) return 'unknown'
+  const level = await divergence(bin, root)
+  return level !== null && level.behind === 0 && level.ahead === 0 ? 'level' : 'moved'
 }
 
 /**

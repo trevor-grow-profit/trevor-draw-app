@@ -4,7 +4,7 @@ import { existsSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { DEFAULT_SETTINGS, MAX_RECENT_ROOTS, MAX_VAULT_NAME, SIDEBAR_DEFAULT_W, SIDEBAR_MAX_W, SIDEBAR_MIN_W, addRecentRoot, cleanVaultName, defaultAppState, type AppState, type WindowEntry } from '@shared/types'
-import { createStore, isSettings } from './store'
+import { createStore, isSettings, openRoots } from './store'
 
 // `rename` is the atomic write's last step: one rename = one write to disk.
 vi.mock('node:fs/promises', async (importOriginal) => {
@@ -31,6 +31,15 @@ const bounds = { x: 1, y: 2, width: 300, height: 200 }
 const win = (id: string, extra: Partial<WindowEntry> = {}): WindowEntry => ({ id, root: null, file: null, tabs: [], sidebarCollapsed: false, sidebarLens: 'favorites', focusDirs: [], focusFavorites: [], bounds, ...extra })
 /** A seed with every field valid, to vary one field at a time. */
 const valid = (over: Record<string, unknown> = {}) => ({ ...defaultAppState(), ...over })
+
+describe('openRoots', () => {
+  it('is the unique non-null window roots (a Welcome window has none, two windows on a vault are one root)', () => {
+    const state = (windows: WindowEntry[]): AppState => ({ ...defaultAppState(), windows })
+    expect(openRoots(state([]))).toEqual([])
+    expect(openRoots(state([win('w1')]))).toEqual([])
+    expect(openRoots(state([win('w1', { root: '/a' }), win('w2', { root: '/a' }), win('w3'), win('w4', { root: '/b' })]))).toEqual(['/a', '/b'])
+  })
+})
 
 describe('addRecentRoot', () => {
   it('prepends, de-dupes and caps at MAX_RECENT_ROOTS', () => {
@@ -784,6 +793,26 @@ describe('createStore: persistence', () => {
     await vi.advanceTimersByTimeAsync(500)
     await store.flush()
     expect(renames()).toHaveLength(1)
+  })
+
+  it('a change that moves nothing on disk writes nothing: a session-only folder toggle, or the same settings again (YAZ-2073 5G)', async () => {
+    const store = createStore(file)
+    store.setFolder('/v', { lastFile: '/v/a.excalidraw' })
+    await store.flush()
+    expect(renames()).toHaveLength(1)
+    // `expanded` never reaches disk (YAZ-1642): listeners still hear it, the file is not rewritten.
+    const heard = vi.fn()
+    store.onChange(heard)
+    store.setFolder('/v', { expanded: ['/v/sub'] })
+    store.setSettings({ ...store.get().settings })
+    await store.flush()
+    expect(heard).toHaveBeenCalledTimes(2)
+    expect(renames()).toHaveLength(1)
+    // A change that does move the file still lands.
+    store.setSidebarWidth(SIDEBAR_MIN_W)
+    await store.flush()
+    expect(renames()).toHaveLength(2)
+    expect((await onDisk()).sidebarWidth).toBe(SIDEBAR_MIN_W)
   })
 
   it('the file on disk is the pretty-printed state and the parent directory is created on demand', async () => {

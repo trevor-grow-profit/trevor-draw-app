@@ -7,7 +7,7 @@ import type { GithubSyncStatus, WatchEvent } from '@shared/types'
 import { git } from './exec'
 import { makeBareRemote, makeGitRepo, REAL_GIT_TIMEOUT_MS, requireGit, wireOrigin, type GitRepo } from './gitFixture'
 import { createGitSync, type GitSyncHost, type GitSyncManager } from './manager'
-import { syncPass } from './sync'
+import { lookAtRemote, syncPass } from './sync'
 
 /**
  * The five guarantees GitHub Sync stands on (YAZ-1081 — Fable-owned, see YAZ-1082 scope 4/4).
@@ -147,6 +147,7 @@ describe('guarantee 2: passes serialize and triggers coalesce', { timeout: REAL_
         active -= 1
         return { root, state: 'synced' } satisfies GithubSyncStatus
       },
+      lookAtRemote: async () => 'unknown',
     }
     const manager: GitSyncManager = createGitSync(host)
     manager.setOpenRoots(['/tmp/vault'])
@@ -181,6 +182,7 @@ describe('guarantee 3: a disabled root is completely silent', { timeout: REAL_GI
         passes += 1
         return { root, state: 'synced' } satisfies GithubSyncStatus
       },
+      lookAtRemote: async () => 'unknown',
     }
     const manager = createGitSync(host)
     manager.setOpenRoots(['/tmp/vault'])
@@ -216,6 +218,7 @@ describe('guarantee 5: quit flush lands pending edits', { timeout: REAL_GIT_TIME
       onStatus: () => {},
       quietMs: 60 * 60 * 1000, // the debounce alone would never fire in time
       syncPass,
+      lookAtRemote,
     }
     const manager = createGitSync(host)
     manager.setOpenRoots([a.root])

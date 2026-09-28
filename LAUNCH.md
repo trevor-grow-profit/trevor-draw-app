@@ -24,8 +24,15 @@ npm run dev
 npm run desktop:build
 ```
 
-- Builds `desktop/out` (electron-vite) and then packages with electron-builder: `desktop/dist-app/mac-arm64/Yaseen Draw.app` (~375 MB, ~47 MB of it the bundled draw.io webapp, pruned to what the app loads — YAZ-1973) and `desktop/dist-app/Yaseen Draw-0.1.0-arm64.dmg` (~175 MB) — arm64 only, and the version in the dmg name is the ROOT `package.json` version that `tools/packDesktop.mjs` stamps in. The filenames contain spaces, so quote every path.
-- `mac.identity: null` makes electron-builder skip signing, so `desktop/build/adhocSign.cjs` (`afterPack`) deep ad-hoc signs the bundle itself — without that seal Gatekeeper reports a downloaded copy as "damaged" instead of offering **Open Anyway**. Check it with `codesign -dv --verbose=2 "desktop/dist-app/mac-arm64/Yaseen Draw.app"`, which prints `Signature=adhoc`. `spctl -a -t install` on the same bundle prints `rejected` — expected, because nothing here is Developer-ID signed.
+- Builds `desktop/out` (electron-vite) and then packages with electron-builder: `desktop/dist-app/mac-arm64/Yaseen Draw.app` and `desktop/dist-app/Yaseen Draw-<version>-arm64.dmg` (lzma — `tools/packDesktop.mjs` converts electron-builder's zlib image, mounts it and checks the app's seal; YAZ-2073 3A) — arm64 only, and `<version>` is the ROOT `package.json` version that `tools/packDesktop.mjs` stamps in. The YAZ-2073 build is 319.9 MB installed (46.4 MB of it the bundled draw.io webapp, pruned to what the app loads — YAZ-1973) and a 116.1 MB dmg, from v0.1.11's 387.2 MB / 172.5 MB (MB = 10⁶ bytes, as `npm run perf:budget` counts). The filenames contain spaces, so quote every path.
+- The renderer ships minified; its hidden sourcemaps land in the gitignored `desktop/.maps/<version>/`, never in the app (🔒 YAZ-2073 D14) — keep that folder for a release whose stack traces you may need to read, and copy it away before building the same version again: every build replaces its version's folder. A stack frame such as `app://yaseen/assets/index-CUvbLYUM.js:23:53960` maps back with `source-map-js` (installed with Vite; it counts columns from 0, a stack from 1):
+
+```bash
+node -e "const {SourceMapConsumer}=require('source-map-js'); const m=new SourceMapConsumer(require('./desktop/.maps/0.1.11/assets/index-CUvbLYUM.js.map')); console.log(m.originalPositionFor({ line: 23, column: 53959 }))"
+# → { source: '../../../../client/src/main.tsx', line: 26, column: 41, … }
+```
+- `desktop/build/adhocSign.cjs` (`afterPack`) first drops Chromium's non-English locale paks (the app is English only — 🔒 YAZ-2073 D3; on Windows too): the Mac keeps the framework's 8 `en*.lproj` of 220 and all 55 app-level `Contents/Resources/*.lproj`, so Open/Save panels still follow the OS language, but on a non-English OS Chromium's own strings, `navigator.language` and the default `Intl` locale are en-US (the sidebar's Name sort collates as English). Check with `ls "desktop/dist-app/mac-arm64/Yaseen Draw.app/Contents/Frameworks/Electron Framework.framework/Resources"`.
+- `mac.identity: null` makes electron-builder skip signing, so the same hook then deep ad-hoc signs the bundle itself — without that seal Gatekeeper reports a downloaded copy as "damaged" instead of offering **Open Anyway**. Check it with `codesign -dv --verbose=2 "desktop/dist-app/mac-arm64/Yaseen Draw.app"`, which prints `Signature=adhoc`. `spctl -a -t install` on the same bundle prints `rejected` — expected, because nothing here is Developer-ID signed.
 - The first packaging run on a clean machine needs network: electron-builder downloads its Electron dist zip and dmgbuild once, then caches them.
 - Install: open the dmg and drag `Yaseen Draw.app` into `/Applications` in Finder (or copy it straight from `desktop/dist-app/mac-arm64/`). The installed app and a `npm run dev` instance coexist — different userData, different single-instance lock.
 - First open is blocked by Gatekeeper (the app is not notarized): right-click › **Open**, or System Settings › Privacy & Security › **Open Anyway** — once, then never again on that Mac. See `README.md` "Installing on another Mac/PC".
@@ -57,15 +64,35 @@ ls "$HOME/Library/Application Support/Yaseen Draw/"
 npm test          # vitest, THREE projects: client (jsdom), desktop (node), tools (node)
 npm run typecheck
 npm run build     # electron-vite build → desktop/out
+npm run e2e       # build, then the Playwright suite (e2e/) against desktop/out
 ```
 
+- `npm run e2e` (⚡ YAZ-2073 D17): every test launches the BUILT app with Playwright's Electron
+  launcher on its own profile and vaults under the OS temp dir — the real profile and vaults are
+  never read. Windows are transparent while it runs (`E2E_SHOW=1` shows them), but each launch still
+  takes keyboard focus, so do not type elsewhere during a run. Trash, Finder, default-app and browser
+  hand-offs are recorded, not performed (`e2e/support/mainHook.cjs`); the image-paste test and the
+  three copy-path tests borrow the system clipboard one at a time and put its text or image back.
+  129 tests, a few minutes at the default 3 workers (`E2E_WORKERS=n`); `npm run e2e -- <file or -g
+  pattern>` runs a subset, a failing test's sandbox is kept under `$TMPDIR/yaseen-draw-e2e/`
+  (`E2E_KEEP=1` keeps the passing ones' too). On a heavily loaded Mac (4+ workers beside other
+  work) the external-change reload tests in `autosave` and `boardDocument` have timed out and then
+  passed alone: rerun a failure by itself before calling it a bug.
+- `E2E_PACKAGED=1 npx playwright test -c e2e/playwright.config.ts` runs the same suite against the
+  packaged bundle (`npm run desktop:build` first). A bundle ignores `-r`, so the OS stubs are
+  installed right after launch — by then the bundle has registered itself as the `yaseendraw://`
+  handler, exactly as launching it by hand does (the installed app takes it back on its next launch).
+- The hand pass is [`docs/REGRESSION.md`](docs/REGRESSION.md): stable scenario IDs, ★ core, and
+  the list of what the suite cannot see.
 - If `npm` isn't in the shell's PATH (agent shells often lack it), use its install location directly — e.g. `/opt/homebrew/bin/npm` (ARM mac), `/usr/local/bin/npm` (Intel mac), or the Volta/nvm/fnm install under `$HOME`.
 
 ### Behaviour checks: the dev app in an isolated profile
 
-🔒 (OD1 on YAZ-1805): there is no end-to-end UI-driver suite in this repo and none is to be
-added — not by an agent, not in CI. CI is typecheck + unit tests + build. Behaviour is verified by
-LAUNCHING the app and using it.
+CI (`.github/workflows/ci.yml`, every pull request) is typecheck + unit tests + build + the size
+and integrity gate on that build (`perf:budget:ci`); `windows.yml` also packages the Windows
+installer on a pull request that touches the shell, shared code, the share viewer or the pack tools.
+Behaviour is verified by `npm run e2e` (above; ⚡ YAZ-2073 D17 amended 🔒 OD1 on YAZ-1805, which
+forbade any UI driver) and by LAUNCHING the app and using it — the `docs/REGRESSION.md` list.
 
 The recipe, which never touches the real app state:
 
@@ -97,7 +124,9 @@ dataURLs, corrupt and empty files, a 40-image board, a ~10 MB PNG, unicode and n
 orphans) and, at `<dir> (origin).git` unless `--origin` says otherwise, a bare origin for the sync
 chip. `--vault` is REQUIRED and has no default, because the script WIPES what it is given; a path
 that already exists is refused unless you add `--force`. It writes no profile: open the vault with
-⌘O.
+⌘O. Every seed script shares `tools/lib/seedKit.mjs`'s strict parser: an unknown flag or a missing
+`--vault <dir>` ("--vault <dir> is required") prints the usage and exits 2, and `--help` prints it
+and exits 0.
 
 Two computers merging one vault (YAZ-1897): `node tools/seedMergeDemoVault.mjs --vault <dir>
 --profile <profile-dir>` builds the vault, a bare origin beside it and "Sam's" clone, and leaves
@@ -114,8 +143,8 @@ draw.io support (YAZ-1802) has its own demo vault: `node tools/seedDrawioDemoVau
 origin plus "Sam's" clone so the first sync shows the keep-both copies (one `.drawio`, one
 `.DRAWIO`); its `00 READ ME` lists what to try.
 
-Then run the scenario list by hand (or by computer-use). The standing list, from the demo Yasin
-approved on YAZ-1775, is: external disk edit hot-reloads a clean tab · paste → one asset, small
+Then run the scenario list by hand (or by computer-use) — `docs/REGRESSION.md` is the standing
+list; the demo Yasin approved on YAZ-1775 is folded into it: external disk edit hot-reloads a clean tab · paste → one asset, small
 JSON, survives relaunch · same image twice → one asset · missing asset → placeholder, no crash ·
 corrupt and empty files → readable error · 40-image and 10 MB boards open · unicode + nested paths
 rename/move · two windows on one board (reload when clean, bar when dirty) · a canvas preference
@@ -125,9 +154,32 @@ chip to a bare origin. Add the acceptance list of whatever issue is in flight.
 The packaged app is checked the same way — launch
 `desktop/dist-app/mac-arm64/Yaseen Draw.app/Contents/MacOS/Yaseen Draw` with the same env var.
 
+### Size and speed: `tools/perf/` (YAZ-2073)
+
+```bash
+npm run desktop:build && npm run perf:budget   # size + integrity of the packaged app vs tools/perf/budget.json
+npm run perf -- launch drawio --runs 5          # scenarios (list: npm run perf); `all` runs every one (~45 min)
+npm run perf -- canvas-4k --dev                 # desktop/out under the workspace Electron, no packaging
+npm run perf -- hover --runs 7 --vs <old.app>  # A/B: this build vs another, interleaved run by run
+npm run perf:pixels -- --dev --out <a>          # an engine bump's pixels; then --out <b> --compare <a> on the new build
+```
+
+`perf` generates its fixtures (seeded, so identical every run: 1k/4k-shape boards, 121- and 90-image
+boards, a 32 MB legacy board with its images inline, a 2 000-board vault, a draw.io flowchart, a
+git vault with a bare origin) and an isolated profile under `--work` (default
+`<tmpdir>/yaseen-draw-perf`; a non-empty folder `tools/perf` did not make is refused, since it is
+rewritten), launches the app once per run on them, drops the first run as a
+warm-up and prints JSON — median, p95 and `cv` (noise) per metric — checked against the `perf`
+ceilings. It opens real windows for a few seconds each and never reads the real profile or vaults.
+Numbers only compare on the same machine: note `loadAvg` in the output and rerun when it is high.
+`--vs` alternates two bundles run by run (each with its own warm-up, fixtures and profile), so load
+from anything else running hits both alike; the second app's numbers land under each scenario's `vs`.
+`tools/perf/baseline.json` holds v0.1.11's runs (re-measured A/B in YAZ-2073 7A); every YAZ-2073
+change reports its before → after, and `thoughts/yaz-2073-scope/before-after.md` has the final table.
+
 ## Gotchas
 
 - Never draw in real vault files during testing — copy the vault to a scratch dir first.
-- The vault is on NFS: saves can take 0.3–4 s and chokidar may double-fire. Echo suppression is by mtime (`Autosave.settled()`). This applies to the packaged app exactly as to dev — same main-process fs, same libuv.
+- The vault is on NFS: saves can take 0.3–4 s, and on a network volume the watcher runs its chokidar polling fallback, which may double-fire. Echo suppression is by mtime (`Autosave.settled()`). This applies to the packaged app exactly as to dev — same main-process fs, same libuv.
 - The main process has no path jail (owner's choice): any absolute path the user can read or write, the app can too.
 - Linear project: https://linear.app/growprofit/issue/YAZ-1775 — the port's decision record.

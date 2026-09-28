@@ -3,10 +3,8 @@ import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promis
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import type { VaultConfigChange } from '@shared/types'
-import { failure, until } from './fs/testFixture'
+import { failure, sleep, until } from './fs/testFixture'
 import { activeConfigWatcherRoots, readConfig, readConfigDetailed, subscribeConfig, VAULT_CONFIG_DIR, writeConfig } from './vaultConfig'
-
-const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
 
 const roots: string[] = []
 const offs: Array<() => void> = []
@@ -128,8 +126,8 @@ describe('subscribeConfig', () => {
   })
 
   it('an own write straight after subscribing (folder created during watcher init) still leaves external edits watched', async () => {
-    // Regression: a polling chokidar loses a path that appears DURING its initialisation; the
-    // first writeConfig re-anchors the watcher (see the module header), so this must notify.
+    // The folder appears while the watcher is still starting. Under the polling fallback that would lose
+    // it but for the re-anchor on the first own write (pinned in watchedFolder.test.ts); either way, this must notify.
     const root = await makeRoot()
     const changes = collect(root)
     await writeConfig(root, 'sample.json', { a: 1 }) // no wait: races the watcher's init on purpose

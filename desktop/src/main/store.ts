@@ -30,8 +30,9 @@ import {
   type WindowEntry,
 } from '@shared/types'
 import { isCanvasPrefs, sanitizeCanvasPrefs } from '@shared/canvasPrefs'
+import { isWithin } from '@shared/paths'
 import { atomicWrite } from './fs/fsUtils'
-import { isFiniteNumber, isRecord } from '@shared/guards'
+import { isFiniteNumber, isRecord, isStringArray } from '@shared/guards'
 
 /**
  * The app state store (D9, GRO-2159): one user-global JSON file owned by the main process.
@@ -81,8 +82,6 @@ export const WRITE_DEBOUNCE_MS = 150
 
 // ---------- validation (field by field; anything off falls back to its default) ----------
 
-/** Shared with the IPC boundary (`ipc/state.ts` / `ipc/window.ts`) — one guard, three call sites. */
-export const isStringArray = (v: unknown): v is string[] => Array.isArray(v) && v.every((x) => typeof x === 'string')
 const isStringOrNull = (v: unknown): v is string | null => v === null || typeof v === 'string'
 const clampSidebarWidth = (w: number): number => Math.min(SIDEBAR_MAX_W, Math.max(SIDEBAR_MIN_W, w))
 
@@ -266,6 +265,14 @@ function load(filePath: string): AppState {
   return defaultAppState()
 }
 
+/**
+ * The open-vault roots — `AppState.windows`, where null is Welcome — unique: two windows on one
+ * vault are one root. What main keeps per open vault (sync, favorites, repairs) is kept per these.
+ */
+export function openRoots(state: AppState): string[] {
+  return [...new Set(state.windows.map((w) => w.root).filter((r): r is string => r !== null))]
+}
+
 // ---------- the store ----------
 
 export function createStore(filePath: string): Store {
@@ -275,14 +282,23 @@ export function createStore(filePath: string): Store {
   let timer: ReturnType<typeof setTimeout> | null = null
   /** Writes are chained so two atomic writes can never land out of order. */
   let chain: Promise<void> = Promise.resolve()
+  /**
+   * The text this store last wrote. A commit whose file would read the same — a session-only
+   * `expanded` toggle, a settings echo — writes nothing (YAZ-2073 5G). Null until then, so a
+   * launch's first commit always writes, whatever the file already holds.
+   */
+  let written: string | null = null
 
   const write = (): Promise<void> => {
     dirty = false
     const snapshot = state
     chain = chain
       .then(async () => {
+        const text = `${JSON.stringify(toDisk(snapshot), null, 2)}\n`
+        if (text === written) return
         mkdirSync(dirname(filePath), { recursive: true })
-        await atomicWrite(filePath, `${JSON.stringify(toDisk(snapshot), null, 2)}\n`)
+        await atomicWrite(filePath, text)
+        written = text
       })
       .catch((err: unknown) => console.error(`[store] failed to write ${filePath}: ${String(err)}`))
     return chain
@@ -353,9 +369,8 @@ export function createStore(filePath: string): Store {
       // file path), so ONE mapping serves both kinds — and it is still one commit, one
       // notify, a no-op when nothing references the path.
       let changed = false
-      const prefix = `${oldPath}/`
       const remap = (p: string): string => {
-        if (p !== oldPath && !p.startsWith(prefix)) return p
+        if (!isWithin(oldPath, p)) return p
         changed = true
         return newPath + p.slice(oldPath.length)
       }
@@ -393,9 +408,8 @@ export function createStore(filePath: string): Store {
       // only the mapping differs (drop instead of remap). A FILE's prefix branch is inert
       // (nothing is ever stored under a file path), so one pass serves both kinds.
       let changed = false
-      const prefix = `${deleted}/`
       /** Is this stored path the deleted entry, or inside it? */
-      const gone = (p: string): boolean => p === deleted || p.startsWith(prefix)
+      const gone = (p: string): boolean => isWithin(deleted, p)
       const drop = (paths: readonly string[]): string[] => {
         const kept = paths.filter((p) => !gone(p))
         if (kept.length !== paths.length) changed = true

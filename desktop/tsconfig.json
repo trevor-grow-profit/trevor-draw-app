@@ -6,5 +6,5 @@
     "baseUrl": "..",
     "paths": { "@shared/*": ["shared/*"] }
   },
-  "include": ["src", "../shared", "electron.vite.config.ts", "vitest.config.ts"]
+  "include": ["src", "../shared", "electron.vite.config.ts", "electron.vite.config.test.ts", "vitest.config.ts"]
 }

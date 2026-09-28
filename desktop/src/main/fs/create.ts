@@ -1,16 +1,17 @@
 import { mkdir, stat, writeFile } from 'node:fs/promises'
-import type { CreateDirResponse, CreateFileRequest, CreateFileResponse } from '@shared/types'
+import type { CreateDirResponse, CreateFileResponse } from '@shared/types'
 import { isDiagram, isDrawing } from '@shared/fileKind'
 import { stampBoardMeta } from '@shared/drawingAssets'
 import { diagramDocumentError, diagramRoot, stampDiagramMeta } from '@shared/diagramFile'
-import { BridgeFailure, fsCall, requireAbsPath } from './fsUtils'
+import { BridgeFailure, fsCall } from './fsUtils'
+import { requireAbsPath, requireObject } from './validate'
 
 /**
  * Creation calls for the sidebar's "New folder" / "New drawing" (GRO-2022). Existence races
  * resolve at the fs layer: mkdir and `wx` writes throw EEXIST, which `toBridgeFailure` maps to
  * ALREADY_EXISTS — nothing is ever overwritten.
  */
-export async function createDir(path: string): Promise<CreateDirResponse> {
+export async function createDir(path: unknown): Promise<CreateDirResponse> {
   const p = requireAbsPath(path, 'path')
   await fsCall(p, () => mkdir(p))
   return { path: p }
@@ -28,11 +29,9 @@ export async function createDir(path: string): Promise<CreateDirResponse> {
  * check (an `<mxfile>` document, whole — never a zero-byte file) and its own stamp, the two
  * `yaseendraw-*` attributes on the root (D7). Every other extension is still refused.
  */
-export async function createFile(req: CreateFileRequest): Promise<CreateFileResponse> {
+export async function createFile(req: unknown): Promise<CreateFileResponse> {
   // Crosses IPC from a sandboxed renderer: shape-checked like a request body.
-  const raw: unknown = req
-  if (typeof raw !== 'object' || raw === null) throw new BridgeFailure('BAD_REQUEST', 'request must be an object')
-  const { path, content } = raw as Record<string, unknown>
+  const { path, content } = requireObject(req)
   const p = requireAbsPath(path, 'path')
   if (!isDrawing(p) && !isDiagram(p)) throw new BridgeFailure('UNSUPPORTED_EXTENSION', 'only .excalidraw and .drawio files can be created', { path: p })
   if (typeof content !== 'string') throw new BridgeFailure('BAD_REQUEST', "'content' must be a string", { path: p })

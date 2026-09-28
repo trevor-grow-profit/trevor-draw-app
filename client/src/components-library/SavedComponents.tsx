@@ -56,9 +56,10 @@ const getErrorMessage = (error: unknown, fallback: string): string => (error ins
 
 /**
  * The card pictures, keyed by SLUG — a component's identity. Cleared whenever the library itself
- * changes, because a slug that came back means different bytes.
+ * changes, because a slug that came back means different bytes. Bounded like Image Studio's tiles
+ * (YAZ-2073 8B): scrolling a large library must not keep every picture it ever showed.
  */
-const previews = createPreviewCache(async (slug) => api.components.preview({ slug }))
+const previews = createPreviewCache(async (slug) => api.components.preview({ slug }), { limit: 300 })
 export const clearComponentPreviewMemo = previews.clear
 
 export function SavedComponents({ engine, excalidrawAPI, hasSelection }: SavedComponentsProps) {

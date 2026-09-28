@@ -1,5 +1,6 @@
 import type { FileClipState } from '@shared/types'
-import { BridgeFailure, requireAbsPath } from './fs/fsUtils'
+import { BridgeFailure } from './fs/fsUtils'
+import { requireAbsPath, requireObject } from './fs/validate'
 
 /**
  * The ONE app-wide file clipboard (YAZ-1674, D1): what Cut / Copy in ANY window's sidebar put
@@ -48,8 +49,7 @@ export function createFileClip(): FileClipStore {
   }
   return {
     set(req) {
-      if (typeof req !== 'object' || req === null) throw new BridgeFailure('BAD_REQUEST', 'request must be an object')
-      const { op, paths } = req as Record<string, unknown>
+      const { op, paths } = requireObject(req)
       if (op !== 'copy' && op !== 'cut') throw new BridgeFailure('BAD_REQUEST', "'op' must be 'copy' or 'cut'")
       if (!Array.isArray(paths) || paths.length === 0) throw new BridgeFailure('BAD_REQUEST', "'paths' must be a non-empty array")
       // Validate EVERY entry before storing any: a half-valid clipboard is worse than none.

@@ -1,6 +1,4 @@
-/** The drawing DOCUMENT's two doors and the image bytes that travel with a scene (🔒 YAZ-1810). */
-
-import type { SettingsState } from './appState'
+/** The drawing DOCUMENT's two doors' shapes and the image bytes that travel with a scene (🔒 YAZ-1810). */
 
 /**
  * One image the canvas holds, as it crosses the bridge: the engine's own mime plus a base64
@@ -18,12 +16,21 @@ export interface DrawingLoadRequest {
   root: string
   /** The document, vault-relative or absolute under `root`. Never a basename search. */
   path: string
+  /**
+   * For a PICTURE of the scene, never an editor (🔒 YAZ-2073 D6): the longest side, in pixels, of
+   * the image the scene is drawn into. Each picture then comes back no bigger than it can appear
+   * there — a PNG thumbnail made in main — or as its own bytes when it cannot be smaller.
+   */
+  imageMaxPx?: number
 }
 
 export interface DrawingLoadResponse {
   /** Absolute path that was read — what every later save addresses. */
   path: string
-  /** The file's bytes as UTF-8 text, exactly as they sit on disk. */
+  /**
+   * The file's bytes as UTF-8 text, exactly as they sit on disk — except that a LEGACY scene's
+   * embedded `files` map comes back empty (🔒 YAZ-2073 D7): those bytes travel once, in `files`.
+   */
   json: string
   /** Disk mtime of the read: the `expectedMtime` the first save goes back with. */
   mtime: number
@@ -43,7 +50,7 @@ export interface DrawingLoadResponse {
 }
 
 /** One image a save must land in the store before the scene that names it is written. */
-export interface DrawingNewFile extends DrawingFileEntry {
+interface DrawingNewFile extends DrawingFileEntry {
   /** Excalidraw's own content id (the SHA-1 of the bytes) — the file's name under `assets/`. */
   fileId: string
 }
@@ -67,16 +74,3 @@ export interface DrawingSaveResponse {
   persisted: string[]
 }
 
-export interface DrawingApi {
-  /** Read one `.excalidraw` AS A DOCUMENT, with the bytes of the images it names. */
-  load(req: DrawingLoadRequest): Promise<DrawingLoadResponse>
-  /** Write one `.excalidraw`: assets first, then the scene, atomically. */
-  save(req: DrawingSaveRequest): Promise<DrawingSaveResponse>
-  /**
-   * The RESOLVED library folder (🔒 YAZ-1775 D5): `SettingsState.libraryFolder`, or `<userData>/library`
-   * when that is null. Only main knows where userData is, so only main can answer — the Settings
-   * row shows what comes back. Main also makes sure the folder exists at startup, so the answer
-   * always names a real directory. Its CONTENTS (`media.json`, `components/`) are YAZ-1817/YAZ-1818/YAZ-1819's.
-   */
-  libraryFolder(): Promise<string>
-}

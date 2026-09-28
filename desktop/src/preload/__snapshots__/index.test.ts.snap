@@ -1,0 +1,96 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`the preload bridge > exposes window.yaseenDraw as the whole surface a renderer can reach: every door on its channel, and the two specials (YAZ-2073 🔒 D16) 1`] = `
+"components.delete -> invoke components:delete
+components.list -> invoke components:list
+components.onChanged -> on components:changed, off components:changed
+components.preview -> invoke components:preview
+components.read -> invoke components:read
+components.rename -> invoke components:rename
+components.save -> invoke components:save
+createDir -> invoke fs:create-dir
+createFile -> invoke fs:create-file
+diagram.load -> invoke diagram:load
+diagram.save -> invoke diagram:save
+dialog.openDrawing -> invoke dialog:open-file
+dialog.saveDrawing -> invoke dialog:save-file
+dialog.saveImage -> invoke dialog:save-image
+drawing.libraryFolder -> invoke drawing:library-folder
+drawing.load -> invoke drawing:load
+drawing.save -> invoke drawing:save
+favorites.get -> invoke favorites:get
+favorites.onChanged -> on favorites:changed, off favorites:changed
+favorites.set -> invoke favorites:set
+file.clip -> invoke fs:clip
+file.clipState -> invoke fs:clip-state
+file.delete -> invoke fs:delete
+file.onClipChanged -> on clip:changed, off clip:changed
+file.onDeleted -> on file:deleted, off file:deleted
+file.onRenamed -> on file:renamed, off file:renamed
+file.paste -> invoke fs:paste
+file.rename -> invoke fs:rename
+github.history -> invoke github:history
+github.onStatus -> on github:status-changed, off github:status-changed
+github.restore -> invoke github:restore
+github.setEnabled -> invoke github:set-enabled
+github.status -> invoke github:status
+github.syncNow -> invoke github:sync-now
+github.version -> invoke github:version
+link.onNotice -> on link:notice, off link:notice
+link.onOpenFile -> on link:open-file, off link:open-file
+media.favorites -> invoke media:favorites
+media.import -> invoke media:import
+media.onChanged -> on media:changed, off media:changed
+media.preview -> invoke media:preview
+media.recent -> invoke media:recent
+media.search -> invoke media:search
+menu.onCanvasBackground -> on menu:canvas-background, off menu:canvas-background
+menu.onCloseTab -> on menu:close-tab, off menu:close-tab
+menu.onExportDrawing -> on menu:export-drawing, off menu:export-drawing
+menu.onExportImage -> on menu:export-image, off menu:export-image
+menu.onNextTab -> on menu:next-tab, off menu:next-tab
+menu.onOpenFolder -> on menu:open-folder, off menu:open-folder
+menu.onOpenRoot -> on menu:open-root, off menu:open-root
+menu.onPrevTab -> on menu:prev-tab, off menu:prev-tab
+menu.onSearch -> on menu:search, off menu:search
+menu.onSettings -> on menu:settings, off menu:settings
+menu.onShareLink -> on menu:share-link, off menu:share-link
+menu.onSwitchVault -> on menu:switch-vault, off menu:switch-vault
+menu.onToggleSidebar -> on menu:toggle-sidebar, off menu:toggle-sidebar
+pickFolder -> invoke dialog:pick-folder
+secrets.has -> invoke secrets:has
+secrets.set -> invoke secrets:set
+share.accounts -> invoke share:accounts
+share.disconnect -> invoke share:disconnect
+share.get -> invoke share:get
+share.list -> invoke share:list
+share.onChanged -> on share:changed, off share:changed
+share.onSetupProgress -> on share:setup-progress, off share:setup-progress
+share.openCloudflare -> invoke share:open-cloudflare
+share.publish -> invoke share:publish
+share.setDomain -> invoke share:set-domain
+share.setPermission -> invoke share:set-permission
+share.setup -> invoke share:setup
+share.status -> invoke share:status
+share.stop -> invoke share:stop
+shell.openDefault -> invoke shell:openDefault
+shell.openVsCode -> invoke shell:openVsCode
+shell.reveal -> invoke shell:reveal
+state.get -> invoke state:get
+state.onChange -> on state:changed, off state:changed
+state.pushRecent -> invoke state:push-recent
+state.removeRecent -> invoke state:remove-recent
+state.setFolder -> invoke state:set-folder
+state.setSettings -> invoke state:set-settings
+state.setSidebarWidth -> invoke state:set-sidebar-width
+storage.shrink -> invoke storage:shrink
+storage.stats -> invoke storage:stats
+tree -> invoke fs:tree
+watch -> on watch:event, send watch:subscribe, off watch:event, send watch:unsubscribe
+window.closeSelf -> invoke window:close-self
+window.identity -> invoke window:identity
+window.onFlush -> (no IPC)
+window.open -> invoke window:open
+window.openRecent -> invoke window:open-recent
+window.setIdentity -> invoke window:set-identity"
+`;

@@ -1,3 +1,4 @@
+import { memo, type ReactElement } from 'react'
 import type { FileKind, TreeNode } from '@shared/types'
 import type { FileNode } from '@shared/treeSort'
 import { DiagramBadge, LinkIcon } from '../components/icons'
@@ -152,7 +153,13 @@ const ShareMark = ({ badge }: { badge: ShareBadge | undefined }) =>
     </span>
   )
 
-export function Tree({
+/**
+ * One level of the tree, and through `recurse` every open level below it. Memoized as `Tree` (YAZ-2073 5D,
+ * 🔒 D16): the Sidebar hands it stable props, so a Sidebar render that changes nothing a row shows
+ * re-renders no row. Every level shares those props, so a move in one of them (a fold, the selection,
+ * the active file) re-renders every open level.
+ */
+function TreeLevel({
   nodes,
   dirPath,
   expanded,
@@ -171,7 +178,7 @@ export function Tree({
   tooLarge,
   shareBadges,
   depth = 0,
-}: TreeProps) {
+}: TreeProps): ReactElement {
   const recurse = { expanded, activeFile, onToggle, onOpenFile, onOpenFileBackground, onOpenDefault, onNodeContextMenu, pending, renaming, move, selection, reorder, onHoverFile, tooLarge, shareBadges }
   // The reorder gesture lives on depth-0 rows alone; deeper rows of a reorderable tree drag nothing.
   const rowReorder = reorder !== undefined && depth === 0 ? reorder : null
@@ -324,3 +331,5 @@ export function Tree({
     </ul>
   )
 }
+
+export const Tree = memo(TreeLevel)

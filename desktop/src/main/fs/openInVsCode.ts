@@ -1,7 +1,8 @@
 import { shell } from 'electron'
 import { stat } from 'node:fs/promises'
 import type { RevealResponse } from '@shared/types'
-import { BridgeFailure, fsCall, requireAbsPath } from './fsUtils'
+import { fsCall } from './fsUtils'
+import { requireAbsPath, requireObject } from './validate'
 
 /**
  * Open in VS Code (YAZ-963) — `reveal.ts`'s mirror, deliberately the same shape.
@@ -26,8 +27,7 @@ import { BridgeFailure, fsCall, requireAbsPath } from './fsUtils'
  * `RevealResponse` rather than a twin type: the shape is the same echoed path.
  */
 export async function openInVsCode(req: unknown): Promise<RevealResponse> {
-  if (typeof req !== 'object' || req === null) throw new BridgeFailure('BAD_REQUEST', 'request must be an object')
-  const p = requireAbsPath((req as Record<string, unknown>).path, 'path')
+  const p = requireAbsPath(requireObject(req).path, 'path')
   return fsCall(p, async () => {
     await stat(p) // missing → ENOENT → NOT_FOUND, so a stale row can be reported
     await shell.openExternal(`vscode://file${p.split('/').map(encodeURIComponent).join('/')}`)

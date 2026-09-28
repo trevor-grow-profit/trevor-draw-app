@@ -30,6 +30,7 @@ import path from 'node:path'
 import { Readable } from 'node:stream'
 import { fileURLToPath } from 'node:url'
 import { handle as workerHandle } from '../share/worker.js'
+import { excalidrawFontsDir } from './lib/excalidrawFonts.mjs'
 import { DRAWIO_TAG } from './packDrawio.mjs'
 
 const USAGE = 'usage: node tools/fakeCloudflare.mjs --data <dir> [--port 8787] (0 = any free port)'
@@ -139,8 +140,9 @@ const diskBucket = {
 const MIME = { '.js': 'application/javascript', '.css': 'text/css', '.woff2': 'font/woff2', '.png': 'image/png', '.svg': 'image/svg+xml', '.xml': 'application/xml', '.txt': 'text/plain' }
 /**
  * The `ASSETS` binding (Workers Static Assets): the uploaded manifest's files, by path. Before any
- * setup uploaded them (board 10's pre-existing link), the repo's `share/dist/assets` stands in, and
- * the pack cache for the draw.io files setup would have added under `/assets/drawio/`.
+ * setup uploaded them (board 10's pre-existing link), the repo's `share/dist/assets` stands in, with
+ * the package's fonts and the pack cache for what setup would have added under `/assets/fonts/` and
+ * `/assets/drawio/`.
  */
 const assetsBinding = (manifest) => ({
   async fetch(request) {
@@ -154,6 +156,12 @@ const assetsBinding = (manifest) => ({
       if (candidate.startsWith(`${REPO_ASSETS}/`)) file = candidate
       const drawio = path.resolve(REPO_DRAWIO, `.${pathname.slice('/assets/drawio'.length)}`)
       if (pathname.startsWith('/assets/drawio/') && !fs.existsSync(candidate) && drawio.startsWith(`${REPO_DRAWIO}/`)) file = drawio
+      if (pathname.startsWith('/assets/fonts/')) {
+        // Excalidraw's own fonts: share setup publishes the app's copy of them here (YAZ-2073 3C).
+        const fonts = excalidrawFontsDir()
+        const font = path.resolve(fonts, `.${pathname.slice('/assets/fonts'.length)}`)
+        if (font.startsWith(`${fonts}/`)) file = font
+      }
     }
     if (file === null || !fs.existsSync(file)) return new Response('not found', { status: 404 })
     const type = MIME[path.extname(pathname)] ?? 'application/octet-stream'

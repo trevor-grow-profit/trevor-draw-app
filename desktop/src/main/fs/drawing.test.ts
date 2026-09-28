@@ -1,12 +1,18 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { mkdir, mkdtemp, readdir, readFile, rm, stat, utimes, writeFile } from 'node:fs/promises'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { access, link, mkdir, mkdtemp, open, readdir, readFile, rm, stat, utimes, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { MAX_DRAWING_BYTES } from '@shared/types'
-import { BOARD_META_KEY, ORPHAN_MAX_AGE_MS } from '@shared/drawingAssets'
+import { BOARD_META_KEY, ORPHAN_MAX_AGE_MS, referencedFileIds, unpersistedFiles } from '@shared/drawingAssets'
 import { sweepOrphanAssets } from '../drawings/orphanSweep'
 import { loadDrawing, saveDrawing } from './drawing'
 import { blockOf, failure, withoutBlock } from './testFixture'
+
+// Pass-through: the durability tests watch which files get fsynced (YAZ-2073 D12) and how an asset is named (2B1).
+vi.mock('node:fs/promises', async (importOriginal) => {
+  const m = await importOriginal<typeof import('node:fs/promises')>()
+  return { ...m, open: vi.fn(m.open), link: vi.fn(m.link) }
+})
 
 const PNG_B64 = 'aGVsbG8='
 const dataUrl = (b64 = PNG_B64) => `data:image/png;base64,${b64}`
@@ -188,11 +194,58 @@ describe('🔒 YAZ-1775 D3 — the image store on load', () => {
     expect(res.json).toContain('gone') // the scene is untouched; only the bytes are absent
   })
 
-  it('falls back to a LEGACY scene`s own embedded bytes, and does NOT call them stored', async () => {
+  it("falls back to a LEGACY scene's own embedded bytes, and does NOT call them stored", async () => {
     await seed('Legacy.excalidraw', scene([imageEl('emb')], { files: { emb: { mimeType: 'image/png', dataURL: dataUrl() } } }))
     const res = await loadDrawing({ root, path: 'Legacy.excalidraw' })
     expect(res.files.emb).toEqual({ mimeType: 'image/png', dataURL: dataUrl() })
     expect(res.stored).toEqual([])
+  })
+
+  it("sends a LEGACY scene's bytes once: `json` comes back with an empty files map, every other key as on disk (🔒 YAZ-2073 D7)", async () => {
+    const onDisk = { [BOARD_META_KEY]: { createdAt: 1, updatedAt: 2 }, type: 'excalidraw', version: 2, elements: [imageEl('emb')], appState: { viewBackgroundColor: '#123456' }, files: { emb: { mimeType: 'image/png', dataURL: dataUrl() } } }
+    await seed('Legacy.excalidraw', JSON.stringify(onDisk))
+    const res = await loadDrawing({ root, path: 'Legacy.excalidraw' })
+    expect(JSON.parse(res.json)).toEqual({ ...onDisk, files: {} })
+    expect(res.json).not.toContain(PNG_B64)
+    expect(res.files.emb).toEqual({ mimeType: 'image/png', dataURL: dataUrl() })
+    // That opening writes nothing is `legacyBoard.integration.test.ts`'s.
+  })
+
+  it('a PREVIEW load (`imageMaxPx`) hands the pictures, the live elements and the size to the thumbnail cache (🔒 YAZ-2073 D6)', async () => {
+    await seedAsset('pic.png', 'stored')
+    await seed('Board.excalidraw', scene([imageEl('pic')]))
+    const small = { pic: { mimeType: 'image/png', dataURL: dataUrl('c21hbGw=') } }
+    const thumbs = { fit: vi.fn(async () => small) }
+    const res = await loadDrawing({ root, path: 'Board.excalidraw', imageMaxPx: 1200 }, thumbs)
+    expect(thumbs.fit).toHaveBeenCalledWith({ pic: { mimeType: 'image/png', dataURL: `data:image/png;base64,${Buffer.from('stored').toString('base64')}` } }, [imageEl('pic')], 1200)
+    expect(res.files).toBe(small)
+    expect(res.stored).toEqual(['pic']) // still the store's answer: a preview never saves
+  })
+
+  it('an editor load (no `imageMaxPx`) never touches the thumbnail cache', async () => {
+    await seedAsset('pic.png', 'stored')
+    await seed('Board.excalidraw', scene([imageEl('pic')]))
+    const thumbs = { fit: vi.fn() }
+    const res = await loadDrawing({ root, path: 'Board.excalidraw' }, thumbs)
+    expect(thumbs.fit).not.toHaveBeenCalled()
+    expect(Buffer.from(res.files.pic.dataURL.split(',')[1], 'base64').toString()).toBe('stored')
+  })
+
+  it('refuses an `imageMaxPx` that is not a positive integer', async () => {
+    const file = await seed('Board.excalidraw', scene())
+    for (const imageMaxPx of [0, -5, 1.5, '1200', null, Number.NaN]) {
+      const err = await failure(loadDrawing({ root, path: file, imageMaxPx } as never))
+      expect(err.code, String(imageMaxPx)).toBe('BAD_REQUEST')
+    }
+  })
+
+  it('answers a board with nothing embedded exactly as it sits on disk — spacing, key order and all', async () => {
+    await seedAsset('pic.png', 'stored')
+    const body = `{"elements":[${JSON.stringify(imageEl('pic'))}],   "files":{} ,"appState":{}}`
+    await seed('Board.excalidraw', body)
+    const res = await loadDrawing({ root, path: 'Board.excalidraw' })
+    expect(res.json).toBe(body)
+    expect(res.files.pic).toEqual({ mimeType: 'image/png', dataURL: `data:image/png;base64,${Buffer.from('stored').toString('base64')}` })
   })
 
   it('prefers the store over an embedded copy of the same id', async () => {
@@ -203,7 +256,7 @@ describe('🔒 YAZ-1775 D3 — the image store on load', () => {
     expect(res.stored).toEqual(['dup'])
   })
 
-  it('hydrates nothing for a DELETED image element — an undo brings the id back, the sweep`s age guard keeps the bytes', async () => {
+  it("hydrates nothing for a DELETED image element — an undo brings the id back, the sweep's age guard keeps the bytes", async () => {
     await seedAsset('ghost.png')
     await seed('Board.excalidraw', scene([imageEl('ghost', { isDeleted: true })]))
     expect((await loadDrawing({ root, path: 'Board.excalidraw' })).files).toEqual({})
@@ -235,6 +288,31 @@ describe('🔒 YAZ-1775 D3 — the image store on save', () => {
     expect(saved.files).toEqual({})
   })
 
+  it('fsyncs each new asset and the scene before the save answers (YAZ-2073 D12)', async () => {
+    const synced: string[] = []
+    const { open: realOpen } = await vi.importActual<typeof import('node:fs/promises')>('node:fs/promises')
+    const asset = path.join(root, 'assets', 'newid.png')
+    vi.mocked(open).mockImplementation(async (...args) => {
+      const fh = await realOpen(...args)
+      const sync = fh.sync.bind(fh)
+      fh.sync = async () => {
+        // The asset's own name must not exist until its bytes are synced (2B1).
+        const named = String(args[0]).startsWith(asset) && (await access(asset).then(() => true, () => false)) ? ' (named early!)' : ''
+        synced.push(path.basename(String(args[0])).replace(/\.tmp-.*/, '.tmp') + named)
+        return sync()
+      }
+      return fh
+    })
+    try {
+      await seed('Board.excalidraw', scene())
+      await saveDrawing({ root, path: 'Board.excalidraw', json: scene([imageEl('newid')]), newFiles: [{ fileId: 'newid', mimeType: 'image/png', dataURL: dataUrl() }] })
+      expect(synced).toEqual(['newid.png.tmp', 'Board.excalidraw.tmp'])
+      expect(await readdir(path.join(root, 'assets'))).toEqual(['newid.png'])
+    } finally {
+      vi.mocked(open).mockRestore()
+    }
+  })
+
   it('never rewrites an asset that is already there — content-addressed means it IS those bytes', async () => {
     const asset = await seedAsset('same.png', 'original')
     const before = (await stat(asset)).mtimeMs
@@ -243,6 +321,39 @@ describe('🔒 YAZ-1775 D3 — the image store on save', () => {
     expect(res.persisted).toEqual(['same'])
     expect(await readFile(asset, 'utf8')).toBe('original')
     expect((await stat(asset)).mtimeMs).toBe(before)
+    expect(await readdir(path.join(root, 'assets'))).toEqual(['same.png'])
+  })
+
+  it('a write torn mid-way leaves NOTHING under the asset name — no torn "valid" asset, no tmp (YAZ-2073 2B1)', async () => {
+    const original = await seed('Board.excalidraw', scene())
+    const { open: realOpen } = await vi.importActual<typeof import('node:fs/promises')>('node:fs/promises')
+    vi.mocked(open).mockImplementation(async (...args) => {
+      const fh = await realOpen(...args)
+      if (String(args[0]).includes('newid.png')) {
+        fh.writeFile = async (data) => {
+          await fh.write(Buffer.from(data as Uint8Array).subarray(0, 2))
+          throw Object.assign(new Error('EIO: i/o error, write'), { code: 'EIO' })
+        }
+      }
+      return fh
+    })
+    try {
+      const err = await failure(saveDrawing({ root, path: 'Board.excalidraw', json: scene([imageEl('newid')]), newFiles: [{ fileId: 'newid', mimeType: 'image/png', dataURL: dataUrl() }] }))
+      expect(err.path).toBe(path.join(root, 'assets', 'newid.png'))
+      expect(await readdir(path.join(root, 'assets'))).toEqual([])
+      expect(await readFile(original, 'utf8')).toBe(scene())
+    } finally {
+      vi.mocked(open).mockRestore()
+    }
+  })
+
+  it('a volume without hard links (exFAT, FAT: ENOTSUP) still lands the asset, by rename (YAZ-2073 2B1)', async () => {
+    vi.mocked(link).mockRejectedValueOnce(Object.assign(new Error('ENOTSUP: operation not supported, link'), { code: 'ENOTSUP' }))
+    await seed('Board.excalidraw', scene())
+    const res = await saveDrawing({ root, path: 'Board.excalidraw', json: scene([imageEl('newid')]), newFiles: [{ fileId: 'newid', mimeType: 'image/png', dataURL: dataUrl() }] })
+    expect(res.persisted).toEqual(['newid'])
+    expect(await readdir(path.join(root, 'assets'))).toEqual(['newid.png'])
+    expect(await readFile(path.join(root, 'assets', 'newid.png'), 'utf8')).toBe('hello')
   })
 
   it('EXTRACTS a legacy embedded scene on its first save: bytes into assets/, JSON shrunk', async () => {
@@ -330,7 +441,7 @@ describe('🔒 YAZ-1834 — the yaseendraw block on save', () => {
     expect(block.updatedAt).toBeLessThanOrEqual(after)
   })
 
-  it('keeps createdAt and the backfill`s own keys, bumps only updatedAt (D5) — across saves that do not send the block back', async () => {
+  it("keeps createdAt and the backfill's own keys, bumps only updatedAt (D5) — across saves that do not send the block back", async () => {
     // As the importer writes it: the block FIRST (D1 — a block anywhere else is not read, and is replaced on save).
     const backfilled = `${JSON.stringify({ [BOARD_META_KEY]: { createdAt: 1600000000000, updatedAt: 1600000000001, cloudId: 'k7' }, type: 'excalidraw', elements: [], files: {} }, null, 2)}\n`
     const file = await seed('Cloud.excalidraw', backfilled)
@@ -367,6 +478,45 @@ describe('🔒 YAZ-1834 — the yaseendraw block on save', () => {
 })
 
 /**
+ * ONE PARSE, ONE STRINGIFY (YAZ-2073 5G). The save used to parse the scene three times and
+ * stringify it twice; it now works on the parsed object. The bytes on disk must not move by one:
+ * every awkward spelling below goes through the real door, and what it wrote is pinned byte for
+ * byte in `__snapshots__/drawing.test.ts.snap` — recorded from, and checked against, the old text
+ * pipeline (`stripEmbeddedFiles` → `stampBoardMeta`). Only the stamp's "now" is normalised.
+ */
+describe('drawing:save writes the same bytes as the old three-parse pipeline (YAZ-2073 5G)', () => {
+  // Not `blockOf`: an integer-like top-level key sorts before the block in ANY JS object, old path included.
+  const stampOf = (written: string) => (JSON.parse(written) as Record<string, { createdAt: number; updatedAt: number }>)[BOARD_META_KEY]
+  const FIXTURES: Record<string, string> = {
+    lean: scene([{ id: 'a', type: 'rectangle', x: 1.5 }]),
+    minified: JSON.stringify({ files: {}, elements: [{ id: 'm' }], type: 'excalidraw', appState: { zoom: { value: 1 } } }),
+    awkward: `{"2":"int keys sort first","type":"excalidraw","__proto__":{"own":true},"elements":[{"id":"u","text":"café \\ud800 \\u2028 😀","n":-0,"big":1e21,"tiny":5e-324,"esc":"\\"\\\\\\n"}],"dup":1,"dup":2,"1":"one","files":{}}`,
+    legacy: scene([imageEl('abc'), imageEl('keep')], { files: { abc: { mimeType: 'image/png', dataURL: dataUrl() }, gone: { mimeType: 'image/png', dataURL: dataUrl() }, bad: { mimeType: 'image/png', dataURL: 'https://x' }, keep: { mimeType: 'image/png', dataURL: dataUrl('a2VlcA==') } } }),
+    ownBlockNotFirst: scene([], { [BOARD_META_KEY]: { updatedAt: 3, cloudId: 'z', createdAt: 2 } }),
+    ownBlockNotAnObject: scene([], { [BOARD_META_KEY]: [1, 2] }),
+    noFilesKey: JSON.stringify({ type: 'excalidraw', elements: [], appState: {} }, null, 4),
+  }
+
+  /** The written text with this save's own "now" (never a fixture's number) spelled `<now>`. */
+  const golden = (written: string) => written.replaceAll(String(stampOf(written).updatedAt), '<now>')
+
+  for (const [name, json] of Object.entries(FIXTURES)) {
+    it(`${name}: a new board`, async () => {
+      const newFiles = name === 'legacy' ? [{ fileId: 'keep', mimeType: 'image/png', dataURL: dataUrl('a2VlcA==') }] : []
+      await saveDrawing({ root, path: `${name}.excalidraw`, json, newFiles })
+      expect(golden(await readFile(path.join(root, `${name}.excalidraw`), 'utf8'))).toMatchSnapshot()
+    })
+
+    it(`${name}: over a board whose head carries a block with extras`, async () => {
+      const prior = { createdAt: 1600000000000, updatedAt: 1600000000001, cloudId: 'k7' }
+      const file = await seed(`${name}.excalidraw`, `${JSON.stringify({ [BOARD_META_KEY]: prior, type: 'excalidraw', elements: [], files: {} }, null, 2)}\n`)
+      await saveDrawing({ root, path: file, json, newFiles: [] })
+      expect(golden(await readFile(file, 'utf8'))).toMatchSnapshot()
+    })
+  }
+})
+
+/**
  * The simulated end-to-end (🔒 YAZ-1811 acceptance): a real temp vault, the real doors, no
  * Electron and no React. `shell.trashItem` is the one thing injected — a test must not move
  * files into the developer's own Trash.
@@ -380,8 +530,11 @@ describe('end to end on a temp vault', () => {
     expect(opened.stored).toEqual([]) // nothing in the store yet; the bytes came from the file
     expect(opened.files.sha1id.dataURL).toBe(dataUrl())
 
-    // The renderer would send the file it holds and no longer has on disk.
-    const saved = await saveDrawing({ root, path: 'Boards/Legacy.excalidraw', json: opened.json, expectedMtime: opened.mtime, newFiles: [] })
+    // What the renderer sends (`DrawingEditor`): the engine's scene, which never carries a files map
+    // (🔒 YAZ-2073 D7 sends it lean anyway), and every live picture the store does not hold yet.
+    const { elements } = JSON.parse(opened.json) as { elements: unknown[] }
+    const newFiles = unpersistedFiles(opened.files, referencedFileIds(elements), new Set(opened.stored))
+    const saved = await saveDrawing({ root, path: 'Boards/Legacy.excalidraw', json: scene(elements), expectedMtime: opened.mtime, newFiles })
     expect(saved.persisted).toEqual(['sha1id'])
     expect(saved.size).toBeLessThan(opened.size)
     expect(await readdir(path.join(root, 'assets'))).toEqual(['sha1id.png'])

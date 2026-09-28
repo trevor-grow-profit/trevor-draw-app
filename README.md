@@ -16,7 +16,7 @@ and the canvas is Yasin's own Excalidraw fork.
 
 ## Requirements
 
-Node.js 22 or newer (`package.json` `engines`, and what CI runs), npm, macOS (the packaged app targets macOS arm64; the dev build runs wherever Electron does).
+Node.js 22.2 or newer (`package.json` `engines`, and what CI runs), npm, macOS (the packaged app targets macOS arm64; the dev build runs wherever Electron does).
 
 ## Run
 
@@ -35,7 +35,10 @@ and `docs/CONTRACTS.md` for the bridge, app-state and packaging contracts.
 npm test         # unit tests (vitest, three projects: client jsdom, desktop node, tools node)
 npm run typecheck
 npm run build    # electron-vite build into desktop/out + the share viewer into share/dist
+npm run e2e      # build, then the Playwright suite against the built app (sandboxed profile + vaults)
 ```
+
+What the E2E suite cannot see is checked by hand from `docs/REGRESSION.md`.
 
 ## Build the app
 
@@ -52,6 +55,8 @@ The app bundles jgraph's draw.io webapp ([jgraph/drawio](https://github.com/jgra
 Every packaged version is downloadable from the repo's [Releases page](https://github.com/yaseenarshad/yaseen-draw-app/releases) — the `.dmg` for a Mac (Apple Silicon), the `-win-x64-setup.exe` for Windows — no build toolchain needed on the installing machine.
 
 The Mac app is ad-hoc signed, not notarized, so on someone else's Mac (macOS 15) the first open is blocked with "Apple could not verify…". Once: open **System Settings › Privacy & Security**, scroll to the blocked-app notice, click **Open Anyway**, and confirm. After that it opens normally. The Windows installer is unsigned, so SmartScreen shows "Windows protected your PC" the first time: click **More info › Run anyway**, once.
+
+The app is English only, and ships only Chromium's English strings (YAZ-2073 D3). On a Mac or PC set to another language, the Open/Save panels (and a Mac's system menu items) still follow that language, but the browser-drawn bits (a form's validation bubble, the colour and date pickers) are English, and the sidebar sorts names the English way (so `å`, `ä`, `ö` sort with `a` and `o` rather than after `z`).
 
 ## Share links
 
@@ -189,8 +194,8 @@ live — and never written into a vault.
 ## Out of scope
 
 There is no browser mode: the app runs only inside Electron. The file layer has no path jail:
-anything under your user account can be read or written. There is no end-to-end UI-driver suite,
-by agents or in CI — behaviour is verified by launching the app in an isolated profile (see
-`LAUNCH.md`).
+anything under your user account can be read or written. The end-to-end suite (`npm run e2e`) is
+local, not part of CI; the rest of behaviour is verified by launching the app in an isolated profile
+(see `LAUNCH.md` and `docs/REGRESSION.md`).
 Distribution is deliberately minimal (locked decisions): no Developer-ID signing or notarization,
 no auto-update, no Intel or universal builds.

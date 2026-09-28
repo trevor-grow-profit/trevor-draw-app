@@ -3,24 +3,17 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { BrowserWindow, ipcMain } from 'electron'
-import { CH, type Envelope } from '../../channels'
+import { CONTRACT } from '@shared/ipc'
 import { FAVORITES_FILE } from '../favorites'
 import { createStore, type Store } from '../store'
 import { activeConfigWatcherRoots, VAULT_CONFIG_DIR } from '../vaultConfig'
 import { registerFavoritesIpc } from './favorites'
+import { registered } from './ipcFixture'
 
 vi.mock('electron', () => ({
   ipcMain: { handle: vi.fn(), on: vi.fn() },
   BrowserWindow: { getAllWindows: vi.fn(() => []) },
 }))
-
-type Handler = (event: unknown, ...args: unknown[]) => Promise<Envelope<unknown>>
-
-function registered(channel: string): Handler {
-  const call = vi.mocked(ipcMain.handle).mock.calls.find(([ch]) => ch === channel)
-  if (call === undefined) throw new Error(`no handler registered for ${channel}`)
-  return call[1] as unknown as Handler
-}
 
 const ok = (value: unknown) => ({ ok: true, value })
 const bad = (code: string) => expect.objectContaining({ ok: false, error: expect.objectContaining({ code }) })
@@ -63,21 +56,16 @@ afterEach(async () => {
 })
 
 describe('registerFavoritesIpc (YAZ-1766 6A)', () => {
-  it('registers exactly the favorites channels the preload invokes', () => {
-    const channels = vi.mocked(ipcMain.handle).mock.calls.map(([ch]) => ch).sort()
-    expect(channels).toEqual([CH.favoritesGet, CH.favoritesSet].sort())
-  })
-
   it('get and set round-trip absolute paths through the envelope; bad arguments answer error envelopes', async () => {
     const a = path.join(vault, 'a.md')
-    expect(await registered(CH.favoritesGet)({ sender }, vault)).toEqual(ok([]))
-    expect(await registered(CH.favoritesSet)({ sender }, vault, [a])).toEqual(ok(undefined))
-    expect(await registered(CH.favoritesGet)({ sender }, vault)).toEqual(ok([a]))
-    expect(await registered(CH.favoritesGet)({ sender }, 'rel')).toEqual(bad('NOT_ABSOLUTE'))
-    expect(await registered(CH.favoritesSet)({ sender }, vault, 'a.md')).toEqual(bad('BAD_REQUEST'))
-    expect(await registered(CH.favoritesSet)({ sender }, vault, [1])).toEqual(bad('BAD_REQUEST'))
-    expect(await registered(CH.favoritesSet)({ sender }, vault, ['/elsewhere/x.md'])).toEqual(bad('BAD_REQUEST'))
-    expect(await registered(CH.favoritesGet)({ sender }, vault)).toEqual(ok([a])) // none of the refusals wrote
+    expect(await registered(CONTRACT.favorites.get)({ sender }, vault)).toEqual(ok([]))
+    expect(await registered(CONTRACT.favorites.set)({ sender }, vault, [a])).toEqual(ok(undefined))
+    expect(await registered(CONTRACT.favorites.get)({ sender }, vault)).toEqual(ok([a]))
+    expect(await registered(CONTRACT.favorites.get)({ sender }, 'rel')).toEqual(bad('NOT_ABSOLUTE'))
+    expect(await registered(CONTRACT.favorites.set)({ sender }, vault, 'a.md')).toEqual(bad('BAD_REQUEST'))
+    expect(await registered(CONTRACT.favorites.set)({ sender }, vault, [1])).toEqual(bad('BAD_REQUEST'))
+    expect(await registered(CONTRACT.favorites.set)({ sender }, vault, ['/elsewhere/x.md'])).toEqual(bad('BAD_REQUEST'))
+    expect(await registered(CONTRACT.favorites.get)({ sender }, vault)).toEqual(ok([a])) // none of the refusals wrote
   })
 
   it('subscribes one favorites watcher per open-vault root and drops it when the last window leaves', async () => {
@@ -102,14 +90,14 @@ describe('registerFavoritesIpc (YAZ-1766 6A)', () => {
     a.webContents.send.mockClear()
     b.webContents.send.mockClear()
 
-    await registered(CH.favoritesSet)({ sender }, vault, [path.join(vault, 'a.md')])
-    expect(a.webContents.send).toHaveBeenCalledWith(CH.favoritesChanged, { root: vault })
-    expect(b.webContents.send).toHaveBeenCalledWith(CH.favoritesChanged, { root: vault })
+    await registered(CONTRACT.favorites.set)({ sender }, vault, [path.join(vault, 'a.md')])
+    expect(a.webContents.send).toHaveBeenCalledWith(CONTRACT.favorites.onChanged.channel, { root: vault })
+    expect(b.webContents.send).toHaveBeenCalledWith(CONTRACT.favorites.onChanged.channel, { root: vault })
 
     a.webContents.send.mockClear()
     await new Promise((r) => setTimeout(r, 300)) // let the watcher settle on the just-created dotfolder
     await writeFile(path.join(vault, VAULT_CONFIG_DIR, FAVORITES_FILE), JSON.stringify({ version: 1, favorites: [] }))
-    await until(() => a.webContents.send.mock.calls.some(([ch, c]) => ch === CH.favoritesChanged && (c as { root: string }).root === vault))
-    expect(await registered(CH.favoritesGet)({ sender }, vault)).toEqual(ok([]))
+    await until(() => a.webContents.send.mock.calls.some(([ch, c]) => ch === CONTRACT.favorites.onChanged.channel && (c as { root: string }).root === vault))
+    expect(await registered(CONTRACT.favorites.get)({ sender }, vault)).toEqual(ok([]))
   })
 })

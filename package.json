@@ -13,16 +13,25 @@
     "drawio:pack": "node tools/packDrawio.mjs",
     "desktop:build": "npm run build -w desktop && node tools/packDesktop.mjs --mac",
     "desktop:build:win": "npm run build -w desktop && node tools/packDesktop.mjs --win",
-    "typecheck": "tsc -p client/tsconfig.json --noEmit && tsc -p shared/tsconfig.json --noEmit && tsc -p desktop/tsconfig.json --noEmit",
+    "typecheck": "tsc -p client/tsconfig.json --noEmit && tsc -p shared/tsconfig.json --noEmit && tsc -p desktop/tsconfig.json --noEmit && tsc -p e2e/tsconfig.json --noEmit",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "perf": "node tools/perf/run.mjs",
+    "perf:budget": "node tools/perf/measureBudget.mjs",
+    "perf:budget:ci": "node tools/perf/measureBudget.mjs --out-only",
+    "perf:pixels": "node tools/perf/exportPixels.mjs",
+    "e2e": "npm run build && playwright test -c e2e/playwright.config.ts"
   },
   "devDependencies": {
+    "@playwright/test": "^1.63.0",
+    "@vitejs/plugin-react": "^5.2.0",
+    "esbuild": "^0.28.2",
     "jsdom": "^30.0.1",
     "typescript": "^5.9.3",
+    "vite": "^7.3.6",
     "vitest": "^3.2.7"
   },
   "engines": {
-    "node": ">=22"
+    "node": ">=22.2"
   }
 }

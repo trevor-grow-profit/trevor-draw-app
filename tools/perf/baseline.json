@@ -1,0 +1,3119 @@
+{
+  "$comment": "The v0.1.11 baseline (YAZ-2073 1A/1B, re-measured in 7A) every YAZ-2073 change compares to. Built from 51e85cd in its own worktree (`npm ci` + `npm run desktop:build`) and measured on one machine with this branch's tools: `npm run perf:budget -- --app … --dmg … --out …` for size, and `npm run perf -- <scenario> --runs 7 --app <yaz-2073-speed build> --vs <this build>` for speed — the two apps interleaved run by run (ABBA), one warm-up each discarded, the 7 measured runs listed with the median, the nearest-rank p95 and cv (stdev / mean). The machine was shared with other agents (1-minute load 29–159; loadAvg is the load before → after each scenario, both apps together), which the interleaving spreads over both apps alike. Compare a change against a fresh run of this app on the same machine, not against these numbers from another one.",
+  "version": "0.1.11",
+  "commit": "51e85cd",
+  "measured": "2026-09-28",
+  "machine": {
+    "cpu": "Apple M1 Max",
+    "cores": 10,
+    "os": "Darwin 25.6.0"
+  },
+  "size": {
+    "appBytes": 387152347,
+    "frameworksBytes": 287397341,
+    "asarBytes": 75969797,
+    "shareViewerBytes": 23423486,
+    "dmgBytes": 172479381,
+    "lprojCount": 55,
+    "chromiumLocaleBytes": 48655444,
+    "chromiumLocaleCount": 220,
+    "asarNodeModulesFiles": 12,
+    "duplicateBytes": 13637624,
+    "rendererEagerJsBytes": 973567,
+    "rendererEagerCssBytes": 92881,
+    "rendererReachableChunks": 125,
+    "rendererTotalBytes": 28314918,
+    "rendererMapBytes": 0,
+    "mainBundleBytes": 285442
+  },
+  "perf": {
+    "launch": {
+      "loadAvg": [
+        33.7,
+        54.5
+      ],
+      "metrics": {
+        "spawnToCanvasMs": {
+          "median": 509.5,
+          "p95": 517.9,
+          "min": 501,
+          "max": 517.9,
+          "cv": 0.01,
+          "runs": [
+            508.4,
+            507.1,
+            509.5,
+            511.7,
+            517.9,
+            511.7,
+            501
+          ]
+        },
+        "spawnToNavMs": {
+          "median": 275.4,
+          "p95": 288.3,
+          "min": 267.1,
+          "max": 288.3,
+          "cv": 0.02,
+          "runs": [
+            280,
+            271.8,
+            275.4,
+            278.4,
+            288.3,
+            271.4,
+            267.1
+          ]
+        },
+        "navToFirstPaintMs": {
+          "median": 188,
+          "p95": 200,
+          "min": 184,
+          "max": 200,
+          "cv": 0.03,
+          "runs": [
+            184,
+            200,
+            184,
+            188,
+            188,
+            196,
+            192
+          ]
+        },
+        "navToCanvasMs": {
+          "median": 244.7,
+          "p95": 252.4,
+          "min": 239.7,
+          "max": 252.4,
+          "cv": 0.02,
+          "runs": [
+            239.7,
+            249.8,
+            244.2,
+            243.6,
+            244.7,
+            252.4,
+            248.3
+          ]
+        },
+        "jsHeapMb": {
+          "median": 11.9,
+          "p95": 12.1,
+          "min": 11.9,
+          "max": 12.1,
+          "cv": 0.01,
+          "runs": [
+            11.9,
+            12.1,
+            11.9,
+            11.9,
+            11.9,
+            12,
+            12.1
+          ]
+        }
+      }
+    },
+    "drawio": {
+      "loadAvg": [
+        54.5,
+        36.4
+      ],
+      "metrics": {
+        "drawioOpenMs": {
+          "median": 778.1,
+          "p95": 795.5,
+          "min": 761.3,
+          "max": 795.5,
+          "cv": 0.01,
+          "runs": [
+            778.1,
+            762.9,
+            783.5,
+            780.9,
+            771.9,
+            795.5,
+            761.3
+          ]
+        }
+      }
+    },
+    "canvas-1k": {
+      "loadAvg": [
+        36.4,
+        41.5
+      ],
+      "metrics": {
+        "openMs": {
+          "median": 31.6,
+          "p95": 128.3,
+          "min": 26.1,
+          "max": 128.3,
+          "cv": 0.73,
+          "runs": [
+            42.5,
+            28.4,
+            31.2,
+            26.1,
+            31.6,
+            128.3,
+            127.5
+          ]
+        },
+        "openFrameP50Ms": {
+          "median": 10,
+          "p95": 10,
+          "min": 10,
+          "max": 10,
+          "cv": 0,
+          "runs": [
+            10,
+            10,
+            10,
+            10,
+            10,
+            10,
+            10
+          ]
+        },
+        "openFrameP95Ms": {
+          "median": 11.4,
+          "p95": 11.5,
+          "min": 11.1,
+          "max": 11.5,
+          "cv": 0.01,
+          "runs": [
+            11.5,
+            11.1,
+            11.4,
+            11.4,
+            11.4,
+            11.5,
+            11.2
+          ]
+        },
+        "openFrameMaxMs": {
+          "median": 80,
+          "p95": 80.3,
+          "min": 69.9,
+          "max": 80.3,
+          "cv": 0.06,
+          "runs": [
+            69.9,
+            79.5,
+            80,
+            80,
+            70.1,
+            80.3,
+            80
+          ]
+        },
+        "openLongTaskMaxMs": {
+          "median": 83,
+          "p95": 84,
+          "min": 79,
+          "max": 84,
+          "cv": 0.02,
+          "runs": [
+            79,
+            84,
+            80,
+            83,
+            81,
+            84,
+            84
+          ]
+        },
+        "panFrameP50Ms": {
+          "median": 10,
+          "p95": 10,
+          "min": 10,
+          "max": 10,
+          "cv": 0,
+          "runs": [
+            10,
+            10,
+            10,
+            10,
+            10,
+            10,
+            10
+          ]
+        },
+        "panFrameP95Ms": {
+          "median": 11.4,
+          "p95": 11.5,
+          "min": 11.4,
+          "max": 11.5,
+          "cv": 0,
+          "runs": [
+            11.4,
+            11.4,
+            11.4,
+            11.4,
+            11.5,
+            11.5,
+            11.4
+          ]
+        },
+        "panFrameMaxMs": {
+          "median": 12,
+          "p95": 12,
+          "min": 11.8,
+          "max": 12,
+          "cv": 0.01,
+          "runs": [
+            12,
+            12,
+            11.8,
+            12,
+            12,
+            12,
+            12
+          ]
+        },
+        "panLongTaskMaxMs": {
+          "median": 0,
+          "p95": 0,
+          "min": 0,
+          "max": 0,
+          "cv": 0,
+          "runs": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        "zoomFrameP50Ms": {
+          "median": 10,
+          "p95": 10,
+          "min": 10,
+          "max": 10,
+          "cv": 0,
+          "runs": [
+            10,
+            10,
+            10,
+            10,
+            10,
+            10,
+            10
+          ]
+        },
+        "zoomFrameP95Ms": {
+          "median": 11.4,
+          "p95": 11.4,
+          "min": 11.3,
+          "max": 11.4,
+          "cv": 0,
+          "runs": [
+            11.4,
+            11.4,
+            11.3,
+            11.3,
+            11.3,
+            11.4,
+            11.4
+          ]
+        },
+        "zoomFrameMaxMs": {
+          "median": 11.9,
+          "p95": 12,
+          "min": 11.8,
+          "max": 12,
+          "cv": 0.01,
+          "runs": [
+            12,
+            11.9,
+            11.9,
+            11.8,
+            12,
+            11.9,
+            11.8
+          ]
+        },
+        "zoomLongTaskMaxMs": {
+          "median": 0,
+          "p95": 0,
+          "min": 0,
+          "max": 0,
+          "cv": 0,
+          "runs": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        "selectFrameP50Ms": {
+          "median": 10,
+          "p95": 10,
+          "min": 10,
+          "max": 10,
+          "cv": 0,
+          "runs": [
+            10,
+            10,
+            10,
+            10,
+            10,
+            10,
+            10
+          ]
+        },
+        "selectFrameP95Ms": {
+          "median": 11.3,
+          "p95": 11.6,
+          "min": 10.6,
+          "max": 11.6,
+          "cv": 0.03,
+          "runs": [
+            11.3,
+            10.6,
+            11.1,
+            11.3,
+            11.6,
+            11.4,
+            11.4
+          ]
+        },
+        "selectFrameMaxMs": {
+          "median": 11.5,
+          "p95": 19.9,
+          "min": 10.6,
+          "max": 19.9,
+          "cv": 0.24,
+          "runs": [
+            11.5,
+            10.6,
+            11.7,
+            11.3,
+            19.9,
+            11.9,
+            11.5
+          ]
+        },
+        "selectLongTaskMaxMs": {
+          "median": 0,
+          "p95": 0,
+          "min": 0,
+          "max": 0,
+          "cv": 0,
+          "runs": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        "dragSelected": {
+          "median": 1000,
+          "p95": 1000,
+          "min": 1000,
+          "max": 1000,
+          "cv": 0,
+          "runs": [
+            1000,
+            1000,
+            1000,
+            1000,
+            1000,
+            1000,
+            1000
+          ]
+        },
+        "dragFrameP50Ms": {
+          "median": 20,
+          "p95": 20.1,
+          "min": 20,
+          "max": 20.1,
+          "cv": 0,
+          "runs": [
+            20,
+            20,
+            20,
+            20,
+            20,
+            20,
+            20.1
+          ]
+        },
+        "dragFrameP95Ms": {
+          "median": 30.8,
+          "p95": 31.8,
+          "min": 30.1,
+          "max": 31.8,
+          "cv": 0.02,
+          "runs": [
+            30.1,
+            31.4,
+            31.8,
+            30.8,
+            31.4,
+            30.4,
+            30.6
+          ]
+        },
+        "dragFrameMaxMs": {
+          "median": 60,
+          "p95": 60.1,
+          "min": 49.9,
+          "max": 60.1,
+          "cv": 0.09,
+          "runs": [
+            60.1,
+            50,
+            49.9,
+            60,
+            60,
+            49.9,
+            60
+          ]
+        },
+        "dragLongTaskMaxMs": {
+          "median": 51,
+          "p95": 52,
+          "min": 50,
+          "max": 52,
+          "cv": 0.01,
+          "runs": [
+            51,
+            50,
+            51,
+            52,
+            51,
+            51,
+            51
+          ]
+        }
+      }
+    },
+    "canvas-4k": {
+      "loadAvg": [
+        41.5,
+        28.6
+      ],
+      "metrics": {
+        "openMs": {
+          "median": 68.6,
+          "p95": 72.6,
+          "min": 63.3,
+          "max": 72.6,
+          "cv": 0.05,
+          "runs": [
+            72.6,
+            63.3,
+            63.5,
+            68.6,
+            67.3,
+            69.4,
+            72.4
+          ]
+        },
+        "openFrameP50Ms": {
+          "median": 10,
+          "p95": 10,
+          "min": 10,
+          "max": 10,
+          "cv": 0,
+          "runs": [
+            10,
+            10,
+            10,
+            10,
+            10,
+            10,
+            10
+          ]
+        },
+        "openFrameP95Ms": {
+          "median": 10.7,
+          "p95": 10.8,
+          "min": 10.6,
+          "max": 10.8,
+          "cv": 0.01,
+          "runs": [
+            10.8,
+            10.8,
+            10.6,
+            10.7,
+            10.6,
+            10.8,
+            10.7
+          ]
+        },
+        "openFrameMaxMs": {
+          "median": 300,
+          "p95": 1060,
+          "min": 10.9,
+          "max": 1060,
+          "cv": 0.78,
+          "runs": [
+            280.4,
+            300,
+            269.9,
+            1010,
+            10.9,
+            410.1,
+            1060
+          ]
+        },
+        "openLongTaskMaxMs": {
+          "median": 268,
+          "p95": 289,
+          "min": 263,
+          "max": 289,
+          "cv": 0.03,
+          "runs": [
+            268,
+            289,
+            263,
+            267,
+            263,
+            280,
+            278
+          ]
+        },
+        "panFrameP50Ms": {
+          "median": 10,
+          "p95": 10,
+          "min": 10,
+          "max": 10,
+          "cv": 0,
+          "runs": [
+            10,
+            10,
+            10,
+            10,
+            10,
+            10,
+            10
+          ]
+        },
+        "panFrameP95Ms": {
+          "median": 10.7,
+          "p95": 10.8,
+          "min": 10.5,
+          "max": 10.8,
+          "cv": 0.01,
+          "runs": [
+            10.7,
+            10.8,
+            10.7,
+            10.7,
+            10.5,
+            10.8,
+            10.5
+          ]
+        },
+        "panFrameMaxMs": {
+          "median": 20,
+          "p95": 20.4,
+          "min": 11,
+          "max": 20.4,
+          "cv": 0.17,
+          "runs": [
+            20,
+            20.4,
+            20.1,
+            20,
+            11,
+            19.8,
+            20
+          ]
+        },
+        "panLongTaskMaxMs": {
+          "median": 0,
+          "p95": 0,
+          "min": 0,
+          "max": 0,
+          "cv": 0,
+          "runs": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        "zoomFrameP50Ms": {
+          "median": 10,
+          "p95": 10,
+          "min": 10,
+          "max": 10,
+          "cv": 0,
+          "runs": [
+            10,
+            10,
+            10,
+            10,
+            10,
+            10,
+            10
+          ]
+        },
+        "zoomFrameP95Ms": {
+          "median": 10.9,
+          "p95": 19.9,
+          "min": 10.7,
+          "max": 19.9,
+          "cv": 0.26,
+          "runs": [
+            10.8,
+            10.9,
+            10.9,
+            10.8,
+            19.9,
+            10.9,
+            10.7
+          ]
+        },
+        "zoomFrameMaxMs": {
+          "median": 20.1,
+          "p95": 20.7,
+          "min": 20,
+          "max": 20.7,
+          "cv": 0.01,
+          "runs": [
+            20,
+            20.1,
+            20.7,
+            20.2,
+            20.4,
+            20,
+            20.1
+          ]
+        },
+        "zoomLongTaskMaxMs": {
+          "median": 0,
+          "p95": 0,
+          "min": 0,
+          "max": 0,
+          "cv": 0,
+          "runs": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        "selectFrameP50Ms": {
+          "median": 10,
+          "p95": 10,
+          "min": 10,
+          "max": 10,
+          "cv": 0,
+          "runs": [
+            10,
+            10,
+            10,
+            10,
+            10,
+            10,
+            10
+          ]
+        },
+        "selectFrameP95Ms": {
+          "median": 10.9,
+          "p95": 11.1,
+          "min": 10.3,
+          "max": 11.1,
+          "cv": 0.02,
+          "runs": [
+            11.1,
+            10.9,
+            10.3,
+            10.9,
+            10.7,
+            10.9,
+            10.7
+          ]
+        },
+        "selectFrameMaxMs": {
+          "median": 29.9,
+          "p95": 50.8,
+          "min": 10.7,
+          "max": 50.8,
+          "cv": 0.57,
+          "runs": [
+            29.9,
+            10.9,
+            10.7,
+            10.9,
+            50.8,
+            40.9,
+            30.1
+          ]
+        },
+        "selectLongTaskMaxMs": {
+          "median": 0,
+          "p95": 55,
+          "min": 0,
+          "max": 55,
+          "cv": 2.45,
+          "runs": [
+            0,
+            0,
+            0,
+            0,
+            55,
+            0,
+            0
+          ]
+        },
+        "dragSelected": {
+          "median": 4000,
+          "p95": 4000,
+          "min": 4000,
+          "max": 4000,
+          "cv": 0,
+          "runs": [
+            4000,
+            4000,
+            4000,
+            4000,
+            4000,
+            4000,
+            4000
+          ]
+        },
+        "dragFrameP50Ms": {
+          "median": 460,
+          "p95": 470,
+          "min": 460,
+          "max": 470,
+          "cv": 0.01,
+          "runs": [
+            460,
+            470,
+            470,
+            460,
+            460,
+            469.6,
+            460
+          ]
+        },
+        "dragFrameP95Ms": {
+          "median": 500,
+          "p95": 510,
+          "min": 480.1,
+          "max": 510,
+          "cv": 0.02,
+          "runs": [
+            509.9,
+            510,
+            500,
+            480.1,
+            510,
+            500,
+            490.3
+          ]
+        },
+        "dragFrameMaxMs": {
+          "median": 560,
+          "p95": 1219.7,
+          "min": 539.9,
+          "max": 1219.7,
+          "cv": 0.39,
+          "runs": [
+            1159.8,
+            560,
+            547,
+            560.1,
+            1219.7,
+            559.7,
+            539.9
+          ]
+        },
+        "dragLongTaskMaxMs": {
+          "median": 531,
+          "p95": 539,
+          "min": 520,
+          "max": 539,
+          "cv": 0.01,
+          "runs": [
+            531,
+            534,
+            538,
+            523,
+            520,
+            539,
+            524
+          ]
+        }
+      }
+    },
+    "canvas-1k-dark": {
+      "loadAvg": [
+        28.6,
+        80.7
+      ],
+      "metrics": {
+        "openMs": {
+          "median": 31,
+          "p95": 46.7,
+          "min": 26.1,
+          "max": 46.7,
+          "cv": 0.18,
+          "runs": [
+            30.9,
+            30.5,
+            31,
+            31.8,
+            34.8,
+            46.7,
+            26.1
+          ]
+        },
+        "openFrameP50Ms": {
+          "median": 10,
+          "p95": 10,
+          "min": 10,
+          "max": 10,
+          "cv": 0,
+          "runs": [
+            10,
+            10,
+            10,
+            10,
+            10,
+            10,
+            10
+          ]
+        },
+        "openFrameP95Ms": {
+          "median": 10.8,
+          "p95": 10.9,
+          "min": 10.6,
+          "max": 10.9,
+          "cv": 0.01,
+          "runs": [
+            10.8,
+            10.6,
+            10.7,
+            10.9,
+            10.8,
+            10.9,
+            10.7
+          ]
+        },
+        "openFrameMaxMs": {
+          "median": 80,
+          "p95": 90.1,
+          "min": 11,
+          "max": 90.1,
+          "cv": 0.69,
+          "runs": [
+            11,
+            11,
+            90.1,
+            80.9,
+            80,
+            80,
+            11
+          ]
+        },
+        "openLongTaskMaxMs": {
+          "median": 87,
+          "p95": 95,
+          "min": 82,
+          "max": 95,
+          "cv": 0.05,
+          "runs": [
+            95,
+            82,
+            89,
+            87,
+            88,
+            87,
+            83
+          ]
+        },
+        "panFrameP50Ms": {
+          "median": 10,
+          "p95": 10,
+          "min": 10,
+          "max": 10,
+          "cv": 0,
+          "runs": [
+            10,
+            10,
+            10,
+            10,
+            10,
+            10,
+            10
+          ]
+        },
+        "panFrameP95Ms": {
+          "median": 10.8,
+          "p95": 10.9,
+          "min": 10.5,
+          "max": 10.9,
+          "cv": 0.01,
+          "runs": [
+            10.5,
+            10.8,
+            10.7,
+            10.8,
+            10.8,
+            10.9,
+            10.8
+          ]
+        },
+        "panFrameMaxMs": {
+          "median": 11,
+          "p95": 1009.9,
+          "min": 10.9,
+          "max": 1009.9,
+          "cv": 2.27,
+          "runs": [
+            10.9,
+            11,
+            10.9,
+            11,
+            11,
+            1009.9,
+            11
+          ]
+        },
+        "panLongTaskMaxMs": {
+          "median": 0,
+          "p95": 0,
+          "min": 0,
+          "max": 0,
+          "cv": 0,
+          "runs": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        "zoomFrameP50Ms": {
+          "median": 10,
+          "p95": 10,
+          "min": 10,
+          "max": 10,
+          "cv": 0,
+          "runs": [
+            10,
+            10,
+            10,
+            10,
+            10,
+            10,
+            10
+          ]
+        },
+        "zoomFrameP95Ms": {
+          "median": 10.8,
+          "p95": 10.9,
+          "min": 10.6,
+          "max": 10.9,
+          "cv": 0.01,
+          "runs": [
+            10.7,
+            10.6,
+            10.7,
+            10.8,
+            10.8,
+            10.9,
+            10.9
+          ]
+        },
+        "zoomFrameMaxMs": {
+          "median": 11,
+          "p95": 11.1,
+          "min": 10.9,
+          "max": 11.1,
+          "cv": 0.01,
+          "runs": [
+            10.9,
+            10.9,
+            10.9,
+            11.1,
+            11,
+            11.1,
+            11
+          ]
+        },
+        "zoomLongTaskMaxMs": {
+          "median": 0,
+          "p95": 0,
+          "min": 0,
+          "max": 0,
+          "cv": 0,
+          "runs": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        "selectFrameP50Ms": {
+          "median": 10,
+          "p95": 10,
+          "min": 10,
+          "max": 10,
+          "cv": 0,
+          "runs": [
+            10,
+            10,
+            10,
+            10,
+            10,
+            10,
+            10
+          ]
+        },
+        "selectFrameP95Ms": {
+          "median": 10.9,
+          "p95": 11,
+          "min": 10.4,
+          "max": 11,
+          "cv": 0.02,
+          "runs": [
+            10.9,
+            10.4,
+            10.9,
+            10.9,
+            10.7,
+            11,
+            10.6
+          ]
+        },
+        "selectFrameMaxMs": {
+          "median": 11,
+          "p95": 19.1,
+          "min": 10.5,
+          "max": 19.1,
+          "cv": 0.24,
+          "runs": [
+            11,
+            10.5,
+            11,
+            11,
+            10.7,
+            19.1,
+            10.9
+          ]
+        },
+        "selectLongTaskMaxMs": {
+          "median": 0,
+          "p95": 0,
+          "min": 0,
+          "max": 0,
+          "cv": 0,
+          "runs": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        "dragSelected": {
+          "median": 1000,
+          "p95": 1000,
+          "min": 1000,
+          "max": 1000,
+          "cv": 0,
+          "runs": [
+            1000,
+            1000,
+            1000,
+            1000,
+            1000,
+            1000,
+            1000
+          ]
+        },
+        "dragFrameP50Ms": {
+          "median": 20.1,
+          "p95": 29.2,
+          "min": 10,
+          "max": 29.2,
+          "cv": 0.33,
+          "runs": [
+            20.1,
+            20.1,
+            10,
+            29.2,
+            20.6,
+            10,
+            20
+          ]
+        },
+        "dragFrameP95Ms": {
+          "median": 30.7,
+          "p95": 31,
+          "min": 10.9,
+          "max": 31,
+          "cv": 0.25,
+          "runs": [
+            30.4,
+            31,
+            30,
+            30.7,
+            30.9,
+            10.9,
+            30.8
+          ]
+        },
+        "dragFrameMaxMs": {
+          "median": 59.9,
+          "p95": 1009.1,
+          "min": 11.1,
+          "max": 1009.1,
+          "cv": 1.8,
+          "runs": [
+            49.5,
+            59.9,
+            1009.1,
+            60.5,
+            60,
+            11.1,
+            59.1
+          ]
+        },
+        "dragLongTaskMaxMs": {
+          "median": 52,
+          "p95": 53,
+          "min": 0,
+          "max": 53,
+          "cv": 0.87,
+          "runs": [
+            52,
+            52,
+            0,
+            52,
+            53,
+            0,
+            0
+          ]
+        }
+      }
+    },
+    "canvas-4k-dark": {
+      "loadAvg": [
+        80.7,
+        40.3
+      ],
+      "metrics": {
+        "openMs": {
+          "median": 65.3,
+          "p95": 79.3,
+          "min": 57.9,
+          "max": 79.3,
+          "cv": 0.11,
+          "runs": [
+            70.5,
+            65.3,
+            79.3,
+            60.5,
+            58.6,
+            57.9,
+            73.4
+          ]
+        },
+        "openFrameP50Ms": {
+          "median": 10,
+          "p95": 10,
+          "min": 10,
+          "max": 10,
+          "cv": 0,
+          "runs": [
+            10,
+            10,
+            10,
+            10,
+            10,
+            10,
+            10
+          ]
+        },
+        "openFrameP95Ms": {
+          "median": 10.7,
+          "p95": 10.9,
+          "min": 10.6,
+          "max": 10.9,
+          "cv": 0.01,
+          "runs": [
+            10.7,
+            10.7,
+            10.6,
+            10.8,
+            10.9,
+            10.7,
+            10.8
+          ]
+        },
+        "openFrameMaxMs": {
+          "median": 290.1,
+          "p95": 320,
+          "min": 279.5,
+          "max": 320,
+          "cv": 0.04,
+          "runs": [
+            290.1,
+            320,
+            279.5,
+            290.1,
+            300.2,
+            300,
+            279.9
+          ]
+        },
+        "openLongTaskMaxMs": {
+          "median": 285,
+          "p95": 296,
+          "min": 265,
+          "max": 296,
+          "cv": 0.04,
+          "runs": [
+            285,
+            296,
+            265,
+            281,
+            287,
+            290,
+            270
+          ]
+        },
+        "panFrameP50Ms": {
+          "median": 10,
+          "p95": 10,
+          "min": 10,
+          "max": 10,
+          "cv": 0,
+          "runs": [
+            10,
+            10,
+            10,
+            10,
+            10,
+            10,
+            10
+          ]
+        },
+        "panFrameP95Ms": {
+          "median": 10.7,
+          "p95": 10.9,
+          "min": 10.5,
+          "max": 10.9,
+          "cv": 0.01,
+          "runs": [
+            10.8,
+            10.5,
+            10.5,
+            10.7,
+            10.9,
+            10.6,
+            10.7
+          ]
+        },
+        "panFrameMaxMs": {
+          "median": 20,
+          "p95": 20.1,
+          "min": 11,
+          "max": 20.1,
+          "cv": 0.17,
+          "runs": [
+            11,
+            20.1,
+            20,
+            20.1,
+            20.1,
+            20,
+            20
+          ]
+        },
+        "panLongTaskMaxMs": {
+          "median": 0,
+          "p95": 0,
+          "min": 0,
+          "max": 0,
+          "cv": 0,
+          "runs": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        "zoomFrameP50Ms": {
+          "median": 10,
+          "p95": 10,
+          "min": 10,
+          "max": 10,
+          "cv": 0,
+          "runs": [
+            10,
+            10,
+            10,
+            10,
+            10,
+            10,
+            10
+          ]
+        },
+        "zoomFrameP95Ms": {
+          "median": 10.9,
+          "p95": 19,
+          "min": 10.7,
+          "max": 19,
+          "cv": 0.24,
+          "runs": [
+            10.8,
+            11,
+            10.9,
+            11,
+            19,
+            10.7,
+            10.9
+          ]
+        },
+        "zoomFrameMaxMs": {
+          "median": 20.2,
+          "p95": 20.5,
+          "min": 20.1,
+          "max": 20.5,
+          "cv": 0.01,
+          "runs": [
+            20.1,
+            20.2,
+            20.1,
+            20.2,
+            20.3,
+            20.2,
+            20.5
+          ]
+        },
+        "zoomLongTaskMaxMs": {
+          "median": 0,
+          "p95": 0,
+          "min": 0,
+          "max": 0,
+          "cv": 0,
+          "runs": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        "selectFrameP50Ms": {
+          "median": 10,
+          "p95": 10,
+          "min": 10,
+          "max": 10,
+          "cv": 0,
+          "runs": [
+            10,
+            10,
+            10,
+            10,
+            10,
+            10,
+            10
+          ]
+        },
+        "selectFrameP95Ms": {
+          "median": 10.8,
+          "p95": 11,
+          "min": 10.1,
+          "max": 11,
+          "cv": 0.03,
+          "runs": [
+            11,
+            10.1,
+            10.8,
+            10.7,
+            10.9,
+            10.9,
+            10.1
+          ]
+        },
+        "selectFrameMaxMs": {
+          "median": 20.1,
+          "p95": 30,
+          "min": 10.8,
+          "max": 30,
+          "cv": 0.36,
+          "runs": [
+            20.1,
+            29.9,
+            20.1,
+            30,
+            29.7,
+            11.1,
+            10.8
+          ]
+        },
+        "selectLongTaskMaxMs": {
+          "median": 0,
+          "p95": 0,
+          "min": 0,
+          "max": 0,
+          "cv": 0,
+          "runs": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        "dragSelected": {
+          "median": 4000,
+          "p95": 4000,
+          "min": 4000,
+          "max": 4000,
+          "cv": 0,
+          "runs": [
+            4000,
+            4000,
+            4000,
+            4000,
+            4000,
+            4000,
+            4000
+          ]
+        },
+        "dragFrameP50Ms": {
+          "median": 460.1,
+          "p95": 480,
+          "min": 460,
+          "max": 480,
+          "cv": 0.02,
+          "runs": [
+            480,
+            460,
+            460,
+            480,
+            480,
+            460.1,
+            460
+          ]
+        },
+        "dragFrameP95Ms": {
+          "median": 510,
+          "p95": 539,
+          "min": 480.6,
+          "max": 539,
+          "cv": 0.04,
+          "runs": [
+            539,
+            490,
+            519.5,
+            510,
+            510,
+            480.6,
+            500.9
+          ]
+        },
+        "dragFrameMaxMs": {
+          "median": 570.1,
+          "p95": 1210.2,
+          "min": 549.3,
+          "max": 1210.2,
+          "cv": 0.39,
+          "runs": [
+            1210.2,
+            549.3,
+            1199.9,
+            570.1,
+            570.7,
+            550,
+            550
+          ]
+        },
+        "dragLongTaskMaxMs": {
+          "median": 540,
+          "p95": 555,
+          "min": 523,
+          "max": 555,
+          "cv": 0.02,
+          "runs": [
+            550,
+            531,
+            529,
+            547,
+            555,
+            540,
+            523
+          ]
+        }
+      }
+    },
+    "canvas-images": {
+      "loadAvg": [
+        37.5,
+        51.6
+      ],
+      "metrics": {
+        "openMs": {
+          "median": 65.9,
+          "p95": 76,
+          "min": 48.8,
+          "max": 76,
+          "cv": 0.11,
+          "runs": [
+            65.9,
+            65.5,
+            76,
+            66.3,
+            66,
+            48.8,
+            64.4
+          ]
+        },
+        "openFrameP50Ms": {
+          "median": 10,
+          "p95": 10,
+          "min": 10,
+          "max": 10,
+          "cv": 0,
+          "runs": [
+            10,
+            10,
+            10,
+            10,
+            10,
+            10,
+            10
+          ]
+        },
+        "openFrameP95Ms": {
+          "median": 10.7,
+          "p95": 10.9,
+          "min": 10.7,
+          "max": 10.9,
+          "cv": 0.01,
+          "runs": [
+            10.9,
+            10.8,
+            10.7,
+            10.7,
+            10.7,
+            10.7,
+            10.7
+          ]
+        },
+        "openFrameMaxMs": {
+          "median": 310,
+          "p95": 340.7,
+          "min": 309.9,
+          "max": 340.7,
+          "cv": 0.04,
+          "runs": [
+            340.7,
+            309.9,
+            320,
+            309.9,
+            330,
+            310,
+            310
+          ]
+        },
+        "openLongTaskMaxMs": {
+          "median": 312,
+          "p95": 335,
+          "min": 302,
+          "max": 335,
+          "cv": 0.04,
+          "runs": [
+            335,
+            309,
+            316,
+            302,
+            330,
+            312,
+            304
+          ]
+        },
+        "panFrameP50Ms": {
+          "median": 10,
+          "p95": 10,
+          "min": 10,
+          "max": 10,
+          "cv": 0,
+          "runs": [
+            10,
+            10,
+            10,
+            10,
+            10,
+            10,
+            10
+          ]
+        },
+        "panFrameP95Ms": {
+          "median": 10.7,
+          "p95": 10.8,
+          "min": 10.4,
+          "max": 10.8,
+          "cv": 0.02,
+          "runs": [
+            10.8,
+            10.4,
+            10.8,
+            10.7,
+            10.7,
+            10.4,
+            10.5
+          ]
+        },
+        "panFrameMaxMs": {
+          "median": 11,
+          "p95": 11.1,
+          "min": 10.9,
+          "max": 11.1,
+          "cv": 0.01,
+          "runs": [
+            11.1,
+            10.9,
+            11.1,
+            11,
+            11,
+            11,
+            10.9
+          ]
+        },
+        "panLongTaskMaxMs": {
+          "median": 0,
+          "p95": 0,
+          "min": 0,
+          "max": 0,
+          "cv": 0,
+          "runs": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        "zoomFrameP50Ms": {
+          "median": 10,
+          "p95": 10,
+          "min": 10,
+          "max": 10,
+          "cv": 0,
+          "runs": [
+            10,
+            10,
+            10,
+            10,
+            10,
+            10,
+            10
+          ]
+        },
+        "zoomFrameP95Ms": {
+          "median": 10.7,
+          "p95": 10.9,
+          "min": 10.5,
+          "max": 10.9,
+          "cv": 0.01,
+          "runs": [
+            10.9,
+            10.7,
+            10.7,
+            10.8,
+            10.6,
+            10.5,
+            10.6
+          ]
+        },
+        "zoomFrameMaxMs": {
+          "median": 11,
+          "p95": 11.1,
+          "min": 11,
+          "max": 11.1,
+          "cv": 0,
+          "runs": [
+            11,
+            11,
+            11,
+            11,
+            11,
+            11,
+            11.1
+          ]
+        },
+        "zoomLongTaskMaxMs": {
+          "median": 0,
+          "p95": 0,
+          "min": 0,
+          "max": 0,
+          "cv": 0,
+          "runs": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        "selectFrameP50Ms": {
+          "median": 10,
+          "p95": 10,
+          "min": 10,
+          "max": 10,
+          "cv": 0,
+          "runs": [
+            10,
+            10,
+            10,
+            10,
+            10,
+            10,
+            10
+          ]
+        },
+        "selectFrameP95Ms": {
+          "median": 10.5,
+          "p95": 10.9,
+          "min": 10.1,
+          "max": 10.9,
+          "cv": 0.02,
+          "runs": [
+            10.7,
+            10.1,
+            10.6,
+            10.5,
+            10.9,
+            10.3,
+            10.3
+          ]
+        },
+        "selectFrameMaxMs": {
+          "median": 10.8,
+          "p95": 20,
+          "min": 10.6,
+          "max": 20,
+          "cv": 0.27,
+          "runs": [
+            10.8,
+            10.9,
+            10.7,
+            10.6,
+            20,
+            10.7,
+            10.9
+          ]
+        },
+        "selectLongTaskMaxMs": {
+          "median": 0,
+          "p95": 0,
+          "min": 0,
+          "max": 0,
+          "cv": 0,
+          "runs": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        "dragSelected": {
+          "median": 121,
+          "p95": 121,
+          "min": 121,
+          "max": 121,
+          "cv": 0,
+          "runs": [
+            121,
+            121,
+            121,
+            121,
+            121,
+            121,
+            121
+          ]
+        },
+        "dragFrameP50Ms": {
+          "median": 10,
+          "p95": 10,
+          "min": 10,
+          "max": 10,
+          "cv": 0,
+          "runs": [
+            10,
+            10,
+            10,
+            10,
+            10,
+            10,
+            10
+          ]
+        },
+        "dragFrameP95Ms": {
+          "median": 10.6,
+          "p95": 10.8,
+          "min": 10.5,
+          "max": 10.8,
+          "cv": 0.01,
+          "runs": [
+            10.8,
+            10.6,
+            10.8,
+            10.5,
+            10.8,
+            10.5,
+            10.5
+          ]
+        },
+        "dragFrameMaxMs": {
+          "median": 11,
+          "p95": 11.1,
+          "min": 10.8,
+          "max": 11.1,
+          "cv": 0.01,
+          "runs": [
+            11,
+            11,
+            11.1,
+            11.1,
+            11,
+            10.8,
+            10.8
+          ]
+        },
+        "dragLongTaskMaxMs": {
+          "median": 0,
+          "p95": 0,
+          "min": 0,
+          "max": 0,
+          "cv": 0,
+          "runs": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        }
+      }
+    },
+    "canvas-legacy": {
+      "loadAvg": [
+        51.6,
+        58.3
+      ],
+      "metrics": {
+        "openMs": {
+          "median": 232.6,
+          "p95": 286.6,
+          "min": 223.3,
+          "max": 286.6,
+          "cv": 0.08,
+          "runs": [
+            230.8,
+            286.6,
+            223.3,
+            227.3,
+            247.4,
+            234.7,
+            232.6
+          ]
+        },
+        "openFrameP50Ms": {
+          "median": 10,
+          "p95": 10,
+          "min": 10,
+          "max": 10,
+          "cv": 0,
+          "runs": [
+            10,
+            10,
+            10,
+            10,
+            10,
+            10,
+            10
+          ]
+        },
+        "openFrameP95Ms": {
+          "median": 10.7,
+          "p95": 10.9,
+          "min": 10.5,
+          "max": 10.9,
+          "cv": 0.01,
+          "runs": [
+            10.5,
+            10.7,
+            10.7,
+            10.8,
+            10.9,
+            10.6,
+            10.7
+          ]
+        },
+        "openFrameMaxMs": {
+          "median": 99.9,
+          "p95": 110.5,
+          "min": 11.1,
+          "max": 110.5,
+          "cv": 0.51,
+          "runs": [
+            100.3,
+            110.5,
+            99.9,
+            100,
+            99.4,
+            11.1,
+            20
+          ]
+        },
+        "openLongTaskMaxMs": {
+          "median": 109,
+          "p95": 115,
+          "min": 105,
+          "max": 115,
+          "cv": 0.03,
+          "runs": [
+            109,
+            115,
+            107,
+            105,
+            109,
+            111,
+            110
+          ]
+        },
+        "panFrameP50Ms": {
+          "median": 10,
+          "p95": 10,
+          "min": 10,
+          "max": 10,
+          "cv": 0,
+          "runs": [
+            10,
+            10,
+            10,
+            10,
+            10,
+            10,
+            10
+          ]
+        },
+        "panFrameP95Ms": {
+          "median": 10.6,
+          "p95": 10.9,
+          "min": 10.5,
+          "max": 10.9,
+          "cv": 0.01,
+          "runs": [
+            10.6,
+            10.5,
+            10.7,
+            10.6,
+            10.6,
+            10.9,
+            10.6
+          ]
+        },
+        "panFrameMaxMs": {
+          "median": 11,
+          "p95": 11.1,
+          "min": 11,
+          "max": 11.1,
+          "cv": 0,
+          "runs": [
+            11.1,
+            11,
+            11,
+            11,
+            11,
+            11.1,
+            11
+          ]
+        },
+        "panLongTaskMaxMs": {
+          "median": 0,
+          "p95": 0,
+          "min": 0,
+          "max": 0,
+          "cv": 0,
+          "runs": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        "zoomFrameP50Ms": {
+          "median": 10,
+          "p95": 10,
+          "min": 10,
+          "max": 10,
+          "cv": 0,
+          "runs": [
+            10,
+            10,
+            10,
+            10,
+            10,
+            10,
+            10
+          ]
+        },
+        "zoomFrameP95Ms": {
+          "median": 10.7,
+          "p95": 10.8,
+          "min": 10.4,
+          "max": 10.8,
+          "cv": 0.01,
+          "runs": [
+            10.7,
+            10.8,
+            10.4,
+            10.5,
+            10.6,
+            10.8,
+            10.7
+          ]
+        },
+        "zoomFrameMaxMs": {
+          "median": 11,
+          "p95": 11.2,
+          "min": 11,
+          "max": 11.2,
+          "cv": 0.01,
+          "runs": [
+            11,
+            11,
+            11.2,
+            11.1,
+            11.1,
+            11,
+            11
+          ]
+        },
+        "zoomLongTaskMaxMs": {
+          "median": 0,
+          "p95": 0,
+          "min": 0,
+          "max": 0,
+          "cv": 0,
+          "runs": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        "selectFrameP50Ms": {
+          "median": 10,
+          "p95": 10,
+          "min": 10,
+          "max": 10,
+          "cv": 0,
+          "runs": [
+            10,
+            10,
+            10,
+            10,
+            10,
+            10,
+            10
+          ]
+        },
+        "selectFrameP95Ms": {
+          "median": 10.4,
+          "p95": 10.8,
+          "min": 10.2,
+          "max": 10.8,
+          "cv": 0.02,
+          "runs": [
+            10.3,
+            10.8,
+            10.2,
+            10.4,
+            10.5,
+            10.8,
+            10.2
+          ]
+        },
+        "selectFrameMaxMs": {
+          "median": 10.9,
+          "p95": 11,
+          "min": 10.4,
+          "max": 11,
+          "cv": 0.02,
+          "runs": [
+            10.9,
+            10.9,
+            10.4,
+            10.6,
+            10.7,
+            10.9,
+            11
+          ]
+        },
+        "selectLongTaskMaxMs": {
+          "median": 0,
+          "p95": 0,
+          "min": 0,
+          "max": 0,
+          "cv": 0,
+          "runs": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        "dragSelected": {
+          "median": 15,
+          "p95": 15,
+          "min": 15,
+          "max": 15,
+          "cv": 0,
+          "runs": [
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15
+          ]
+        },
+        "dragFrameP50Ms": {
+          "median": 10,
+          "p95": 10,
+          "min": 10,
+          "max": 10,
+          "cv": 0,
+          "runs": [
+            10,
+            10,
+            10,
+            10,
+            10,
+            10,
+            10
+          ]
+        },
+        "dragFrameP95Ms": {
+          "median": 10.7,
+          "p95": 10.9,
+          "min": 10.6,
+          "max": 10.9,
+          "cv": 0.01,
+          "runs": [
+            10.8,
+            10.6,
+            10.8,
+            10.6,
+            10.7,
+            10.9,
+            10.6
+          ]
+        },
+        "dragFrameMaxMs": {
+          "median": 11,
+          "p95": 11.1,
+          "min": 11,
+          "max": 11.1,
+          "cv": 0,
+          "runs": [
+            11,
+            11,
+            11,
+            11,
+            11.1,
+            11,
+            11
+          ]
+        },
+        "dragLongTaskMaxMs": {
+          "median": 0,
+          "p95": 0,
+          "min": 0,
+          "max": 0,
+          "cv": 0,
+          "runs": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        }
+      }
+    },
+    "hover": {
+      "loadAvg": [
+        56.6,
+        110.5
+      ],
+      "metrics": {
+        "hover121PreviewMs": {
+          "median": 785.8,
+          "p95": 827.8,
+          "min": 776.9,
+          "max": 827.8,
+          "cv": 0.02,
+          "runs": [
+            776.9,
+            782,
+            783.6,
+            827.8,
+            793.8,
+            785.8,
+            797.3
+          ]
+        },
+        "hover121FrameP50Ms": {
+          "median": 10,
+          "p95": 10,
+          "min": 10,
+          "max": 10,
+          "cv": 0,
+          "runs": [
+            10,
+            10,
+            10,
+            10,
+            10,
+            10,
+            10
+          ]
+        },
+        "hover121FrameP95Ms": {
+          "median": 10.8,
+          "p95": 10.9,
+          "min": 10.6,
+          "max": 10.9,
+          "cv": 0.01,
+          "runs": [
+            10.6,
+            10.7,
+            10.9,
+            10.7,
+            10.8,
+            10.9,
+            10.9
+          ]
+        },
+        "hover121FrameMaxMs": {
+          "median": 310,
+          "p95": 320,
+          "min": 299.3,
+          "max": 320,
+          "cv": 0.02,
+          "runs": [
+            299.3,
+            310,
+            319.3,
+            320,
+            310,
+            309.1,
+            310
+          ]
+        },
+        "hover121LongTaskMaxMs": {
+          "median": 314,
+          "p95": 326,
+          "min": 307,
+          "max": 326,
+          "cv": 0.02,
+          "runs": [
+            307,
+            313,
+            316,
+            326,
+            314,
+            320,
+            314
+          ]
+        },
+        "hover90PreviewMs": {
+          "median": 700.7,
+          "p95": 707.6,
+          "min": 681.4,
+          "max": 707.6,
+          "cv": 0.01,
+          "runs": [
+            707.6,
+            692.3,
+            700.7,
+            705.9,
+            703.3,
+            681.4,
+            698.3
+          ]
+        },
+        "hover90FrameP50Ms": {
+          "median": 10,
+          "p95": 10,
+          "min": 10,
+          "max": 10,
+          "cv": 0,
+          "runs": [
+            10,
+            10,
+            10,
+            10,
+            10,
+            10,
+            10
+          ]
+        },
+        "hover90FrameP95Ms": {
+          "median": 10.8,
+          "p95": 11,
+          "min": 10.4,
+          "max": 11,
+          "cv": 0.02,
+          "runs": [
+            10.9,
+            10.8,
+            10.8,
+            10.7,
+            11,
+            10.4,
+            10.8
+          ]
+        },
+        "hover90FrameMaxMs": {
+          "median": 230,
+          "p95": 230.5,
+          "min": 220.1,
+          "max": 230.5,
+          "cv": 0.02,
+          "runs": [
+            230,
+            229.2,
+            229.4,
+            230.1,
+            220.1,
+            230.5,
+            230.1
+          ]
+        },
+        "hover90LongTaskMaxMs": {
+          "median": 236,
+          "p95": 240,
+          "min": 230,
+          "max": 240,
+          "cv": 0.01,
+          "runs": [
+            240,
+            233,
+            239,
+            236,
+            230,
+            237,
+            235
+          ]
+        },
+        "hoverLegacyPreviewMs": {
+          "median": 671,
+          "p95": 680,
+          "min": 661.8,
+          "max": 680,
+          "cv": 0.01,
+          "runs": [
+            661.8,
+            679.6,
+            673.3,
+            667.8,
+            664.5,
+            671,
+            680
+          ]
+        },
+        "hoverLegacyFrameP50Ms": {
+          "median": 10,
+          "p95": 10,
+          "min": 10,
+          "max": 10,
+          "cv": 0,
+          "runs": [
+            10,
+            10,
+            10,
+            10,
+            10,
+            10,
+            10
+          ]
+        },
+        "hoverLegacyFrameP95Ms": {
+          "median": 10.8,
+          "p95": 10.9,
+          "min": 10.6,
+          "max": 10.9,
+          "cv": 0.01,
+          "runs": [
+            10.8,
+            10.9,
+            10.9,
+            10.7,
+            10.6,
+            10.8,
+            10.7
+          ]
+        },
+        "hoverLegacyFrameMaxMs": {
+          "median": 120,
+          "p95": 120,
+          "min": 110,
+          "max": 120,
+          "cv": 0.04,
+          "runs": [
+            120,
+            110,
+            120,
+            120,
+            120,
+            110,
+            119.9
+          ]
+        },
+        "hoverLegacyLongTaskMaxMs": {
+          "median": 0,
+          "p95": 0,
+          "min": 0,
+          "max": 0,
+          "cv": 0,
+          "runs": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        }
+      }
+    },
+    "drawers": {
+      "loadAvg": [
+        110.5,
+        94.8
+      ],
+      "metrics": {
+        "panelFrameP50Ms": {
+          "median": 10,
+          "p95": 10,
+          "min": 10,
+          "max": 10,
+          "cv": 0,
+          "runs": [
+            10,
+            10,
+            10,
+            10,
+            10,
+            10,
+            10
+          ]
+        },
+        "panelFrameP95Ms": {
+          "median": 10.8,
+          "p95": 11,
+          "min": 10.5,
+          "max": 11,
+          "cv": 0.01,
+          "runs": [
+            10.5,
+            10.7,
+            10.8,
+            11,
+            10.9,
+            10.9,
+            10.7
+          ]
+        },
+        "panelFrameMaxMs": {
+          "median": 11.1,
+          "p95": 20.1,
+          "min": 11,
+          "max": 20.1,
+          "cv": 0.29,
+          "runs": [
+            20.1,
+            11.1,
+            11,
+            20.1,
+            19.4,
+            11.1,
+            11
+          ]
+        },
+        "panelLongTaskMaxMs": {
+          "median": 0,
+          "p95": 0,
+          "min": 0,
+          "max": 0,
+          "cv": 0,
+          "runs": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        "panelTabsFrameP50Ms": {
+          "median": 10,
+          "p95": 10,
+          "min": 10,
+          "max": 10,
+          "cv": 0,
+          "runs": [
+            10,
+            10,
+            10,
+            10,
+            10,
+            10,
+            10
+          ]
+        },
+        "panelTabsFrameP95Ms": {
+          "median": 10.7,
+          "p95": 11,
+          "min": 10.7,
+          "max": 11,
+          "cv": 0.01,
+          "runs": [
+            10.7,
+            10.7,
+            10.7,
+            11,
+            11,
+            11,
+            10.7
+          ]
+        },
+        "panelTabsFrameMaxMs": {
+          "median": 11.1,
+          "p95": 1010.4,
+          "min": 11,
+          "max": 1010.4,
+          "cv": 1.52,
+          "runs": [
+            11,
+            11.1,
+            11.1,
+            1010.4,
+            1010.1,
+            11.1,
+            11
+          ]
+        },
+        "panelTabsLongTaskMaxMs": {
+          "median": 0,
+          "p95": 0,
+          "min": 0,
+          "max": 0,
+          "cv": 0,
+          "runs": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        "sidebarFrameP50Ms": {
+          "median": 10,
+          "p95": 10,
+          "min": 10,
+          "max": 10,
+          "cv": 0,
+          "runs": [
+            10,
+            10,
+            10,
+            10,
+            10,
+            10,
+            10
+          ]
+        },
+        "sidebarFrameP95Ms": {
+          "median": 10.7,
+          "p95": 11,
+          "min": 10.5,
+          "max": 11,
+          "cv": 0.02,
+          "runs": [
+            10.6,
+            10.7,
+            10.9,
+            11,
+            11,
+            10.5,
+            10.5
+          ]
+        },
+        "sidebarFrameMaxMs": {
+          "median": 11.1,
+          "p95": 11.1,
+          "min": 11,
+          "max": 11.1,
+          "cv": 0,
+          "runs": [
+            11,
+            11,
+            11.1,
+            11,
+            11.1,
+            11.1,
+            11.1
+          ]
+        },
+        "sidebarLongTaskMaxMs": {
+          "median": 0,
+          "p95": 0,
+          "min": 0,
+          "max": 0,
+          "cv": 0,
+          "runs": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        "switcherFrameP50Ms": {
+          "median": 10,
+          "p95": 10,
+          "min": 10,
+          "max": 10,
+          "cv": 0,
+          "runs": [
+            10,
+            10,
+            10,
+            10,
+            10,
+            10,
+            10
+          ]
+        },
+        "switcherFrameP95Ms": {
+          "median": 10.8,
+          "p95": 11,
+          "min": 10.6,
+          "max": 11,
+          "cv": 0.01,
+          "runs": [
+            10.6,
+            10.7,
+            10.9,
+            10.9,
+            11,
+            10.8,
+            10.6
+          ]
+        },
+        "switcherFrameMaxMs": {
+          "median": 11.1,
+          "p95": 1010.1,
+          "min": 10.9,
+          "max": 1010.1,
+          "cv": 2.27,
+          "runs": [
+            10.9,
+            11.1,
+            1010.1,
+            11,
+            11.1,
+            11.1,
+            11
+          ]
+        },
+        "switcherLongTaskMaxMs": {
+          "median": 0,
+          "p95": 0,
+          "min": 0,
+          "max": 0,
+          "cv": 0,
+          "runs": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        }
+      }
+    },
+    "storm": {
+      "loadAvg": [
+        94.8,
+        159.4
+      ],
+      "metrics": {
+        "mainCpuSec": {
+          "median": 31.5,
+          "p95": 34.3,
+          "min": 25.1,
+          "max": 34.3,
+          "cv": 0.09,
+          "runs": [
+            34.3,
+            32.4,
+            33.6,
+            30.7,
+            25.1,
+            31.5,
+            31.1
+          ]
+        },
+        "settleMs": {
+          "median": 11117,
+          "p95": 13214.4,
+          "min": 10122.7,
+          "max": 13214.4,
+          "cv": 0.09,
+          "runs": [
+            10472.7,
+            11117,
+            10122.7,
+            12173.9,
+            13214.4,
+            10190.2,
+            11193.6
+          ]
+        },
+        "mainPeakMb": {
+          "median": 3269.5,
+          "p95": 3324,
+          "min": 2958,
+          "max": 3324,
+          "cv": 0.04,
+          "runs": [
+            3203.8,
+            3281.8,
+            3009.8,
+            3305.5,
+            3269.5,
+            2958,
+            3324
+          ]
+        },
+        "ipcMaxMs": {
+          "median": 1723.3,
+          "p95": 2466.3,
+          "min": 1312.8,
+          "max": 2466.3,
+          "cv": 0.2,
+          "runs": [
+            1755.9,
+            1498.5,
+            2135.8,
+            2466.3,
+            1312.8,
+            1647.1,
+            1723.3
+          ]
+        },
+        "ipcAvgMs": {
+          "median": 388.2,
+          "p95": 431.4,
+          "min": 198.9,
+          "max": 431.4,
+          "cv": 0.2,
+          "runs": [
+            414.4,
+            367.7,
+            388.2,
+            384.1,
+            198.9,
+            404.1,
+            431.4
+          ]
+        }
+      }
+    },
+    "heavy-tabs": {
+      "loadAvg": [
+        158.1,
+        66.1
+      ],
+      "metrics": {
+        "rendererFootprintMb": {
+          "median": 98.9,
+          "p95": 103.2,
+          "min": 87.5,
+          "max": 103.2,
+          "cv": 0.07,
+          "runs": [
+            88.5,
+            98.9,
+            101.5,
+            103.2,
+            89.2,
+            87.5,
+            101.5
+          ]
+        },
+        "gpuFootprintMb": {
+          "median": 87.9,
+          "p95": 104,
+          "min": 83.5,
+          "max": 104,
+          "cv": 0.08,
+          "runs": [
+            101.5,
+            83.5,
+            87.1,
+            87.9,
+            104,
+            87.1,
+            89.8
+          ]
+        },
+        "mainFootprintMb": {
+          "median": 69.2,
+          "p95": 72.1,
+          "min": 69,
+          "max": 72.1,
+          "cv": 0.01,
+          "runs": [
+            69,
+            69,
+            69.1,
+            69.6,
+            72.1,
+            69.4,
+            69.2
+          ]
+        }
+      }
+    },
+    "quit-flush": {
+      "loadAvg": [
+        66.1,
+        87.5
+      ],
+      "metrics": {
+        "quitFlushPushed": {
+          "median": 0,
+          "p95": 0,
+          "min": 0,
+          "max": 0,
+          "cv": 0,
+          "runs": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        }
+      }
+    },
+    "idle": {
+      "loadAvg": [
+        87.5,
+        96.2
+      ],
+      "metrics": {
+        "mainCpuPct": {
+          "median": 0.1,
+          "p95": 0.2,
+          "min": 0.1,
+          "max": 0.2,
+          "cv": 0.36,
+          "runs": [
+            0.2,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1
+          ]
+        },
+        "mainFootprintMb": {
+          "median": 45.3,
+          "p95": 46.4,
+          "min": 44,
+          "max": 46.4,
+          "cv": 0.02,
+          "runs": [
+            45.6,
+            44,
+            45.1,
+            46.4,
+            44,
+            45.3,
+            46.3
+          ]
+        },
+        "gpuCpuPct": {
+          "median": 0,
+          "p95": 0.1,
+          "min": 0,
+          "max": 0.1,
+          "cv": 0.8,
+          "runs": [
+            0.1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        "gpuFootprintMb": {
+          "median": 102.9,
+          "p95": 104.9,
+          "min": 77.5,
+          "max": 104.9,
+          "cv": 0.12,
+          "runs": [
+            102.7,
+            103.9,
+            102.9,
+            77.5,
+            77.5,
+            103.5,
+            104.9
+          ]
+        },
+        "utilityCpuPct": {
+          "median": 0,
+          "p95": 0,
+          "min": 0,
+          "max": 0,
+          "cv": 1.58,
+          "runs": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        "utilityFootprintMb": {
+          "median": 6.7,
+          "p95": 6.7,
+          "min": 6.6,
+          "max": 6.7,
+          "cv": 0.01,
+          "runs": [
+            6.6,
+            6.7,
+            6.7,
+            6.7,
+            6.7,
+            6.7,
+            6.7
+          ]
+        },
+        "rendererCpuPct": {
+          "median": 0.1,
+          "p95": 0.1,
+          "min": 0,
+          "max": 0.1,
+          "cv": 0.25,
+          "runs": [
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0
+          ]
+        },
+        "rendererFootprintMb": {
+          "median": 56.7,
+          "p95": 61.7,
+          "min": 54.6,
+          "max": 61.7,
+          "cv": 0.04,
+          "runs": [
+            56.7,
+            61.2,
+            56.7,
+            61.7,
+            59.1,
+            54.6,
+            56
+          ]
+        }
+      }
+    }
+  }
+}

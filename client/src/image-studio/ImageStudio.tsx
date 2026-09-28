@@ -64,12 +64,14 @@ const getErrorMessage = (error: unknown, fallback: string): string => (error ins
 /**
  * The tile pictures. Keyed `provider:id` — the same key main's 24 h disk cache uses, so the two
  * can never disagree about what a tile is showing. Exported so a test starts with an empty one.
+ * Bounded (YAZ-2073 5J): a long browse must not keep every tile it ever showed, and an evicted
+ * tile refills from main's disk cache in milliseconds.
  */
 const previews = createPreviewCache(async (key) => {
   const [provider, ...rest] = key.split(':')
   const { dataURL } = await api.media.preview({ provider: provider as MediaBytesProvider, id: rest.join(':') })
   return dataURL
-})
+}, { limit: 300 })
 export const clearPreviewMemo = previews.clear
 
 /** A shape tile's picture: one of six stock outlines, or the engine's own generated path. */

@@ -2,7 +2,8 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { mkdtemp, rm, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
-import { DEFAULT_LIBRARY_DIR, ensureLibraryFolder, resolveLibraryFolder } from './folder'
+import { defaultAppState, type AppState } from '@shared/types'
+import { DEFAULT_LIBRARY_DIR, ensureLibraryFolder, followLibraryFolder, resolveLibraryFolder } from './folder'
 
 let dir: string
 beforeEach(async () => {
@@ -17,6 +18,22 @@ describe('resolveLibraryFolder (🔒 YAZ-1775 D5)', () => {
 
   it('a chosen path is used as it stands — pointing it inside a synced vault IS the backup story', () => {
     expect(resolveLibraryFolder('/Users/x/Vault/Library', '/anything')).toBe('/Users/x/Vault/Library')
+  })
+})
+
+describe('followLibraryFolder', () => {
+  it('answers the folder now, then reports each other folder the setting names, and nothing for any other change', () => {
+    let state = defaultAppState()
+    const listeners: Array<(s: AppState) => void> = []
+    const change = (next: AppState) => listeners.forEach((l) => l((state = next)))
+    const moves: string[] = []
+    const store = { get: () => state, onChange: (l: (s: AppState) => void) => (listeners.push(l), () => undefined) }
+    expect(followLibraryFolder(store, '/data', (f) => moves.push(f))).toBe(path.join('/data', DEFAULT_LIBRARY_DIR))
+    change({ ...state, recents: [] })
+    change({ ...state, settings: { ...state.settings, libraryFolder: '/Vault/Library' } })
+    change({ ...state, settings: { ...state.settings, libraryFolder: '/Vault/Library' } })
+    change({ ...state, settings: { ...state.settings, libraryFolder: null } })
+    expect(moves).toEqual(['/Vault/Library', path.join('/data', DEFAULT_LIBRARY_DIR)])
   })
 })
 

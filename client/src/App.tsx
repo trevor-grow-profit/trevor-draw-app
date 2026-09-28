@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react'
 import { SIDEBAR_MAX_W, SIDEBAR_MIN_W, type CanvasPanelState, type CanvasPrefs, type SettingsState, type SidebarLens } from '@shared/types'
 import { prefsEqual } from '@shared/canvasPrefs'
+import { isWithin } from '@shared/paths'
 import { api, BridgeRequestError } from './api'
-import { requestBoardCommand } from './drawings/boardCommand'
+import { requestBoardCommand } from './documents/boardCommand'
 import { Editor } from './Editor'
 import { useGithubSync } from './hooks/useGithubSync'
 import { useVaultStorage } from './hooks/useVaultStorage'
@@ -16,7 +17,6 @@ import { LINK_NOTICE_MS, type Notice, type NoticeKind } from './lib/notice'
 import { NoticeIcon } from './components/NoticeIcon'
 import { basename, vaultPath } from './lib/paths'
 import { flushRenamedDir, flushRenamedPath, retireDir, retirePath } from './lib/renameContinuity'
-import { EMPTY_SELECTION } from './lib/selection'
 import { storage } from './lib/storage'
 import { ownsSidebarHotkey } from './lib/sidebarHotkey'
 import { attentionCopy, buildSetupPrompt } from './lib/syncAttention'
@@ -40,6 +40,11 @@ import { Welcome } from './Welcome'
 /** Reflect the open file in the URL (GRO-2069); replaceState keeps Back sane. */
 function syncHash(path: string | null): void {
   history.replaceState(null, '', fileHash(path) || location.pathname + location.search)
+}
+
+/** Paint the sidebar's width into `<html>`'s `--side-w`, where the layout reads it. */
+function paintSideW(px: number): void {
+  document.documentElement.style.setProperty('--side-w', `${px}px`)
 }
 
 export function App() {
@@ -137,7 +142,9 @@ export function App() {
       const move = (ev: MouseEvent) => {
         raw = start + ev.clientX - x0
         width = Math.min(SIDEBAR_MAX_W, Math.max(SIDEBAR_MIN_W, raw))
-        setSidebarWidth(width)
+        // Paint-only while dragging: the CSS var, not React state — App renders when the drag starts
+        // and when it lands, never per pixel (YAZ-2073 5D).
+        paintSideW(width)
       }
       const up = () => {
         window.removeEventListener('mousemove', move)
@@ -145,9 +152,12 @@ export function App() {
         document.body.style.cursor = ''
         setResizing(false)
         if (raw < SIDEBAR_MIN_W * 0.6) {
-          setSidebarWidth(start)
+          paintSideW(start)
           toggleSidebar()
-        } else if (width !== start) storage.setSidebarWidth(width)
+        } else if (width !== start) {
+          setSidebarWidth(width)
+          storage.setSidebarWidth(width)
+        }
       }
       window.addEventListener('mousemove', move)
       window.addEventListener('mouseup', up)
@@ -205,7 +215,7 @@ export function App() {
   // The sidebar's width rides on <html> beside `data-theme` rather than through a React style
   // prop: it is one custom property, and this keeps the app root free of an inline style object.
   useLayoutEffect(() => {
-    document.documentElement.style.setProperty('--side-w', `${sidebarWidth}px`)
+    paintSideW(sidebarWidth)
   }, [sidebarWidth])
 
   // The URL hash mirrors the ACTIVE tab (GRO-2069; rule 17: on boot the hash already won as
@@ -248,14 +258,14 @@ export function App() {
   // open-recent door (a new window, or that vault's windows raised). Only Welcome fills in place.
   const openPicked = useCallback((path: string) => {
     if (root === null) void openRoot(path)
-    else void window.yaseenDraw.window.openRecent(path).catch((err: unknown) => console.error('[open-folder] openRecent failed:', err))
+    else void api.window.openRecent(path).catch((err: unknown) => console.error('[open-folder] openRecent failed:', err))
   }, [root, openRoot])
   const { pick, picking } = usePickFolder({ onPicked: openPicked })
 
   // ⌘W ladder (Tabs rule 7): close the active tab; with zero tabs open (incl. Welcome) close
   // the WINDOW through the real close path so the close/flush handshake runs.
   const closeTabOrWindow = useCallback(() => {
-    if (!closeActive()) void window.yaseenDraw.window.closeSelf()
+    if (!closeActive()) void api.window.closeSelf()
   }, [closeActive])
 
   // ⌘K (D4, YAZ-804): un-collapse this window through the one persisted toggle path, then ask
@@ -409,12 +419,12 @@ export function App() {
   // clobber the repaired file/tabs).
   useEffect(
     () =>
-      window.yaseenDraw.file.onRenamed(({ oldPath, newPath, kind }) => {
+      api.file.onRenamed(({ oldPath, newPath, kind }) => {
         // A shared board's pending live-link upload follows it (YAZ-1886); by prefix, so both kinds.
         noteBoardRenamed(oldPath, newPath)
         if (kind === 'dir') {
           retireDir(oldPath)
-          const movedRoot = root !== null && (root === oldPath || root.startsWith(`${oldPath}/`)) ? newPath + root.slice(oldPath.length) : undefined
+          const movedRoot = root !== null && isWithin(oldPath, root) ? newPath + root.slice(oldPath.length) : undefined
           renameWorkspaceDir(oldPath, newPath, movedRoot)
           if (movedRoot !== undefined) setRoot(movedRoot)
           return
@@ -442,7 +452,7 @@ export function App() {
       await flushRenamedPath(oldPath)
       await flushRenamedDir(oldPath)
       try {
-        await api.rename({ oldPath, newPath })
+        await api.file.rename({ oldPath, newPath })
       } catch (err) {
         const exists = err instanceof BridgeRequestError && err.code === 'ALREADY_EXISTS'
         notify(exists ? `Can't rename: "${basename(newPath)}" already exists` : `Can't rename: ${err instanceof Error ? err.message : String(err)}`)
@@ -455,7 +465,7 @@ export function App() {
    * In-app delete landed (GRO-2272). Reaches EVERY window, originator included.
    *
    * ORDER IS NOT NEGOTIABLE: retire the editor, THEN remap the workspace. Removing a tab
-   * unmounts its editor, and `DrawingEditor`'s unmount cleanup flushes the live scene to disk
+   * unmounts its editor, and `useBoardDocument`'s unmount cleanup flushes the live document to disk
    * — which would recreate the file that was just trashed. Retiring first makes that flush a
    * no-op. Reverse these two lines and the delete silently fails a second later.
    *
@@ -464,7 +474,7 @@ export function App() {
    */
   useEffect(
     () =>
-      window.yaseenDraw.file.onDeleted(({ path, kind }) => {
+      api.file.onDeleted(({ path, kind }) => {
         if (kind === 'dir') {
           retireDir(path)
           deleteWorkspaceDir(path)
@@ -487,7 +497,7 @@ export function App() {
    */
   const deleteFile = useCallback(async (path: string): Promise<void> => {
     try {
-      await api.delete({ path })
+      await api.file.delete({ path })
     } catch (err) {
       const name = basename(path)
       // A failed trash means NOTHING was deleted — say so, rather than a bare error string.

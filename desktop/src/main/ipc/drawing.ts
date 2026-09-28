@@ -15,20 +15,25 @@
  * requesting window's existing passive notice channel ("Cleaned N unused images"), and only when
  * it actually did something. Silence is the right report for a sweep that found nothing.
  */
+import path from 'node:path'
 import { shell, type WebContents } from 'electron'
-import { CH } from '../../channels'
+import { CONTRACT } from '@shared/ipc'
 import { sweepOrphanAssets } from '../drawings/orphanSweep'
+import { createThumbs, THUMBS_DIR } from '../drawings/thumbs'
 import { loadDrawing, saveDrawing } from '../fs/drawing'
 import { resolveLibraryFolder } from '../library/folder'
 import type { Store } from '../store'
 import { handle } from './envelope'
+import { sendPush } from './push'
 
 export function registerDrawingIpc(store: Store, userData: string): void {
-  handle(CH.drawingLoad, loadDrawing)
-  handle(CH.drawingSave, saveDrawing)
+  // A preview's pictures come back preview-sized, cached under userData — never in the vault (🔒 YAZ-2073 D6).
+  const thumbs = createThumbs(path.join(userData, THUMBS_DIR))
+  handle(CONTRACT.drawing.load, (req) => loadDrawing(req, thumbs))
+  handle(CONTRACT.drawing.save, saveDrawing)
   // 🔒 YAZ-1775 D5: read-only and store-backed — the setting is the renderer's to WRITE (through
   // `state:set-settings`, like every other setting); this only says where it points.
-  handle(CH.drawingLibraryFolder, async () => resolveLibraryFolder(store.get().settings.libraryFolder, userData))
+  handle(CONTRACT.drawing.libraryFolder, async () => resolveLibraryFolder(store.get().settings.libraryFolder, userData))
 }
 
 /** Roots swept in this process's life — the "first opened in a session" guard. */
@@ -55,6 +60,6 @@ export function sweepVaultOnce(root: string, sender: Pick<WebContents, 'isDestro
     const message = `Cleaned ${n} unused ${n === 1 ? 'image' : 'images'}`
     console.log(`[drawing] ${message} in ${root}`)
     // The window that asked for the tree may have closed while the vault was being walked.
-    if (!sender.isDestroyed()) sender.send(CH.linkNotice, message)
+    if (!sender.isDestroyed()) sendPush(sender, CONTRACT.link.onNotice, message)
   })
 }

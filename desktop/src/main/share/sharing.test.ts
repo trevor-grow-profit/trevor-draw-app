@@ -2,7 +2,7 @@ import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { CLOUDFLARE_TOKEN_SECRET, SHARE_UPLOAD_PASSWORD_SECRET, type ShareSetupProgress } from '@shared/types'
+import { CLOUDFLARE_TOKEN_SECRET, SHARE_UPLOAD_PASSWORD_SECRET, type ShareAccount, type ShareSetupProgress } from '@shared/types'
 // The REAL Worker (plain JS, the file Cloudflare runs), driven in-process against a Map bucket.
 // @ts-expect-error — untyped JS module
 import { handle as workerHandle } from '../../../../share/worker.js'
@@ -27,7 +27,7 @@ const ok = (result: unknown) => Response.json({ success: true, errors: [], resul
 const notFound = () => Response.json({ success: false, errors: [{ code: 10006, message: 'not found' }], result: null }, { status: 404 })
 /** The fake account: what exists on it survives a "Forget key" + re-setup (reconnect). */
 let account: {
-  accounts: { id: string; name: string }[]
+  accounts: ShareAccount[]
   buckets: Set<string>
   scripts: Set<string>
   domains: { id: string; hostname: string; service: string }[]

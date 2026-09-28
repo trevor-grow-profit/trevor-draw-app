@@ -6,10 +6,14 @@
  * lives in `main/index.ts`.
  */
 import type { MenuItemConstructorOptions } from 'electron'
-import type { FileKind, RecentRoots, ZoomStep } from '@shared/types'
-import { CH } from '../channels'
+import type { FileKind, RecentRoots } from '@shared/types'
+import { CONTRACT } from '@shared/ipc'
 import type { Store } from './store'
 import type { WindowManager } from './windows'
+import { sendPush } from './ipc/push'
+
+/** One ⌘+ / ⌘− / ⌘0 press: up, down, or back to the default (YAZ-1710). */
+export type ZoomStep = -1 | 0 | 1
 
 /** Help › Yaseen Draw on GitHub: the repo README (origin URL of this repo). */
 export const HELP_URL = 'https://github.com/yaseenarshad/yaseen-draw-app#readme'
@@ -284,15 +288,15 @@ export function createMenuHandlers(store: Store, windows: MenuWindows, host: Men
       if (entry !== undefined) windows.duplicateWindow(entry)
     },
     switchVault() {
-      host.focusedWebContents()?.send(CH.menuSwitchVault)
+      sendPush(host.focusedWebContents(), CONTRACT.menu.onSwitchVault)
     },
     openFolder() {
-      host.focusedWebContents()?.send(CH.menuOpenFolder)
+      sendPush(host.focusedWebContents(), CONTRACT.menu.onOpenFolder)
     },
     openRecent(path) {
       // A vault window never has its vault swapped (YAZ-1913 🔒 D1): only an empty Welcome window fills in place.
       if (focusedEntry()?.root === null) {
-        host.focusedWebContents()?.send(CH.menuOpenRoot, path)
+        sendPush(host.focusedWebContents(), CONTRACT.menu.onOpenRoot, path)
         return
       }
       // A vault window goes through the one open-recent door (YAZ-1767 D1): raise that vault's
@@ -300,37 +304,37 @@ export function createMenuHandlers(store: Store, windows: MenuWindows, host: Men
       windows.openRecentBeside(path)
     },
     search() {
-      host.focusedWebContents()?.send(CH.menuSearch)
+      sendPush(host.focusedWebContents(), CONTRACT.menu.onSearch)
     },
     settings() {
-      host.focusedWebContents()?.send(CH.menuSettings)
+      sendPush(host.focusedWebContents(), CONTRACT.menu.onSettings)
     },
     closeTab() {
-      host.focusedWebContents()?.send(CH.menuCloseTab)
+      sendPush(host.focusedWebContents(), CONTRACT.menu.onCloseTab)
     },
     nextTab() {
-      host.focusedWebContents()?.send(CH.menuNextTab)
+      sendPush(host.focusedWebContents(), CONTRACT.menu.onNextTab)
     },
     prevTab() {
-      host.focusedWebContents()?.send(CH.menuPrevTab)
+      sendPush(host.focusedWebContents(), CONTRACT.menu.onPrevTab)
     },
     toggleSidebar() {
-      host.focusedWebContents()?.send(CH.menuToggleSidebar)
+      sendPush(host.focusedWebContents(), CONTRACT.menu.onToggleSidebar)
     },
     zoom(step) {
       host.zoom(step)
     },
     exportImage() {
-      host.focusedWebContents()?.send(CH.menuExportImage)
+      sendPush(host.focusedWebContents(), CONTRACT.menu.onExportImage)
     },
     exportDrawing() {
-      host.focusedWebContents()?.send(CH.menuExportDrawing)
+      sendPush(host.focusedWebContents(), CONTRACT.menu.onExportDrawing)
     },
     shareLink() {
-      host.focusedWebContents()?.send(CH.menuShareLink)
+      sendPush(host.focusedWebContents(), CONTRACT.menu.onShareLink)
     },
     canvasBackground(color) {
-      host.focusedWebContents()?.send(CH.menuCanvasBackground, color)
+      sendPush(host.focusedWebContents(), CONTRACT.menu.onCanvasBackground, color)
     },
     openHelp() {
       host.openExternal(HELP_URL)

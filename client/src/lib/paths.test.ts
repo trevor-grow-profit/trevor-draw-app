@@ -7,6 +7,11 @@ describe('basename', () => {
     expect(basename('/a/b/')).toBe('b')
     expect(basename('/')).toBe('/')
   })
+
+  it('reads a Windows path in its own separator (YAZ-2073 8B)', () => {
+    expect(basename('C:\\v\\Nested\\b.excalidraw')).toBe('b.excalidraw')
+    expect(basename('C:\\v\\Nested\\')).toBe('Nested')
+  })
 })
 
 describe('stripExt', () => {
@@ -33,6 +38,11 @@ describe('boardFolder', () => {
     expect(boardFolder('/v', '/v/a.excalidraw')).toBe('/')
     expect(boardFolder('/v', '/v/Nested/Deeper/b.excalidraw')).toBe('Nested/Deeper')
     expect(boardFolder('/v', '/vault2/c.excalidraw')).toBe('/vault2') // a sibling root is not inside /v
+  })
+
+  it('reads a Windows vault in its own separator (YAZ-2073 2D)', () => {
+    expect(boardFolder('C:\\v', 'C:\\v\\a.excalidraw')).toBe('/')
+    expect(boardFolder('C:\\v', 'C:\\v\\Nested\\Deeper\\b.excalidraw')).toBe('Nested\\Deeper')
   })
 })
 

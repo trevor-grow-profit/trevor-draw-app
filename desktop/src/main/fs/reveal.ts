@@ -1,7 +1,8 @@
 import { shell } from 'electron'
 import { stat } from 'node:fs/promises'
 import type { RevealResponse } from '@shared/types'
-import { BridgeFailure, fsCall, requireAbsPath } from './fsUtils'
+import { fsCall } from './fsUtils'
+import { requireAbsPath, requireObject } from './validate'
 
 /**
  * Reveal in Finder (GRO-2274 — LOCKED: VS Code parity for this issue).
@@ -22,8 +23,7 @@ import { BridgeFailure, fsCall, requireAbsPath } from './fsUtils'
  * That matches the documented "no path jail" posture in `docs/CONTRACTS.md` ("Bridge API"). The asymmetry is deliberate; do not "restore" it for consistency.
  */
 export async function revealItem(req: unknown): Promise<RevealResponse> {
-  if (typeof req !== 'object' || req === null) throw new BridgeFailure('BAD_REQUEST', 'request must be an object')
-  const p = requireAbsPath((req as Record<string, unknown>).path, 'path')
+  const p = requireAbsPath(requireObject(req).path, 'path')
   return fsCall(p, async () => {
     await stat(p) // missing → ENOENT → NOT_FOUND, so a stale row can be reported
     shell.showItemInFolder(p)

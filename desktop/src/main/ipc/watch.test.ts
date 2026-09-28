@@ -1,22 +1,14 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 import { writeFile } from 'node:fs/promises'
 import path from 'node:path'
-import { ipcMain } from 'electron'
 import type { WatchEvent } from '@shared/types'
-import { CH } from '../../channels'
+import { SPECIAL } from '@shared/ipc'
 import { makeFixture, until } from '../fs/testFixture'
 import { activeWatcherRoots } from '../fs/watchers'
 import { registerWatchIpc } from './watch'
+import { listener } from './ipcFixture'
 
 vi.mock('electron', () => ({ ipcMain: { handle: vi.fn(), on: vi.fn() } }))
-
-type Listener = (event: unknown, ...args: unknown[]) => void | Promise<void>
-
-function listener(channel: string): Listener {
-  const call = vi.mocked(ipcMain.on).mock.calls.find(([ch]) => ch === channel)
-  if (call === undefined) throw new Error(`no listener registered for ${channel}`)
-  return call[1] as unknown as Listener
-}
 
 let nextId = 1
 /** Stand-in for `event.sender` (a WebContents): records sends and the `destroyed` hook. */
@@ -26,7 +18,7 @@ function makeSender() {
 type Sender = ReturnType<typeof makeSender>
 
 const sent = (s: Sender): Array<{ id: string; ev: WatchEvent }> =>
-  s.send.mock.calls.filter(([ch]) => ch === CH.watchEvent).map(([, msg]) => msg as { id: string; ev: WatchEvent })
+  s.send.mock.calls.filter(([ch]) => ch === SPECIAL.watchEvent).map(([, msg]) => msg as { id: string; ev: WatchEvent })
 const destroy = (s: Sender) => {
   const hook = s.once.mock.calls.find(([name]) => name === 'destroyed')
   if (hook === undefined) throw new Error('no destroyed hook registered')
@@ -48,17 +40,12 @@ afterEach(async () => {
 
 const subscribeAs = async (s: Sender, id: string, r: string) => {
   senders.includes(s) || senders.push(s)
-  await listener(CH.watchSubscribe)({ sender: s }, { id, root: r })
+  await listener(SPECIAL.watchSubscribe)({ sender: s }, { id, root: r })
 }
-const unsubscribeAs = (s: Sender, id: string) => listener(CH.watchUnsubscribe)({ sender: s }, id)
+const unsubscribeAs = (s: Sender, id: string) => listener(SPECIAL.watchUnsubscribe)({ sender: s }, id)
 
 describe('watch IPC', () => {
-  it('registers subscribe + unsubscribe listeners', () => {
-    const channels = vi.mocked(ipcMain.on).mock.calls.map(([ch]) => ch).sort()
-    expect(channels).toEqual([CH.watchSubscribe, CH.watchUnsubscribe].sort())
-  })
-
-  it('two subscriptions on one root share one chokidar instance; each gets `ready` addressed to its id', async () => {
+  it('two subscriptions on one root share one watcher; each gets `ready` addressed to its id', async () => {
     const s = makeSender()
     await subscribeAs(s, 'sub-1', root)
     await until(() => sent(s).length >= 1)
@@ -96,7 +83,7 @@ describe('watch IPC', () => {
     await until(() => activeWatcherRoots().length === 0)
   })
 
-  it('two windows on one root (GRO-2169): one chokidar, a save reaches both as `change`; one window closing leaves the other live, the last closing disposes the watcher', async () => {
+  it('two windows on one root (GRO-2169): one watcher, a save reaches both as `change`; one window closing leaves the other live, the last closing disposes the watcher', async () => {
     const a = makeSender()
     const b = makeSender()
     await subscribeAs(a, 'win-a', root)
@@ -123,6 +110,31 @@ describe('watch IPC', () => {
     // The LAST window closing disposes the watcher.
     destroy(b)
     await until(() => activeWatcherRoots().length === 0)
+  })
+
+  it('an unsubscribe that lands while the subscribe is still checking the root leaks nothing (YAZ-2073 2C)', async () => {
+    const s = makeSender()
+    senders.push(s)
+    // A quick root switch or a StrictMode remount: `watch:unsubscribe` arrives before `requireDir` settles.
+    const pending = listener(SPECIAL.watchSubscribe)({ sender: s }, { id: 'raced', root })
+    unsubscribeAs(s, 'raced')
+    await pending
+    expect(activeWatcherRoots()).toEqual([])
+    expect(sent(s)).toEqual([])
+    // The same window's next subscription still works.
+    await subscribeAs(s, 'next', root)
+    await until(() => sent(s).length >= 1)
+    expect(sent(s)).toEqual([{ id: 'next', ev: { type: 'ready', root } }])
+  })
+
+  it('an unsubscribe for an id that is not subscribing leaves nothing behind: that id can still subscribe later (YAZ-2073 2C)', async () => {
+    const s = makeSender()
+    senders.push(s)
+    unsubscribeAs(s, 'never-seen')
+    await subscribeAs(s, 'never-seen', root)
+    await until(() => sent(s).length >= 1)
+    expect(sent(s)).toEqual([{ id: 'never-seen', ev: { type: 'ready', root } }])
+    expect(activeWatcherRoots()).toEqual([root])
   })
 
   it('a bad root answers one error event and subscribes nothing', async () => {

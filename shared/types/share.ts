@@ -26,6 +26,12 @@ export const MAX_SHARE_BYTES = 100 * 1000 * 1000
 export const CLOUDFLARE_TOKEN_SECRET = 'cloudflareApiToken'
 export const SHARE_UPLOAD_PASSWORD_SECRET = 'shareUploadPassword'
 
+/** One Cloudflare account a pasted key can see: the setup's account picker lists these. */
+export interface ShareAccount {
+  id: string
+  name: string
+}
+
 /** What Settings › Sharing shows at the top. Holds no secret. */
 export interface ShareStatus {
   state: 'off' | 'ready'
@@ -116,27 +122,3 @@ export interface SharePermissionRequest extends ShareBoardRequest {
   allowDownload: boolean
 }
 
-export interface ShareApi {
-  status(): Promise<ShareStatus>
-  /** Check a pasted key and list the Cloudflare accounts it can see — more than one means a picker. */
-  accounts(req: { token: string }): Promise<{ id: string; name: string }[]>
-  /** Provision everything from one pasted API token (on `accountId` when the key sees several); progress arrives on `onSetupProgress`. An existing Worker + bucket are reused. */
-  setup(req: { token: string; accountId?: string }): Promise<ShareStatus>
-  onSetupProgress(listener: (progress: ShareSetupProgress) => void): () => void
-  /** Open Cloudflare's "create API token" page (the fake one in the demo) in the browser. */
-  openCloudflare(): Promise<void>
-  get(req: ShareBoardRequest): Promise<ShareEntry | null>
-  /** `check: false` skips the live check (no network): the sidebar badges' call. Settings checks. */
-  list(req: { root: string; check?: boolean }): Promise<ShareListEntry[]>
-  /** First share (new id), or an automatic re-upload after a save (same id): the object is replaced in place, its permission untouched. */
-  publish(req: SharePublishRequest): Promise<ShareEntry>
-  /** Flip "view and download" / "view only" on the SAME link — no re-upload. */
-  setPermission(req: SharePermissionRequest): Promise<ShareEntry>
-  /** Delete the object (the link dies at once) and forget the record. */
-  stop(req: ShareBoardRequest): Promise<void>
-  setDomain(req: { hostname: string | null }): Promise<ShareStatus>
-  /** `deleteEverything`: wipe every object, then the Worker and the bucket. Either way the token and password are forgotten. */
-  disconnect(req: { root: string | null; deleteEverything: boolean }): Promise<ShareStatus>
-  /** Any status or shares.json change, in every window. */
-  onChanged(listener: () => void): () => void
-}

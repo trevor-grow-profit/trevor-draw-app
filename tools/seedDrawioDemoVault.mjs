@@ -20,73 +20,24 @@
  * an isolated Electron profile (`yaseendraw.json`) whose one window is already on the vault
  * (LAUNCH.md "Behaviour checks"), so no dialog is needed and the real profile is never read.
  */
-import { execFileSync } from 'node:child_process'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import zlib from 'node:zlib'
+import { cli, cloneAs, elementKit, git, json, png, publish, refuseExisting, scene, wipe, write as writeIn, writeProfile } from './lib/seedKit.mjs'
 
 const USAGE = 'usage: node tools/seedDrawioDemoVault.mjs --vault <dir> [--profile <dir>] [--force]'
-const args = process.argv.slice(2)
-const flag = (name) => {
-  const i = args.indexOf(name)
-  return i === -1 ? undefined : (args[i + 1] ?? '')
-}
-const VAULT = flag('--vault') && path.resolve(flag('--vault'))
-const PROFILE = flag('--profile') && path.resolve(flag('--profile'))
-if (!VAULT) {
-  console.error(USAGE)
-  process.exit(2)
-}
+const args = cli(USAGE, { '--vault': 'dir', '--profile': 'dir' }, ['--vault'])
+const VAULT = args.vault
+const PROFILE = args.profile
 const ORIGIN = `${VAULT} (origin).git`
 const SAM = `${VAULT} (Sam)`
-for (const dir of [VAULT, ORIGIN, SAM, PROFILE].filter(Boolean)) {
-  if (fs.existsSync(dir) && !args.includes('--force')) {
-    console.error(`refusing to wipe an existing folder: ${dir}\npass --force if that is really what you want\n${USAGE}`)
-    process.exit(2)
-  }
-  fs.rmSync(dir, { recursive: true, force: true })
-}
+const targets = [VAULT, ORIGIN, SAM, PROFILE].filter(Boolean)
+for (const dir of targets) refuseExisting(dir, USAGE, { force: args.force })
+wipe(...targets)
 fs.mkdirSync(VAULT, { recursive: true })
 
-function write(rel, content, dir = VAULT) {
-  const file = path.join(dir, rel)
-  fs.mkdirSync(path.dirname(file), { recursive: true })
-  fs.writeFileSync(file, content)
-  return file
-}
-
-// ---------------------------------------------------------------- PNG (node built-ins only)
-const CRC = new Uint32Array(256).map((_, n) => {
-  let c = n
-  for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1
-  return c >>> 0
-})
-const crc32 = (buf) => {
-  let c = 0xffffffff
-  for (const b of buf) c = CRC[(c ^ b) & 0xff] ^ (c >>> 8)
-  return (c ^ 0xffffffff) >>> 0
-}
-const chunk = (type, data) => {
-  const len = Buffer.alloc(4)
-  len.writeUInt32BE(data.length)
-  const body = Buffer.concat([Buffer.from(type, 'ascii'), data])
-  const crc = Buffer.alloc(4)
-  crc.writeUInt32BE(crc32(body))
-  return Buffer.concat([len, body, crc])
-}
-function png(w, h, pixel) {
-  const stride = 1 + w * 3
-  const raw = Buffer.alloc(stride * h)
-  for (let y = 0; y < h; y++)
-    for (let x = 0; x < w; x++) raw.set(pixel(x, y), y * stride + 1 + x * 3)
-  const ihdr = Buffer.alloc(13)
-  ihdr.writeUInt32BE(w, 0)
-  ihdr.writeUInt32BE(h, 4)
-  ihdr[8] = 8
-  ihdr[9] = 2
-  return Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), chunk('IHDR', ihdr), chunk('IDAT', zlib.deflateSync(raw)), chunk('IEND', Buffer.alloc(0))])
-}
+const write = (rel, content, dir = VAULT) => writeIn(dir, rel, content)
 
 // ---------------------------------------------------------------- draw.io documents
 const DAY = 24 * 60 * 60 * 1000
@@ -119,24 +70,9 @@ function flow(title, labels, x0 = 40, y0 = 80) {
 }
 
 // ---------------------------------------------------------------- Excalidraw boards (still work)
-let n = 0
-const seed = () => 1 + Math.floor(Math.random() * 2 ** 30)
-const base = (extra = {}) => ({
-  id: `x-${(n++).toString(36)}`, angle: 0, strokeColor: '#1e1e1e', backgroundColor: 'transparent', fillStyle: 'solid',
-  strokeWidth: 2, strokeStyle: 'solid', roughness: 1, opacity: 100, groupIds: [], frameId: null, index: `a${String(n).padStart(5, '0')}`,
-  roundness: null, seed: seed(), version: 1, versionNonce: seed(), isDeleted: false, boundElements: null,
-  updated: 1, link: null, locked: false, ...extra,
-})
-const rect = (x, y, w, h, bg = '#a5d8ff') => ({ ...base({ roundness: { type: 3 }, backgroundColor: bg }), type: 'rectangle', x, y, width: w, height: h })
-const ellipse = (x, y, w, h, bg = '#ffc9c9') => ({ ...base({ backgroundColor: bg }), type: 'ellipse', x, y, width: w, height: h })
-const arrow = (x, y, dx, dy) => ({ ...base({ roundness: { type: 2 } }), type: 'arrow', x, y, width: Math.abs(dx), height: Math.abs(dy), points: [[0, 0], [dx, dy]], startArrowhead: null, endArrowhead: 'arrow', startBinding: null, endBinding: null, elbowed: false })
-const text = (x, y, str, size = 20) => {
-  const lines = str.split('\n')
-  return { ...base({ strokeWidth: 1, roughness: 0 }), type: 'text', x, y, width: Math.ceil(Math.max(...lines.map((l) => l.length)) * size * 0.55), height: Math.ceil(lines.length * size * 1.25), text: str, originalText: str, fontSize: size, fontFamily: 5, textAlign: 'left', verticalAlign: 'top', autoResize: true, lineHeight: 1.25, containerId: null }
-}
-const frame = (x, y, w, h, name) => ({ ...base({ roughness: 0, strokeWidth: 1 }), type: 'frame', x, y, width: w, height: h, name })
+const { rect, ellipse, arrow, text, frame } = elementKit('x')
 const board = (rel, elements, createdDaysAgo = 5) =>
-  write(`${rel}.excalidraw`, `${JSON.stringify({ yaseendraw: { createdAt: NOW - createdDaysAgo * DAY, updatedAt: NOW - DAY }, type: 'excalidraw', version: 2, source: 'yaz-1802-demo', elements, appState: { viewBackgroundColor: '#ffffff', gridSize: 20 }, files: {} }, null, 2)}\n`)
+  write(`${rel}.excalidraw`, json(scene('yaz-1802-demo', elements, { block: { createdAt: NOW - createdDaysAgo * DAY, updatedAt: NOW - DAY } })))
 
 // ---------------------------------------------------------------- 00 — the scenario list
 board('00 READ ME', [
@@ -245,35 +181,20 @@ const syncDoc = (a, b, c, days) => mxfile([page('Page-1', [
   vertex('Both computers changed this diagram — the first sync keeps BOTH copies', 40, 0, 700, 40, 'text;html=1;fontSize=18;align=left;'),
   vertex(a, 40, 80, 180, 70), vertex(b, 280, 80, 180, 70), vertex(c, 520, 80, 180, 70),
 ])], stampAttrs(...days))
-cellId = 9000
 for (const rel of syncFiles) {
   cellId = 9000
   write(rel, syncDoc('Plan', 'Build', 'Ship', [3, 3]))
 }
-write('.yaseendraw/github.json', `${JSON.stringify({ enabled: true }, null, 2)}\n`)
+write('.yaseendraw/github.json', { enabled: true })
+publish(VAULT, ORIGIN, 'Start the YAZ-1802 demo')
 
-const git = (cwd, ...a) => execFileSync('git', a, { cwd, stdio: ['ignore', 'pipe', 'pipe'] }).toString().trim()
-const identity = (cwd, name) => {
-  git(cwd, 'config', 'user.name', name)
-  git(cwd, 'config', 'user.email', `${name.toLowerCase()}@example.invalid`)
-  git(cwd, 'config', 'commit.gpgsign', 'false')
-}
-execFileSync('git', ['init', '--bare', '-b', 'main', ORIGIN], { stdio: 'ignore' })
-git(VAULT, 'init', '-b', 'main')
-identity(VAULT, 'You')
-git(VAULT, 'add', '-A')
-git(VAULT, 'commit', '-m', 'Start the YAZ-1802 demo')
-git(VAULT, 'remote', 'add', 'origin', ORIGIN)
-git(VAULT, 'push', '-u', 'origin', 'main')
-
-execFileSync('git', ['clone', ORIGIN, SAM], { stdio: 'ignore' })
-identity(SAM, 'Sam')
+cloneAs(ORIGIN, SAM, 'Sam')
 for (const rel of syncFiles) {
   cellId = 9000
   write(rel, syncDoc('Plan — Sam renamed this', 'Build', 'Ship', [3, 1]), SAM)
 }
-git(SAM, 'commit', '-am', 'sync: Sam edits the diagrams')
-git(SAM, 'push')
+git(SAM, ['commit', '-am', 'sync: Sam edits the diagrams'])
+git(SAM, ['push'])
 
 // Yours, not yet synced: the same diagrams, a different box.
 for (const rel of syncFiles) {
@@ -285,10 +206,7 @@ console.log(`vault:  ${VAULT}\norigin: ${ORIGIN}\nSam:    ${SAM}`)
 
 // ---------------------------------------------------------------- isolated profile (LAUNCH.md recipe)
 if (PROFILE) {
-  fs.mkdirSync(PROFILE, { recursive: true })
-  const window = { id: 'w1', root: VAULT, file: null, tabs: [], sidebarCollapsed: false, sidebarLens: 'files', focusDirs: [], focusFavorites: [], bounds: { x: 60, y: 60, width: 1440, height: 900 } }
-  const state = { version: 1, settings: { theme: 'system', confirmDelete: true }, sidebarWidth: 300, recents: [{ path: VAULT, lastOpened: Date.now() }], windows: [window], folders: {} }
-  fs.writeFileSync(path.join(PROFILE, 'yaseendraw.json'), `${JSON.stringify(state, null, 2)}\n`)
+  writeProfile(PROFILE, VAULT)
   console.log(`profile ${PROFILE}`)
   console.log(`launch: cd desktop && YASEEN_DRAW_USER_DATA_DIR="${PROFILE}" npm run dev`)
 }

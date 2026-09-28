@@ -1,7 +1,8 @@
 /**
  * A BOARD'S HOVER PICTURE (YAZ-1800): the whole drawing, drawn in the renderer the first time the
- * mouse rests on its sidebar row and kept IN MEMORY only — nothing is written to the vault or to
- * userData. The key carries the board's mtime, the applied theme and the dark-mode colour setting
+ * mouse rests on its sidebar row and kept IN MEMORY only — nothing is written to the vault, and
+ * userData holds only main's preview-sized copies of the images (🔒 YAZ-2073 D6), never a board's
+ * picture. The key carries the board's mtime, the applied theme and the dark-mode colour setting
  * (🔒 YAZ-1802 D16), so any write, a theme flip or a setting change is simply a new key; the old
  * picture ages out of the bounded cache.
  *
@@ -21,6 +22,8 @@ import { createPreviewCache } from '../lib/previewCache'
 
 /** Bigger than a component tile: the panel is most of the window, and a retina screen doubles it. */
 export const BOARD_PREVIEW_BOUNDS: PreviewBounds = { maxWidth: 1200, maxHeight: 800, padding: 16 }
+/** Pictures in a board no bigger than they can appear in its preview, made once in main (🔒 YAZ-2073 D6). */
+const IMAGE_MAX_PX = Math.max(BOARD_PREVIEW_BOUNDS.maxWidth, BOARD_PREVIEW_BOUNDS.maxHeight)
 
 /**
  * One cache key per board, per write, per theme, per dark-mode colour setting. The mtime, not the
@@ -53,7 +56,7 @@ function parseKey(key: string): { root: string; path: string; theme: 'light' | '
 async function drawBoardPreview(key: string): Promise<string> {
   const { root, path, theme, darkColors } = parseKey(key)
   if (isDiagram(path)) return renderDiagramPreview((await api.diagram.load({ root, path })).xml, theme, darkColors, BOARD_PREVIEW_BOUNDS)
-  const [res, engine] = await Promise.all([api.drawing.load({ root, path }), loadExcalidraw()])
+  const [res, engine] = await Promise.all([api.drawing.load({ root, path, imageMaxPx: IMAGE_MAX_PX }), loadExcalidraw()])
   const parsed = parseSceneText(res.json)
   const elements = visibleElements(engine.restoreElements(parsed.elements as never, null))
   if (elements.length === 0) return ''

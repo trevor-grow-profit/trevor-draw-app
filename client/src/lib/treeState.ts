@@ -1,4 +1,5 @@
 import type { TreeNode } from '@shared/types'
+import { isWithin, sepOf, trimSep } from '@shared/paths'
 
 /** Expanded-directory set for the sidebar tree (persisted per root; see storage.ts). */
 export type TreeAction =
@@ -6,6 +7,11 @@ export type TreeAction =
   /** Replace the whole set (⚡ YAZ-862): expand-all and collapse-all are this ONE action, `[]` being the latter. */
   | { type: 'setAll'; dirs: string[] }
   | { type: 'expandTo'; root: string; file: string }
+  /** Open `dir` ITSELF and every folder above it (YAZ-2073 8B) — a reveal, a focus, a name box or a paste landing in it. */
+  | { type: 'expandDir'; root: string; dir: string }
+
+/** Two path lists, element by element: the idempotence check before every write-back (⚡ YAZ-874). */
+export const sameList = (a: readonly string[], b: readonly string[]) => a.length === b.length && a.every((x, i) => x === b[i])
 
 export function treeReducer(expanded: string[], action: TreeAction): string[] {
   switch (action.type) {
@@ -13,21 +19,28 @@ export function treeReducer(expanded: string[], action: TreeAction): string[] {
       return expanded.includes(action.dir) ? expanded.filter((d) => d !== action.dir) : [...expanded, action.dir]
     case 'setAll':
       return action.dirs
-    case 'expandTo': {
-      const missing = ancestorDirs(action.root, action.file).filter((d) => !expanded.includes(d))
-      return missing.length === 0 ? expanded : [...expanded, ...missing]
-    }
+    case 'expandTo':
+      return opened(expanded, ancestorDirs(action.root, action.file))
+    case 'expandDir':
+      return isWithin(action.root, action.dir, true) ? opened(expanded, [...ancestorDirs(action.root, action.dir), action.dir]) : expanded
   }
 }
 
-/** Directories strictly between `root` and `file` (root excluded), outermost first. */
+/** `expanded` with `dirs` open too — the same array when every one already was. */
+function opened(expanded: string[], dirs: string[]): string[] {
+  const missing = dirs.filter((d) => !expanded.includes(d))
+  return missing.length === 0 ? expanded : [...expanded, ...missing]
+}
+
+/** Directories strictly between `root` and `file` (root excluded), outermost first, in the root's own separator. */
 export function ancestorDirs(root: string, file: string): string[] {
-  let cur = root.replace(/\/+$/, '')
-  if (!file.startsWith(`${cur}/`)) return []
-  const parts = file.slice(cur.length + 1).split('/')
+  if (!isWithin(root, file, true)) return []
+  const sep = sepOf(root)
+  let cur = trimSep(root)
+  const parts = file.slice(cur.length + 1).split(sep)
   const dirs: string[] = []
   for (const part of parts.slice(0, -1)) {
-    cur = `${cur}/${part}`
+    cur = `${cur}${sep}${part}`
     dirs.push(cur)
   }
   return dirs
@@ -53,7 +66,7 @@ export function findDirNode(tree: readonly TreeNode[], path: string): TreeNode |
   for (const n of tree) {
     if (n.type !== 'dir') continue
     if (n.path === path) return n
-    if (path.startsWith(`${n.path}/`)) return findDirNode(n.children, path)
+    if (isWithin(n.path, path, true)) return findDirNode(n.children, path)
   }
   return null
 }
@@ -62,7 +75,7 @@ export function findDirNode(tree: readonly TreeNode[], path: string): TreeNode |
 export function findNode(tree: readonly TreeNode[], path: string): TreeNode | null {
   for (const n of tree) {
     if (n.path === path) return n
-    if (n.type === 'dir' && path.startsWith(`${n.path}/`)) return findNode(n.children, path)
+    if (n.type === 'dir' && isWithin(n.path, path, true)) return findNode(n.children, path)
   }
   return null
 }

@@ -1,4 +1,5 @@
 import { useCallback, useRef, useState } from 'react'
+import { isWithin } from '@shared/paths'
 import { storage } from '../lib/storage'
 import { hashFilePath } from '../lib/urlHash'
 
@@ -220,12 +221,12 @@ export function tabsReducer(s: TabsState, a: TabsAction): TabsState {
       // slot; activation and the mounted set remap with them. A remapped tab landing on a
       // path that was ALREADY open is dropped — the de-dup invariant wins (same rule as
       // `rename`); the old prefix itself can never be a tab (tabs are files, not dirs).
-      const prefix = `${a.oldPath}/`
       if (a.oldPath === a.newPath) return s
-      const remap = (t: string) => (t.startsWith(prefix) ? a.newPath + t.slice(a.oldPath.length) : t)
-      if (!s.tabs.some((t) => t.startsWith(prefix))) {
+      const under = (t: string) => isWithin(a.oldPath, t, true)
+      const remap = (t: string) => (under(t) ? a.newPath + t.slice(a.oldPath.length) : t)
+      if (!s.tabs.some(under)) {
         // Nothing open under the folder, but a stack further back may still point inside it.
-        return Object.values(s.history).some((r) => r.entries.some((e) => e.startsWith(prefix))) ? { ...s, history: rekey(s.history, remap) } : s
+        return Object.values(s.history).some((r) => r.entries.some(under)) ? { ...s, history: rekey(s.history, remap) } : s
       }
       const existing = new Set(s.tabs)
       const tabs: string[] = []

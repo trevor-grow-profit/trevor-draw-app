@@ -6,11 +6,13 @@
  * under vitest with fakes.
  */
 import { randomUUID } from 'node:crypto'
-import { posix } from 'node:path'
+import { posix, win32 } from 'node:path'
 import { fileKind } from '@shared/fileKind'
+import { isWithin, sepOf, trimSep } from '@shared/paths'
 import { DEFAULT_SIDEBAR_LENS, type OpenWindowOptions, type RecentRoots, type WindowBounds, type WindowEntry } from '@shared/types'
-import { CH } from '../channels'
+import { CONTRACT, SPECIAL } from '@shared/ipc'
 import type { Store } from './store'
+import { sendPush } from './ipc/push'
 
 export interface WindowLike {
   webContents: { id: number }
@@ -105,7 +107,7 @@ export interface WindowManager extends WindowLookup {
   linkNotice(message: string): void
   /** `app:flushed` arrived from this renderer (wired in `ipc/window.ts`). */
   handleFlushed(sender: { id: number }): void
-  /** `before-quit`: handshake every window sequentially; `windows[]` is kept so relaunch restores them. */
+  /** `before-quit`: handshake every window at once; `windows[]` is kept so relaunch restores them. */
   flushAllForQuit(): Promise<void>
 }
 
@@ -160,14 +162,8 @@ const sameBounds = (a: WindowBounds, b: WindowBounds): boolean => a.x === b.x &&
 
 export type LinkTarget = { kind: 'existing'; id: string } | { kind: 'new'; root: string; file: string }
 
-/** Trailing slash off (never off `/` itself), so `/v` and `/v/` name the same root. */
-const stripSlash = (p: string): string => (p.length > 1 && p.endsWith('/') ? p.slice(0, -1) : p)
-
-/** `root` is an ancestor directory of `path` (or its dirname) — by segment, so `/a/b` never contains `/a/bc/x.excalidraw`. */
-const rootContains = (root: string, path: string): boolean => {
-  const r = stripSlash(root)
-  return path.startsWith(r === '/' ? '/' : r + '/') && path.length > r.length + 1
-}
+/** The folder `path` sits in, by its own separator's rules — a Windows path's parent is not posix's `.` (YAZ-2073 2D). */
+const parentDir = (path: string): string => (sepOf(path) === '\\' ? win32 : posix).dirname(path)
 
 /**
  * Where a `yaseendraw://` link to `path` should land: (1) the open window whose root contains
@@ -182,19 +178,19 @@ export function resolveLinkTarget(
   recents: RecentRoots,
   rootOverride?: string | null,
 ): LinkTarget {
-  if (rootOverride != null && rootContains(rootOverride, path)) {
-    const exact = windows.find((w) => w.root !== null && stripSlash(w.root) === stripSlash(rootOverride))
+  if (rootOverride != null && isWithin(rootOverride, path, true)) {
+    const exact = windows.find((w) => w.root !== null && trimSep(w.root) === trimSep(rootOverride))
     return exact === undefined ? { kind: 'new', root: rootOverride, file: path } : { kind: 'existing', id: exact.id }
   }
   let best: { id: string; rootLength: number } | undefined
   for (const w of windows) {
-    if (w.root === null || !rootContains(w.root, path)) continue
+    if (w.root === null || !isWithin(w.root, path, true)) continue
     if (best === undefined || w.root.length > best.rootLength) best = { id: w.id, rootLength: w.root.length }
   }
   if (best !== undefined) return { kind: 'existing', id: best.id }
-  const recent = recents.find((r) => rootContains(r.path, path))
+  const recent = recents.find((r) => isWithin(r.path, path, true))
   if (recent !== undefined) return { kind: 'new', root: recent.path, file: path }
-  return { kind: 'new', root: posix.dirname(path), file: path }
+  return { kind: 'new', root: parentDir(path), file: path }
 }
 
 // ---------- the manager ----------
@@ -239,7 +235,7 @@ export function createWindowManager(store: Store, host: WindowHost): WindowManag
       resolve()
     }
     pendingFlush.set(wcId, { done, settle })
-    win.webContents.send(CH.appFlush)
+    win.webContents.send(SPECIAL.appFlush)
     return done
   }
 
@@ -318,7 +314,7 @@ export function createWindowManager(store: Store, host: WindowHost): WindowManag
     const win = [...live.values()].find((w) => !w.isDestroyed())
     if (win === undefined) return
     focusWindow(win)
-    win.webContents.send(CH.linkNotice, message)
+    sendPush(win.webContents, CONTRACT.link.onNotice, message)
   }
 
   return {
@@ -371,11 +367,11 @@ export function createWindowManager(store: Store, host: WindowHost): WindowManag
       store.pushRecent(path)
       // Already open (YAZ-1767 🔒 D9): raise that vault's live windows instead of opening a third
       // copy — LEAST recently focused first, so the most recently focused one ends on top (a
-      // window never focused ranks last). Roots compare like `resolveLinkTarget`: trailing slash off.
-      const wanted = stripSlash(path)
+      // window never focused ranks last). Roots compare like `resolveLinkTarget`: trailing separator off.
+      const wanted = trimSep(path)
       const alreadyOpen = store
         .get()
-        .windows.filter((w) => w.root !== null && stripSlash(w.root) === wanted)
+        .windows.filter((w) => w.root !== null && trimSep(w.root) === wanted)
         .map((w) => ({ id: w.id, win: live.get(w.id) }))
         .filter((w): w is { id: string; win: ManagedWindow } => w.win !== undefined && !w.win.isDestroyed())
       if (alreadyOpen.length > 0) {
@@ -416,11 +412,11 @@ export function createWindowManager(store: Store, host: WindowHost): WindowManag
       if (win === undefined || win.isDestroyed()) {
         // A stored entry with no live window (mid-close race): fall back to a fresh window on its root.
         const entry = state.windows.find((w) => w.id === target.id)
-        openWindow({ root: entry?.root ?? posix.dirname(path), file: path })
+        openWindow({ root: entry?.root ?? parentDir(path), file: path })
         return
       }
       focusWindow(win)
-      win.webContents.send(CH.linkOpenFile, path)
+      sendPush(win.webContents, CONTRACT.link.onOpenFile, path)
     },
 
     linkNotice,
@@ -431,12 +427,16 @@ export function createWindowManager(store: Store, host: WindowHost): WindowManag
 
     async flushAllForQuit() {
       quitting = true
-      for (const [id, win] of [...live]) {
-        if (win.isDestroyed()) continue
-        commitBounds(id, win)
-        await flushRenderer(win)
-        if (!win.isDestroyed()) win.destroy()
-      }
+      const open = [...live].filter(([, win]) => !win.isDestroyed())
+      open.forEach(([id, win]) => commitBounds(id, win))
+      // Every window at once (YAZ-2073 5G): the handshakes are independent, so hung renderers cost
+      // one FLUSH_TIMEOUT_MS between them, not one each.
+      await Promise.all(
+        open.map(async ([, win]) => {
+          await flushRenderer(win)
+          if (!win.isDestroyed()) win.destroy()
+        }),
+      )
     },
   }
 }

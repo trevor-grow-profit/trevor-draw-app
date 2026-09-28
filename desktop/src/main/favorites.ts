@@ -1,9 +1,10 @@
 import { stat } from 'node:fs/promises'
 import path from 'node:path'
 import { MAX_FAVORITES, VAULT_CONFIG_DIR, type FavoritesConfig } from '@shared/types'
-import { BridgeFailure, requireAbsPath } from './fs/fsUtils'
-import { isRecord } from '@shared/guards'
-import { isStringArray } from './store'
+import { isWithin } from '@shared/paths'
+import { BridgeFailure } from './fs/fsUtils'
+import { requireAbsPath } from './fs/validate'
+import { isRecord, isStringArray } from '@shared/guards'
 import { readConfigDetailed, subscribeConfig, writeConfig } from './vaultConfig'
 
 /**
@@ -26,7 +27,6 @@ export const toAbs = (root: string, rel: string): string => path.join(root, ...r
 /** A stored entry: non-empty, relative, no `..` segment, no NUL. */
 export const isSafeRel = (p: unknown): p is string => typeof p === 'string' && p !== '' && !p.startsWith('/') && !p.includes('\0') && !p.split('/').includes('..')
 
-const under = (root: string, p: string): boolean => p === root || p.startsWith(`${root}/`)
 const clean = (rels: readonly string[]): string[] => [...new Set(rels.filter(isSafeRel))].slice(0, MAX_FAVORITES)
 
 type Raw = { state: 'absent' } | { state: 'ok'; rels: string[] } | { state: 'bad'; file: string }
@@ -92,7 +92,7 @@ export async function getFavorites(root: string): Promise<string[]> {
 export async function setFavorites(root: string, absPaths: readonly string[]): Promise<void> {
   const r = requireAbsPath(root, 'root')
   for (const p of absPaths) {
-    if (typeof p !== 'string' || !under(r, p)) throw new BridgeFailure('BAD_REQUEST', 'a favorite must be inside the vault', { path: String(p) })
+    if (typeof p !== 'string' || !isWithin(r, p)) throw new BridgeFailure('BAD_REQUEST', 'a favorite must be inside the vault', { path: String(p) })
   }
   await chained(r, async () => {
     const raw = await readRaw(r)
@@ -116,7 +116,7 @@ export function subscribeFavorites(root: string, listener: (change: { root: stri
 /** The LONGEST root that equals or prefixes `p`; null when no open root owns it. */
 function owningRoot(roots: readonly string[], p: string): string | null {
   let best: string | null = null
-  for (const r of roots) if (under(r, p) && (best === null || r.length > best.length)) best = r
+  for (const r of roots) if (isWithin(r, p) && (best === null || r.length > best.length)) best = r
   return best
 }
 
@@ -137,7 +137,7 @@ function repair(roots: readonly string[], p: string, map: (abs: string) => strin
         continue
       }
       changed = true
-      if (mapped !== null && under(root, mapped)) next.push(toRel(root, mapped)) // moved OUT of the vault: dropped
+      if (mapped !== null && isWithin(root, mapped)) next.push(toRel(root, mapped)) // moved OUT of the vault: dropped
     }
     if (!changed) return
     const value: FavoritesConfig = { version: 1, favorites: clean(next) }
@@ -147,12 +147,10 @@ function repair(roots: readonly string[], p: string, map: (abs: string) => strin
 
 /** D13: a favorited entry follows its rename, one inside a renamed folder too (store.renamePath's prefix idiom). */
 export function renamePath(roots: readonly string[], oldPath: string, newPath: string): Promise<void> {
-  const prefix = `${oldPath}/`
-  return repair(roots, oldPath, (p) => (p === oldPath || p.startsWith(prefix) ? newPath + p.slice(oldPath.length) : p))
+  return repair(roots, oldPath, (p) => (isWithin(oldPath, p) ? newPath + p.slice(oldPath.length) : p))
 }
 
 /** D13: a deleted favorite, and everything under a deleted folder, leaves the list. */
 export function removePath(roots: readonly string[], deleted: string): Promise<void> {
-  const prefix = `${deleted}/`
-  return repair(roots, deleted, (p) => (p === deleted || p.startsWith(prefix) ? null : p))
+  return repair(roots, deleted, (p) => (isWithin(deleted, p) ? null : p))
 }

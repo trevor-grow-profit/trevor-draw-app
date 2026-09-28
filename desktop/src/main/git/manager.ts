@@ -1,5 +1,6 @@
 import type { GithubSyncConfig, GithubSyncStatus, VaultConfigChange, WatchEvent } from '@shared/types'
 import { isRecord } from '@shared/guards'
+import type { RemoteLook } from './sync'
 
 /**
  * Per-root sync orchestration (YAZ-1081 2B): WHEN a pass runs, and what the app is told about it.
@@ -28,7 +29,9 @@ import { isRecord } from '@shared/guards'
  *     machine's shapes. Never while edits are settling (the debounce's pass is coming anyway, and
  *     a pass kept away from active drawing is a pass that never meets a mid-rebase save), never
  *     while `pending` (the retry owns it) or `attention` (the next edit or focus does). Quiet means
- *     no `syncing` flash on the chip every minute — only the result is broadcast.
+ *     no `syncing` flash on the chip every minute — only the result is broadcast. It LOOKS first
+ *     (`host.lookAtRemote`, YAZ-2073 5H): two git spawns, and the full pass only when there is news —
+ *     which it does not fetch a second time.
  *
  * Two invariants everything else is built to protect:
  *   - ONE pass at a time per root, and a burst of triggers during a running pass collapses into
@@ -52,8 +55,10 @@ export interface GitSyncHost {
   subscribeVault(root: string, listener: (ev: WatchEvent) => void): () => void
   subscribeConfig(root: string, listener: (change: VaultConfigChange) => void): () => void
   onStatus(status: GithubSyncStatus): void
-  /** `flush` is the quit variant (YAZ-1111): commit always, no fetch/rebase, short-capped push. */
-  syncPass(root: string, opts?: { flush?: boolean }): Promise<GithubSyncStatus>
+  /** `flush` is the quit variant (YAZ-1111): commit always, no fetch/rebase, short-capped push. `fetched`: origin was fetched a moment ago. */
+  syncPass(root: string, opts?: { flush?: boolean; fetched?: boolean }): Promise<GithubSyncStatus>
+  /** The idle pull's cheap look (YAZ-2073 5H): `level` only when the branch and its remote provably are. */
+  lookAtRemote(root: string): Promise<RemoteLook>
   /** Optional read-only facts for an unmanaged (off) root — the settings panel wants remote/branch even when sync is off. */
   inspect?(root: string): Promise<GithubSyncStatus>
   quietMs?: number
@@ -96,7 +101,7 @@ interface Entry {
 }
 
 
-/** `flush` is the quit variant (YAZ-1111); `poll` is the idle pull (YAZ-1897 D6), which shows no `syncing`. */
+/** `flush` is the quit variant (YAZ-1111); `poll` is the idle pull (YAZ-1897 D6), which shows no `syncing` and looks first (YAZ-2073 5H). */
 type PassMode = 'normal' | 'flush' | 'poll'
 
 /** Every timer an entry can hold, cleared at once — on drop and before the quit flush. */
@@ -192,7 +197,12 @@ export function createGitSync(host: GitSyncHost): GitSyncManager {
 
     let status: GithubSyncStatus
     try {
-      status = await host.syncPass(root, mode === 'flush' ? { flush: true } : undefined)
+      // The idle pull looks before it leaps (YAZ-2073 5H): a level remote leaves the root exactly
+      // as the last pass did, so that status stands, and it arms the next pull below.
+      const look = mode === 'poll' ? await host.lookAtRemote(root) : 'unknown'
+      if (look === 'level') status = entry.last
+      else if (mode === 'flush') status = await host.syncPass(root, { flush: true })
+      else status = await host.syncPass(root, look === 'moved' ? { fetched: true } : undefined)
     } catch (err) {
       status = { root, state: 'attention', attention: 'error', message: String(err) }
     }
@@ -200,6 +210,7 @@ export function createGitSync(host: GitSyncHost): GitSyncManager {
     // the pass answers `off` (not a repo / no remote yet) — the settings switch reads this field,
     // so clicking On never looks like it did nothing.
     status = { ...status, enabled: !entry.dropped }
+    // A look that found both tips level counts as a pass here: the cadence runs from it.
     entry.lastPassAt = Date.now()
 
     if (!entry.dropped) {

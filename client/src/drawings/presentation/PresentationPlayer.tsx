@@ -33,8 +33,8 @@ import { applyFramesVisibility } from '../framesVisibility'
 import type { ExcalidrawImperativeApi, ExcalidrawModule } from '../engine'
 import { getPresentationViewportOffsets } from './camera'
 import { arrowRightIcon, closeIcon, toolsIcon } from './presentationIcons'
-import { findSlideIndexAtPoint, getOrderedPresentationFrames, type OrderedPresentationFrame } from './slides'
-import { isFrontmost } from '../boardCommand'
+import { findSlideIndexAtPoint, getOrderedPresentationFrames } from './slides'
+import { isFrontmost } from '../../documents/boardCommand'
 import './presentation.css'
 
 /** The web app's own transition length; the status line and the token both key off it. */

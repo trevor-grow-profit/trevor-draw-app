@@ -12,60 +12,42 @@
  * those are the same rules whether the call came over the bridge or not.
  */
 import { shell } from 'electron'
-import type { AppState, ComponentRenameRequest, ComponentSaveRequest, ComponentSlugRequest } from '@shared/types'
-import { CH } from '../../channels'
-import { BridgeFailure } from '../fs/fsUtils'
-import { resolveLibraryFolder } from '../library/folder'
+import type { ComponentRenameRequest, ComponentSaveRequest, ComponentSlugRequest } from '@shared/types'
+import { CONTRACT } from '@shared/ipc'
+import { requireRequest, str } from '../fs/validate'
+import { followLibraryFolder } from '../library/folder'
 import { createComponentStore, type ComponentStore } from '../library/componentStore'
-import { isRecord } from '@shared/guards'
 import type { Store } from '../store'
 import { broadcastAll } from './broadcast'
 import { handle } from './envelope'
 
-/**
- * The SHAPE guard only — "is this field a non-empty string" — because the request crosses IPC
- * from a sandboxed renderer and arrives as `unknown`. What the value MEANS (a real slug, a usable
- * name, a PNG dataURL) is the store's, which is the only layer that can answer it; the messages
- * agree on purpose, so a caller cannot tell which layer refused.
- */
-function requireString(v: unknown, field: string): string {
-  if (typeof v !== 'string' || v === '') throw new BridgeFailure('BAD_REQUEST', `'${field}' must be a non-empty string`)
-  return v
-}
-
 function requireSlugRequest(v: unknown): ComponentSlugRequest {
-  if (!isRecord(v)) throw new BridgeFailure('BAD_REQUEST', 'missing request')
-  return { slug: requireString(v.slug, 'slug') }
+  return { slug: str(requireRequest(v).slug, 'slug') }
 }
 
 function requireSaveRequest(v: unknown): ComponentSaveRequest {
-  if (!isRecord(v)) throw new BridgeFailure('BAD_REQUEST', 'missing request')
-  return { name: requireString(v.name, 'name'), fragmentJson: requireString(v.fragmentJson, 'fragmentJson'), previewPng: requireString(v.previewPng, 'previewPng') }
+  const r = requireRequest(v)
+  return { name: str(r.name, 'name'), fragmentJson: str(r.fragmentJson, 'fragmentJson'), previewPng: str(r.previewPng, 'previewPng') }
 }
 
 function requireRenameRequest(v: unknown): ComponentRenameRequest {
-  if (!isRecord(v)) throw new BridgeFailure('BAD_REQUEST', 'missing request')
-  return { slug: requireString(v.slug, 'slug'), name: requireString(v.name, 'name') }
+  const r = requireRequest(v)
+  return { slug: str(r.slug, 'slug'), name: str(r.name, 'name') }
 }
 
 /** Returns the store so a test can close its watcher; `main/index.ts` lets the process end take it. */
 export function registerComponentsIpc(store: Store, userData: string, trash: (p: string) => Promise<void> = (p) => shell.trashItem(p)): ComponentStore {
-  const folderFor = (state: AppState): string => resolveLibraryFolder(state.settings.libraryFolder, userData)
-  let folder = folderFor(store.get())
-  const components = createComponentStore(folder, { trash })
-  components.onChanged(() => broadcastAll(CH.componentsChanged))
-  store.onChange((state) => {
-    const next = folderFor(state)
-    if (next === folder) return
-    folder = next
+  const folder = followLibraryFolder(store, userData, (next) => {
     components.setFolder(next)
-    broadcastAll(CH.componentsChanged)
+    broadcastAll(CONTRACT.components.onChanged)
   })
-  handle(CH.componentsList, async () => components.list())
-  handle(CH.componentsSave, async (req: unknown) => components.save(requireSaveRequest(req)))
-  handle(CH.componentsRead, async (req: unknown) => ({ fragmentJson: await components.read(requireSlugRequest(req)) }))
-  handle(CH.componentsRename, async (req: unknown) => components.rename(requireRenameRequest(req)))
-  handle(CH.componentsDelete, async (req: unknown) => components.delete(requireSlugRequest(req)))
-  handle(CH.componentsPreview, async (req: unknown) => components.preview(requireSlugRequest(req)))
+  const components = createComponentStore(folder, { trash })
+  components.onChanged(() => broadcastAll(CONTRACT.components.onChanged))
+  handle(CONTRACT.components.list, async () => components.list())
+  handle(CONTRACT.components.save, async (req: unknown) => components.save(requireSaveRequest(req)))
+  handle(CONTRACT.components.read, async (req: unknown) => ({ fragmentJson: await components.read(requireSlugRequest(req)) }))
+  handle(CONTRACT.components.rename, async (req: unknown) => components.rename(requireRenameRequest(req)))
+  handle(CONTRACT.components.delete, async (req: unknown) => components.delete(requireSlugRequest(req)))
+  handle(CONTRACT.components.preview, async (req: unknown) => components.preview(requireSlugRequest(req)))
   return components
 }

@@ -2,7 +2,9 @@ import { readdir, rename, stat } from 'node:fs/promises'
 import path from 'node:path'
 import type { RenameFileResponse } from '@shared/types'
 import { canRenameWithoutConversion } from '@shared/fileKind'
-import { BridgeFailure, fsCall, requireAbsPath } from './fsUtils'
+import { isWithin } from '@shared/paths'
+import { BridgeFailure, fsCall } from './fsUtils'
+import { requireAbsPath, requireObject } from './validate'
 
 export async function hasExactDirectoryEntry(
   filePath: string,
@@ -40,8 +42,7 @@ export async function hasExactDirectoryEntry(
  * inode is not a collision.
  */
 export async function renameFile(req: unknown): Promise<RenameFileResponse> {
-  if (typeof req !== 'object' || req === null) throw new BridgeFailure('BAD_REQUEST', 'request must be an object')
-  const { oldPath, newPath } = req as Record<string, unknown>
+  const { oldPath, newPath } = requireObject(req)
   const oldP = requireAbsPath(oldPath, 'oldPath')
   const newP = requireAbsPath(newPath, 'newPath')
   if (oldP === newP) throw new BridgeFailure('BAD_REQUEST', 'the new path is the same as the old one', { path: newP })
@@ -52,7 +53,7 @@ export async function renameFile(req: unknown): Promise<RenameFileResponse> {
       // Dot-directories are invisible infrastructure: refuse renaming one, or renaming into a dot-name.
       if (path.basename(oldP).startsWith('.')) throw new BridgeFailure('BAD_REQUEST', 'hidden folders cannot be renamed', { path: oldP })
       if (path.basename(newP).startsWith('.')) throw new BridgeFailure('BAD_REQUEST', 'names starting with "." are hidden', { path: newP })
-      if (newP.startsWith(`${oldP}${path.sep}`)) throw new BridgeFailure('BAD_REQUEST', 'a folder cannot move inside itself', { path: newP })
+      if (isWithin(oldP, newP, true)) throw new BridgeFailure('BAD_REQUEST', 'a folder cannot move inside itself', { path: newP })
     } else {
       if (!src.isFile()) throw new BridgeFailure('NOT_A_FILE', 'expected a file', { path: oldP })
       if (!canRenameWithoutConversion(oldP, newP)) {

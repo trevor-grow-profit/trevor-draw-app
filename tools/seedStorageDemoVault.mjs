@@ -26,26 +26,15 @@
  * refused unless `--force`, and a root that is or contains the real vault or the real app-state
  * folder is refused outright, `--force` or not.
  */
-import { randomFillSync } from 'node:crypto'
-import { execFileSync } from 'node:child_process'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import zlib from 'node:zlib'
-import { assetFileName, fileIdFor, fracIndex } from './lib/seedDemoVault.mjs'
+import { assetFileName, fileIdFor } from './lib/seedDemoVault.mjs'
+import { cli, embedded, git, identity, indexedKit, json, noiseRaw, pngFromRaw, refuseExisting, scene as sceneOf, wipe, write, writeProfile } from './lib/seedKit.mjs'
 
 const USAGE = 'usage: node tools/seedStorageDemoVault.mjs --root <dir> [--force]'
-const args = process.argv.slice(2)
-const flagAt = args.indexOf('--root')
-const ROOT_ARG = flagAt === -1 ? undefined : args[flagAt + 1]
-// Strict, like `lib/seedDemoVault.mjs`'s parseArgs: a typo'd flag must not seed somewhere unexpected.
-const unknown = args.filter((a, i) => a !== '--force' && a !== '--root' && i !== flagAt + 1)
-if (ROOT_ARG === undefined || ROOT_ARG === '' || ROOT_ARG.startsWith('--') || unknown.length > 0) {
-  if (unknown.length > 0) console.error(`unknown argument: ${unknown[0]}`)
-  console.error(USAGE)
-  process.exit(2)
-}
-const ROOT = path.resolve(ROOT_ARG)
+const args = cli(USAGE, { '--root': 'dir' }, ['--root'])
+const ROOT = args.root
 
 // ---------------------------------------------------------------- the safety guard
 const HOME = os.homedir()
@@ -63,11 +52,8 @@ for (const p of PRECIOUS) {
     process.exit(2)
   }
 }
-if (fs.existsSync(ROOT) && !args.includes('--force')) {
-  console.error(`refusing to wipe an existing path: ${ROOT}\npass --force if that is really what you want\n${USAGE}`)
-  process.exit(2)
-}
-fs.rmSync(ROOT, { recursive: true, force: true })
+refuseExisting(ROOT, USAGE, { what: 'path', force: args.force })
+wipe(ROOT)
 fs.mkdirSync(ROOT, { recursive: true })
 // /tmp is a symlink on macOS; the app compares roots as strings, so everything is written real.
 const REAL_ROOT = fs.realpathSync(ROOT)
@@ -75,8 +61,6 @@ const REMOTE = path.join(REAL_ROOT, 'remote.git')
 const VAULT = path.join(REAL_ROOT, 'Board Size Considerations (YAZ-1801)')
 const PLAIN = path.join(REAL_ROOT, 'Board Size Considerations (YAZ-1801) - no git')
 
-const GIT = process.env.GIT || (fs.existsSync('/usr/bin/git') ? '/usr/bin/git' : 'git')
-const git = (cwd, gitArgs) => execFileSync(GIT, gitArgs, { cwd, stdio: ['ignore', 'pipe', 'pipe'], maxBuffer: 64 * 1024 * 1024 }).toString().trim()
 
 const MB = 1024 * 1024
 const CREATED = Date.UTC(2026, 0, 15, 10, 0)
@@ -84,25 +68,6 @@ const UPDATED = Date.UTC(2026, 0, 15, 12, 0)
 const BLOCK = { createdAt: CREATED, updatedAt: UPDATED }
 
 // ---------------------------------------------------------------- noisy PNGs
-const CRC_TABLE = new Uint32Array(256).map((_, n) => {
-  let c = n
-  for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1
-  return c >>> 0
-})
-function crc32(buf) {
-  if (typeof zlib.crc32 === 'function') return zlib.crc32(buf)
-  let c = 0xffffffff
-  for (let i = 0; i < buf.length; i++) c = CRC_TABLE[(c ^ buf[i]) & 0xff] ^ (c >>> 8)
-  return (c ^ 0xffffffff) >>> 0
-}
-function chunk(type, data) {
-  const len = Buffer.alloc(4)
-  len.writeUInt32BE(data.length)
-  const body = Buffer.concat([Buffer.from(type, 'ascii'), data])
-  const crc = Buffer.alloc(4)
-  crc.writeUInt32BE(crc32(body))
-  return Buffer.concat([len, body, crc])
-}
 /** The share of each picture's rows given to its colour band. */
 const BAND = 0.1
 /**
@@ -114,25 +79,10 @@ function noisyPNG(bytes, [r, g, b]) {
   // The band compresses to nothing, so the noise below it is sized to carry the whole target.
   const side = Math.max(16, Math.ceil(Math.sqrt(bytes / 3 / (1 - BAND))))
   const stride = 1 + side * 3
-  const raw = Buffer.alloc(stride * side)
-  randomFillSync(raw)
-  const band = Math.floor(side * BAND)
-  for (let y = 0; y < side; y++) {
-    raw[y * stride] = 0
-    if (y >= band) continue
-    for (let x = 0; x < side; x++) {
-      const o = y * stride + 1 + x * 3
-      raw[o] = r
-      raw[o + 1] = g
-      raw[o + 2] = b
-    }
-  }
-  const ihdr = Buffer.alloc(13)
-  ihdr.writeUInt32BE(side, 0)
-  ihdr.writeUInt32BE(side, 4)
-  ihdr[8] = 8
-  ihdr[9] = 2
-  const png = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), chunk('IHDR', ihdr), chunk('IDAT', zlib.deflateSync(raw, { level: 1 })), chunk('IEND', Buffer.alloc(0))])
+  const raw = noiseRaw(side, side)
+  for (let y = 0; y < Math.floor(side * BAND); y++)
+    for (let x = 0; x < side; x++) raw.set([r, g, b], y * stride + 1 + x * 3)
+  const png = pngFromRaw(side, side, raw, { level: 1 })
   return { id: fileIdFor(png), mime: 'image/png', bytes: png, side }
 }
 const COLORS = [
@@ -151,63 +101,16 @@ const decodedFor = (embeddedBytes) => Math.floor((embeddedBytes * 3) / 4)
 
 // ---------------------------------------------------------------- scenes
 let seq = 1
-const rnd = () => 1 + Math.floor(Math.random() * (2 ** 31 - 1))
-const common = (i) => ({
-  angle: 0,
-  strokeColor: '#1e1e1e',
-  backgroundColor: 'transparent',
-  fillStyle: 'solid',
-  strokeWidth: 1,
-  strokeStyle: 'solid',
-  roughness: 0,
-  opacity: 100,
-  groupIds: [],
-  frameId: null,
-  index: fracIndex(i),
-  roundness: null,
-  seed: rnd(),
-  version: 1,
-  versionNonce: rnd(),
-  isDeleted: false,
-  boundElements: null,
-  updated: UPDATED,
-  link: null,
-  locked: false,
-})
-const text = (i, x, y, str, fontSize = 24) => ({
-  id: `t${seq++}`,
-  type: 'text',
-  x,
-  y,
-  width: Math.ceil(Math.max(...str.split('\n').map((l) => l.length)) * fontSize * 0.6),
-  height: Math.ceil(str.split('\n').length * fontSize * 1.25),
-  ...common(i),
-  text: str,
-  originalText: str,
-  fontSize,
-  fontFamily: 5,
-  textAlign: 'left',
-  verticalAlign: 'top',
-  autoResize: true,
-  lineHeight: 1.25,
-  containerId: null,
-})
-const image = (i, x, y, size, fileId) => ({ id: `i${seq++}`, type: 'image', x, y, width: size, height: size, ...common(i), strokeColor: 'transparent', status: 'saved', fileId, scale: [1, 1], crop: null })
+// Ids `t1`, `i2`…: one counter across texts and images, no Math.random.
+const { text, image } = indexedKit({ newId: (type) => `${type[0]}${seq++}`, updated: UPDATED, strokeWidth: 1, roughness: 0 })
 
 /** A scene with a title line and its pictures in a row, the `yaseendraw` block FIRST (🔒 YAZ-1834). */
 function scene(title, pictures, { embed = true, extraFiles = {}, extraElements = [] } = {}) {
-  const elements = [text(0, 0, -80, title), ...pictures.map((p, n) => image(n + 1, n * 440, 0, 400, p.id)), ...extraElements]
+  const elements = [text(0, 0, -80, title, 24), ...pictures.map((p, n) => image(n + 1, n * 440, 0, 400, 400, p.id)), ...extraElements]
   const files = {}
-  if (embed) for (const p of pictures) files[p.id] = { mimeType: p.mime, id: p.id, dataURL: `data:${p.mime};base64,${p.bytes.toString('base64')}`, created: CREATED }
+  if (embed) for (const p of pictures) files[p.id] = embedded(p.id, p.bytes, { mime: p.mime, created: CREATED })
   Object.assign(files, extraFiles)
-  return `${JSON.stringify({ yaseendraw: BLOCK, type: 'excalidraw', version: 2, source: 'yaz-1801-demo', elements, appState: { viewBackgroundColor: '#ffffff', gridSize: 20 }, files }, null, 2)}\n`
-}
-
-function write(dir, rel, body) {
-  const file = path.join(dir, rel)
-  fs.mkdirSync(path.dirname(file), { recursive: true })
-  fs.writeFileSync(file, body)
-  return file
+  return json(sceneOf('yaz-1801-demo', elements, { block: BLOCK, files }))
 }
 const mb = (file) => `${(fs.statSync(file).size / MB).toFixed(1)} MB`
 const commit = (message) => {
@@ -222,9 +125,7 @@ git(REAL_ROOT, ['init', '-q', '--bare', '-b', 'main', REMOTE])
 // ---------------------------------------------------------------- the vault
 fs.mkdirSync(VAULT, { recursive: true })
 git(VAULT, ['init', '-q', '-b', 'main'])
-git(VAULT, ['config', 'user.name', 'YAZ-1801 Demo'])
-git(VAULT, ['config', 'user.email', 'demo@example.invalid'])
-git(VAULT, ['config', 'commit.gpgsign', 'false'])
+identity(VAULT, 'YAZ-1801 Demo', 'demo@example.invalid')
 git(VAULT, ['remote', 'add', 'origin', REMOTE])
 write(VAULT, '.yaseendraw/github.json', `${JSON.stringify({ enabled: true })}\n`)
 
@@ -270,7 +171,7 @@ write(
   VAULT,
   'Unreferenced embedded.excalidraw',
   scene('Unreferenced embedded — the picture in files{} is used by nothing', [], {
-    extraFiles: { [orphan.id]: { mimeType: orphan.mime, id: orphan.id, dataURL: `data:image/png;base64,${orphan.bytes.toString('base64')}`, created: CREATED } },
+    extraFiles: { [orphan.id]: embedded(orphan.id, orphan.bytes, { created: CREATED }) },
   }),
 )
 
@@ -281,7 +182,7 @@ write(
   VAULT,
   'Malformed picture data.excalidraw',
   scene('Malformed picture data — right-hand picture is broken on purpose', [good], {
-    extraElements: [image(9, 440, 0, 400, brokenId)],
+    extraElements: [image(9, 440, 0, 400, 400, brokenId)],
     extraFiles: { [brokenId]: { mimeType: 'image/png', id: brokenId, dataURL: 'data:image/png;base64,@@not-base64@@', created: CREATED } },
   }),
 )
@@ -308,30 +209,11 @@ console.log(`plain folder: ${PLAIN}`)
 
 // ---------------------------------------------------------------- the app state
 const tabs = [path.join(VAULT, 'Legacy - few pictures.excalidraw'), path.join(VAULT, 'Small clean board.excalidraw')]
-const state = {
-  version: 1,
-  settings: { theme: 'system', confirmDelete: true },
-  sidebarWidth: 280,
-  recents: [
-    { path: VAULT, lastOpened: Date.now() },
-    { path: PLAIN, lastOpened: Date.now() - 1000 },
-  ],
-  windows: [
-    {
-      id: 'w1',
-      root: VAULT,
-      file: tabs[0],
-      tabs,
-      sidebarCollapsed: false,
-      sidebarLens: 'files',
-      focusDirs: [],
-      focusFavorites: [],
-      bounds: { x: 80, y: 60, width: 1440, height: 900 },
-    },
-  ],
-  folders: { [VAULT]: { lastFile: tabs[0], sortOrder: 'name' } },
-}
-write(REAL_ROOT, 'yaseendraw.json', `${JSON.stringify(state, null, 2)}\n`)
-console.log(`app state: ${path.join(REAL_ROOT, 'yaseendraw.json')}`)
+const recents = [
+  { path: VAULT, lastOpened: Date.now() },
+  { path: PLAIN, lastOpened: Date.now() - 1000 },
+]
+const folders = { [VAULT]: { lastFile: tabs[0], sortOrder: 'name' } }
+console.log(`app state: ${writeProfile(REAL_ROOT, VAULT, { sidebarWidth: 280, recents, file: tabs[0], tabs, bounds: { x: 80, y: 60, width: 1440, height: 900 }, folders })}`)
 // `--watch`, not `npm run dev`: plain dev never restarts main, so a main-process edit during the demo is silently not running.
 console.log(`\nlaunch (from the repo root): cd desktop && YASEEN_DRAW_USER_DATA_DIR="${REAL_ROOT}" npx electron-vite dev --watch`)
