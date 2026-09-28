@@ -39,9 +39,21 @@ vi.mock('node:fs', async (importOriginal) => {
   return { ...fs, default: { ...fs, watch }, watch }
 })
 
+/** Every `/sbin/mount` the engine runs, counted and passed through. */
+const mountReads = vi.hoisted(() => ({ count: 0 }))
+vi.mock('node:child_process', async (importOriginal) => {
+  const cp = await importOriginal<typeof import('node:child_process')>()
+  const execFile = ((...args: Parameters<typeof cp.execFile>) => {
+    if (args[0] === '/sbin/mount') mountReads.count++
+    return cp.execFile(...args)
+  }) as typeof cp.execFile
+  return { ...cp, default: { ...cp, execFile }, execFile }
+})
+
 const dirs: string[] = []
 const watchers: TreeWatcher[] = []
 afterEach(async () => {
+  vi.useRealTimers()
   nativeWatch.fail = false
   nativeWatch.refuse = null
   nativeWatch.lateStream = false
@@ -212,6 +224,23 @@ describe('treeWatcher', { timeout: 20_000 }, () => {
     await writeFile(path.join(dir, 'polled.json'), '{}')
     await until(() => r.lines.length > 0, 10_000)
     expect(r.lines).toEqual(['add polled.json'])
+  })
+})
+
+describe('reading `mount` (YAZ-2073 5F1)', () => {
+  it.runIf(process.platform === 'darwin')('watches started together read the table once; one started after 5 s reads it again', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(Date.now() + 60_000) // past whatever an earlier test read
+    const dir = await tempDir()
+    mountReads.count = 0
+    await Promise.all([record(dir), record(dir), record(dir)].map((r) => r.ready()))
+    expect(mountReads.count).toBe(1)
+    vi.setSystemTime(Date.now() + 4000)
+    await record(dir).ready()
+    expect(mountReads.count).toBe(1)
+    vi.setSystemTime(Date.now() + 1001)
+    await record(dir).ready()
+    expect(mountReads.count).toBe(2)
   })
 })
 

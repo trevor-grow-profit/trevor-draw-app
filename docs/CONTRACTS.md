@@ -216,7 +216,7 @@ Rules that hold across the whole surface:
   has been quiet 100 ms (`SETTLE_MS`) and classified by `lstat` against what it knew, `ready` after
   one walk of what is there and only once macOS's FSEvents stream is live (YAZ-2073 5F1), the app's
   own `atomicWrite` tmp files never announced. A folder that does not exist yet is waited for. On a
-  macOS network volume (no `local` in `mount`), or where
+  macOS network volume (no `local` in `mount`'s table, read at most once per 5 s), or where
   `fs.watch` throws, chokidar polling (1 s) runs instead, loaded only then. What consumers see is
   pinned by `watchConformance.test.ts`, which passed against chokidar before the switch.
 - **One door per direction, per kind.** Where a kind has a dedicated pair (`drawing:load` /

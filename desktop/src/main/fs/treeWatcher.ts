@@ -119,8 +119,22 @@ async function onNetworkVolume(dir: string): Promise<boolean> {
   if (process.platform !== 'darwin') return false
   const at = nearestExisting(dir)
   const real = await realpath(at).catch(() => at)
-  const table = await new Promise<string>((resolve) => execFile('/sbin/mount', (err, out) => resolve(err === null ? out : '')))
-  return isNetworkMount(table, real)
+  return isNetworkMount(await mountTable(), real)
+}
+
+/**
+ * How long one read of `mount`'s table answers for (YAZ-2073 5F1): the four or more watches a launch
+ * starts share one spawn, and a share mounted since is seen by the first watch after that.
+ */
+const MOUNT_TABLE_TTL_MS = 5000
+let lastMountRead: { at: number; table: Promise<string> } | null = null
+
+function mountTable(): Promise<string> {
+  const now = Date.now()
+  if (lastMountRead === null || now - lastMountRead.at > MOUNT_TABLE_TTL_MS) {
+    lastMountRead = { at: now, table: new Promise((resolve) => execFile('/sbin/mount', (err, out) => resolve(err === null ? out : ''))) }
+  }
+  return lastMountRead.table
 }
 
 /** `mount`'s `<device> on <point> (<type>, <flags…>)` lines → whether the mount holding `real` lacks `local`. */
