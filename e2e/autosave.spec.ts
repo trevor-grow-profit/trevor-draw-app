@@ -56,11 +56,6 @@ test('⌘Q right after an edit still lands the edit on disk (the renderer flush 
 })
 
 test.describe('the quit sequence after the renderers flush (YAZ-2073 2A)', () => {
-  // The state-file flush and the last sync commit were dropped from the quit sequence by accident
-  // (82d63ce; $SCRATCH/findings/main-process.md F2). Expected to FAIL until YAZ-2073 2A restores
-  // `runQuitSequence` — then Playwright reports "expected to fail but passed": drop the marker.
-  test.fail()
-
   test('⌘Q right after an edit on a synced vault commits and pushes that edit', async ({ sandbox, launch }) => {
     const vault = sandbox.vault('V', { 'Board.excalidraw': scene([rect('a')]) })
     const { origin } = gitVault(vault)

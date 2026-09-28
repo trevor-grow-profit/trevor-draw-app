@@ -53,7 +53,7 @@ Paste into the PR body and tick each line:
 | ★C9 | Hover a drawing and a diagram in the sidebar, in light and dark → the right picture in both themes. | the picture itself | A: `sidebar` (pictures load, both themes) |
 | ★C10 | Theme System → Dark → Light, live in two windows; a dark launch has no white flash. | colours, flash | A: `settings` (live in every window; dark window background on relaunch) |
 | ★C11 | Edit the file from outside (another editor, `echo >> file`): a clean tab reloads; a tab with unsaved edits shows Reload / Keep mine. | an outside editor | A: `autosave`, `windows` |
-| ★C12 | ⌘Q in the middle of an edit, relaunch: the last stroke is on disk, the tabs and window are as left, and a synced vault's origin has the commit. | the real ⌘Q | A (part): `autosave`, `drawio` — the last stroke lands; tabs-as-left and the pushed commit are `test.fail` until YAZ-2073 2A |
+| ★C12 | ⌘Q in the middle of an edit, relaunch: the last stroke is on disk, the tabs and window are as left, and a synced vault's origin has the commit. | the real ⌘Q | A (part): `autosave`, `drawio` — the last stroke lands, the tab in front is kept and the edit is pushed; the window's bounds and the relaunch by hand |
 | ★O1 | App NOT running: double-click a `.excalidraw` in Finder → it opens in the right window and tab. | LaunchServices, cold `open-file` | A (part): `links` — a cold start with the path in argv; the cold `open-file` event by hand |
 | ★O2 | Same as O1 for a `.drawio`. | LaunchServices | A (part): `links` — `open-file` into a running app; cold by hand |
 | O3 | App running: double-click a board in Finder → it opens in the window on its vault (or a new one). | LaunchServices | A: `links` (the event, not the OS) |
@@ -249,7 +249,7 @@ Every line of feature-safety-net §2 (the YAZ-2073 inventory), in its 12 groups.
 
 | ID | Feature | Coverage | By hand |
 |---|---|---|---|
-| F61 | Commit → fetch → rebase → push; idle, focus, wake and quit pulls / pushes | A (part): `sync`, `history` — sync now, first sync; quit push is `test.fail`; idle / focus / wake by hand | S2 ★C12 |
+| F61 | Commit → fetch → rebase → push; idle, focus, wake and quit pulls / pushes | A (part): `sync`, `history`, `autosave` — sync now, first sync, the quit push; idle / focus / wake by hand | S2 ★C12 |
 | F62 | Shape-by-shape board merge; keep-both for diagrams and others | A: `history`, `demovaults` | S1 |
 | F63 | Too-large (≥ 95 MiB) held back: banner, chip, red cloud | A (part): `sync` — banner by hand | S3 |
 | F64 | Git discovery at fixed paths; setup prompt when missing | M | S6 |
