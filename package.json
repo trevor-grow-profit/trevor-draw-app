@@ -15,7 +15,8 @@
     "desktop:build:win": "npm run build -w desktop && node tools/packDesktop.mjs --win",
     "typecheck": "tsc -p client/tsconfig.json --noEmit && tsc -p shared/tsconfig.json --noEmit && tsc -p desktop/tsconfig.json --noEmit",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "perf:budget": "node tools/perf/budget.mjs"
   },
   "devDependencies": {
     "jsdom": "^30.0.1",

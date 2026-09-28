@@ -1,0 +1,22 @@
+{
+  "$comment": "Ceilings for `npm run perf:budget` (size: bytes / counts) and `npm run perf` (scenario medians: ms / MB / s / %), set to the v0.1.11 baseline (YAZ-2073 1A/1B; the measured runs are in baseline.json). THE RATCHET (🔒 D17): a change that improves a metric lowers its ceiling here in the same PR; raising one needs Yasin's OK in the PR description. `target` is the YAZ-2073 goal. The tolerances absorb build-to-build byte jitter and run-to-run timing noise, nothing more.",
+  "baseline": "v0.1.11",
+  "sizeTolerance": 0.001,
+  "size": {
+    "appBytes": { "max": 387152347, "target": 300000000 },
+    "frameworksBytes": { "max": 287397341 },
+    "asarBytes": { "max": 75969797 },
+    "shareViewerBytes": { "max": 23423486 },
+    "dmgBytes": { "max": 172479337, "target": 115000000 },
+    "lprojCount": { "max": 55 },
+    "chromiumLocaleBytes": { "max": 48655444 },
+    "asarNodeModulesFiles": { "max": 12 },
+    "rendererEagerJsBytes": { "max": 973567 },
+    "rendererEagerCssBytes": { "max": 92881 },
+    "rendererTotalBytes": { "max": 28314918 },
+    "rendererMapBytes": { "max": 0 },
+    "mainBundleBytes": { "max": 285442 }
+  },
+  "perfTolerance": 0.15,
+  "perf": {}
+}
