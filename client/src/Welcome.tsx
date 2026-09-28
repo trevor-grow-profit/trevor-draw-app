@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { MAX_RECENT_ROOTS, type RecentRoots } from '@shared/types'
-import { basename } from './lib/paths'
 import { relativeTime } from './lib/relativeTime'
+import { storage } from './lib/storage'
 
 /**
  * The Welcome screen (C2, GRO-2164): shown only when this window has no folder (D3) — the app
@@ -43,7 +43,7 @@ export function Welcome({ recents, onOpenRecent, onPickFolder, picking }: Welcom
           {rows.map((r) => (
             <li key={r.path}>
               <button type="button" className="welcome__recent" disabled={missing.has(r.path)} onClick={() => open(r.path)}>
-                <span className="welcome__recent-name">{basename(r.path)}</span>
+                <span className="welcome__recent-name">{storage.vaultName(r.path)}</span>
                 <span className={`welcome__recent-when${missing.has(r.path) ? ' welcome__recent-when--missing' : ''}`}>
                   {missing.has(r.path) ? 'Folder not found' : relativeTime(r.lastOpened, now)}
                 </span>

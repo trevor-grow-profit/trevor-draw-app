@@ -4,7 +4,8 @@
  * selection is owned by the Sidebar, since the keyboard drives it from the search input — and so
  * is ACTIVATION (🔒 D3, YAZ-1491): a click reports the row and the ⌘ flag, and the Sidebar's one
  * rule decides whether that reveals a folder or opens a drawing. Folder rows look like folders
- * (🔒 YAZ-1491 D4): a glyph before the label and a `, folder` suffix on the aria-label.
+ * (🔒 YAZ-1491 D4): a glyph before the label and a `, folder` suffix on the aria-label. A right-click
+ * reports the row the same way (Docs YAZ-2050): the Sidebar opens the tree row's own menu for it.
  */
 import { useEffect, useRef } from 'react'
 import type { SearchCandidate } from './searchCandidates'
@@ -16,6 +17,8 @@ interface SearchResultsProps {
   onSelect: (index: number) => void
   /** A row was clicked; `background` is ⌘ (I3 convention, GRO-2235) — the Sidebar's `activate` shares this with Enter. */
   onActivate: (row: SearchCandidate, background: boolean) => void
+  /** A row was right-clicked (Docs YAZ-2050): the Sidebar opens the SAME menu the row's tree row gets. */
+  onRowContextMenu: (row: SearchCandidate, e: React.MouseEvent) => void
 }
 
 /** Small folder outline for a `dir` row (🔒 D4, YAZ-1491) — the `SidebarPanelIcon` idiom. */
@@ -27,7 +30,7 @@ function FolderGlyph() {
   )
 }
 
-export function SearchResults({ results, selected, onSelect, onActivate }: SearchResultsProps) {
+export function SearchResults({ results, selected, onSelect, onActivate, onRowContextMenu }: SearchResultsProps) {
   const selectedRow = useRef<HTMLLIElement | null>(null)
 
   // The list scrolls inside `.sidebar__body`, so arrowing past its edge must bring the row along.
@@ -54,6 +57,10 @@ export function SearchResults({ results, selected, onSelect, onActivate }: Searc
             // A click moves selection to the clicked row, so the next arrow key continues from it.
             onSelect(i)
             onActivate(r, e.metaKey)
+          }}
+          onContextMenu={(e) => {
+            onSelect(i) // a right-click highlights the row too — the tree's rule (D9, YAZ-1674)
+            onRowContextMenu(r, e)
           }}
         >
           <span className="search-results__label">

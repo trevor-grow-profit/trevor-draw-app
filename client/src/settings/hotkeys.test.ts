@@ -10,8 +10,9 @@ describe('HOTKEYS source of truth', () => {
       expect(keys).toContain(expected)
     }
     expect(WINDOW_HOTKEYS.find((h) => h.keys === '⌘B')?.label).toMatch(/outside editing surfaces/i)
-    // ⌘O (YAZ-1767 D8): the switcher's two verbs, filter then open — in a NEW window, never in place.
+    // ⌘O (YAZ-1767 D8): the switcher's two verbs, filter then open — in a NEW window; only ⇧⏎ opens in place (Docs YAZ-1974 D8).
     expect(WINDOW_HOTKEYS.find((h) => h.keys === '⌘O')?.label).toMatch(/switch vault.*filter.*new window/i)
+    expect(WINDOW_HOTKEYS.find((h) => h.keys === '⌘O')?.label).toMatch(/⇧⏎ opens it in this window/)
     // YAZ-1710: main applies the step to the whole window — there is no per-document zoom to name.
     expect(WINDOW_HOTKEYS.find((h) => h.keys === '⌘+ / ⌘− / ⌘0')?.label).toMatch(/the app/i)
     // The ⌘W ladder swap (GRO-2232, locked): ⌘W closes the TAB, ⌘⇧W the window — never the reverse.
@@ -25,8 +26,11 @@ describe('HOTKEYS source of truth', () => {
     expect(byKeys('Right-click file')?.label).toMatch(/new window/i)
     // The context menu's create group leads on the two board births (🔒 YAZ-1802 D13).
     expect(byKeys('Right-click file')?.label).toMatch(/New Excalidraw drawing \/ New draw\.io diagram/)
-    // The vault menu (YAZ-1941): the one in-place open lives there, so the tip names it.
+    // The vault menu (YAZ-1941): its in-place open (the switcher's ⇧⏎ is the other, Docs YAZ-1974 D8) and the display name (Docs YAZ-1974 D5).
     expect(byKeys('Right-click vault')?.label).toMatch(/Open in this window/)
+    expect(byKeys('Right-click vault')?.label).toMatch(/Set display name/)
+    // A search result's right-click is its tree row's menu (Docs YAZ-2050).
+    expect(byKeys('Right-click a search result')?.label).toMatch(/same menu as its row in the tree/)
     // Multi-select (YAZ-1336 🔒 YAZ-1775 D2 → YAZ-1337): ⇧-click toggles rows, and the tip has to say what
     // that is FOR — the two plural items a right-click then offers.
     expect(byKeys('⇧-click file or folder')?.label).toMatch(/multi-selection/i)

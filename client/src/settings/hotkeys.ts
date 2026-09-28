@@ -17,7 +17,7 @@ export const WINDOW_HOTKEYS: readonly HotkeyEntry[] = [
   { keys: '⌘⇧N', label: 'New window — same folder and tabs' },
   { keys: '⌘⇧O', label: 'Open folder…' },
   // The vault switcher (YAZ-1767 D8): the sidebar header's panel, keyboard-first like ⌘K's bar.
-  { keys: '⌘O', label: 'Switch vault (type to filter, ⏎ brings it to the front or opens a new window)' },
+  { keys: '⌘O', label: 'Switch vault (type to filter, ⏎ brings it to the front or opens a new window, ⇧⏎ opens it in this window)' },
   { keys: '⌘K', label: 'Search the vault' },
   { keys: '⌘,', label: 'Settings' },
   { keys: '⌘B', label: 'Toggle sidebar outside editing surfaces' },
@@ -81,8 +81,10 @@ export const MOUSE_TIPS: readonly HotkeyEntry[] = [
   // anything and never folds a folder.
   { keys: '⇧-click file or folder', label: 'Add or remove it from a multi-selection — right-click for Copy N paths / Open N in new tabs' },
   { keys: 'Right-click file', label: 'Cut / Copy / Paste, Copy path, New Excalidraw drawing / New draw.io diagram, Open in ▸ (new window, VS Code, default app, Finder)' },
+  // Search results (Docs YAZ-2050): the Sidebar opens the tree row's own menu for them.
+  { keys: 'Right-click a search result', label: 'The same menu as its row in the tree' },
   // The vault menu (YAZ-1941, ported from Docs YAZ-1798): the sidebar header's vault name, or any vault in the ⌘O switcher.
-  { keys: 'Right-click vault', label: 'Open in this window, Copy vault name / path, Reveal in Finder, VS Code, Remove from recents' },
+  { keys: 'Right-click vault', label: 'Open in this window, Set display name, Copy vault name / path, Reveal in Finder, VS Code, Remove from recents' },
 ]
 
 /**

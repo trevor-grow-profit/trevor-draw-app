@@ -426,13 +426,14 @@ button {
 
 /* ---------- the vault switcher panel (YAZ-1767) ---------- */
 
-/* The rows: the Welcome recent-row idiom (name left, relative time right, path below), at
-   GitHub Desktop's density. `aria-current` marks the vault this window is on (D3); `--active`
-   is the ONE keyboard/hover highlight (D7) — kept separate so both can show on the same row. */
+/* The rows: ONE line (Docs YAZ-1974 D2) — name left, the path's ⓘ, relative time right — at GitHub
+   Desktop's density. `aria-current` marks the vault this window is on (D3); `--active` is the ONE
+   keyboard/hover highlight (D7) — kept separate so both can show on the same row. */
 .vault-switcher__row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 1px 12px;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 8px;
   width: 100%;
   padding: 8px 14px;
   text-align: left;
@@ -460,13 +461,10 @@ button {
 .vault-switcher__name {
   min-width: 0;
   font-weight: 600;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere; /* never cut: past the panel's cap a name wraps (Docs YAZ-1974 D7) */
 }
 
 .vault-switcher__when {
-  align-self: center;
   font-size: 12px;
   color: var(--fg-muted);
 }
@@ -476,14 +474,62 @@ button {
   color: var(--danger);
 }
 
-.vault-switcher__path {
-  grid-column: 1 / -1;
-  min-width: 0;
-  font-size: 12px;
+/* ⇧ held (Docs YAZ-1974 D9): the highlighted row will open IN this window. */
+.vault-switcher__when--here {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+/* The path's ⓘ (D2): shown while its ROW is hovered — a dead row too, `:hover` works on `:disabled` —
+   by visibility, not display, so nothing shifts (the tab ✕ idiom, tabs.css). Mouse-only on purpose. */
+.vault-switcher__info {
+  display: inline-flex;
   color: var(--fg-muted);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  visibility: hidden;
+}
+
+.vault-switcher__row:hover .vault-switcher__info {
+  visibility: visible;
+}
+
+.vault-switcher__info:hover {
+  color: var(--fg);
+}
+
+/* The full path (D2), portalled to <body> and fixed at the row, so the panel's scroll box never clips
+   it; above every menu layer. The WHOLE path: `<wbr>` after each `/`, `anywhere` for a longer segment. */
+.vault-switcher__tip {
+  position: fixed;
+  z-index: 42;
+  padding: 6px 10px;
+  border-radius: 6px;
+  background: var(--fg);
+  color: var(--bg);
+  font-size: 12px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+  pointer-events: none;
+}
+
+/* "Set display name" (Docs YAZ-1974 D5): the name becomes this field where it stands — in the header, or
+   across a row's name and ⓘ columns. */
+.vault-switcher__row--renaming .vault-switcher__rename {
+  grid-column: 1 / 3;
+}
+
+.vault-switcher__rename {
+  flex: 1;
+  min-width: 0;
+  padding: 1px 4px;
+  margin: -2px 0 -2px -5px;
+  border: 1px solid var(--accent);
+  border-radius: 4px;
+  background: var(--bg);
+  color: var(--fg);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  outline: none;
 }
 
 .vault-switcher__empty {
@@ -888,6 +934,9 @@ button {
    top corners so it sits flush, and it scrolls rather than outgrowing the window. */
 .ctx-menu--panel {
   padding: 0;
+  /* As wide as the longest name, up to a cap (Docs YAZ-1974 D7); never narrower than the header (min-width, inline). */
+  width: max-content;
+  max-width: min(480px, calc(100vw - 16px));
   border-top: none;
   border-radius: 0 0 8px 8px;
   max-height: calc(100vh - 160px);

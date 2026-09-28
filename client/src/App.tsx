@@ -22,6 +22,7 @@ import { ownsSidebarHotkey } from './lib/sidebarHotkey'
 import { attentionCopy, buildSetupPrompt } from './lib/syncAttention'
 import { resolveTheme, useSystemPrefersDark } from './lib/theme'
 import { fileHash } from './lib/urlHash'
+import { useVaultName } from './lib/useVaultName'
 import { windowTitle } from './lib/windowTitle'
 import { SettingsDialog } from './settings/SettingsDialog'
 import type { SettingsSectionId } from './settings/registry'
@@ -211,15 +212,16 @@ export function App() {
   // the active tab in bootTabs, so this first run is a no-op re-write of the same hash).
   useEffect(() => syncHash(file), [file])
 
-  // The OS window title mirrors what is open (C3, GRO-2165); Electron follows document.title.
+  // The OS window title mirrors what is open (C3, GRO-2165) under the vault's display name (Docs YAZ-1974 D4); Electron follows document.title.
+  const vaultName = useVaultName(root)
   useEffect(() => {
-    document.title = windowTitle(root, file)
-  }, [root, file])
+    document.title = windowTitle(vaultName, file)
+  }, [vaultName, file])
 
   /**
-   * Switch this window to `path` in place (C3, GRO-2165) — the WELCOME window, and the vault menu's
-   * explicit "Open in this window" (YAZ-1941 D2); every other open from a vault window goes beside
-   * (YAZ-1913). Resolves false — and drops the dead
+   * Switch this window to `path` in place (C3, GRO-2165) — the WELCOME window, the vault menu's
+   * explicit "Open in this window" (YAZ-1941 D2) and the switcher's ⇧⏎ / ⇧-click (Docs YAZ-1974 D8);
+   * every other open from a vault window goes beside (YAZ-1913). Resolves false — and drops the dead
    * MRU entry — when the folder is gone on disk (C2), leaving the window as it is; any other
    * probe failure still switches, and the sidebar surfaces the error.
    */
@@ -232,8 +234,9 @@ export function App() {
         return false
       }
     }
-    storage.setRoot(path) // ONE identity write: { root, file: null, tabs: [] } (Tabs rule 13)
+    storage.setRoot(path) // ONE identity write (Tabs rule 13) — a different root also resets file, tabs, lens and focus: see `storage.setRoot`
     storage.pushRecentRoot(path)
+    setSidebarLens(storage.getSidebarLens()) // a different vault lands on Files (Docs YAZ-1846 D2); the same one keeps its tab
     setSidebarRevealRequest(null)
     setRoot(path)
     // The folder's remembered file becomes the sole restored tab (D6); reset mirrors it down.
@@ -600,7 +603,7 @@ export function App() {
           onSearchFocusHandled={searchFocusHandled}
           // ⌘O (YAZ-1767 D8): only a request made on THIS root counts; any other reads as none.
           switcherOpenRequest={switcherRequest.root === root ? switcherRequest.seq : 0}
-          // The vault menu's "Open in this window" (YAZ-1941 D2): the one deliberate in-place switch.
+          // The in-place switch: the vault menu's "Open in this window" (YAZ-1941 D2) and the switcher's ⇧⏎ / ⇧-click (Docs YAZ-1974 D8).
           onOpenVaultHere={openRoot}
         />
       )}

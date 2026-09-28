@@ -1,5 +1,5 @@
 /**
- * Welcome screen (C2, GRO-2164): the app name, recents as one-click rows (name, path,
+ * Welcome screen (C2, GRO-2164): the app name, recents as one-click rows (display name, path,
  * relative last-opened), the empty state, and the "Folder not found" note on a row whose
  * folder vanished on disk — the rows are snapshotted at mount, so that row stays visible
  * after its MRU entry is dropped.
@@ -7,7 +7,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
-import type { RecentRoots } from '@shared/types'
+import { defaultAppState, defaultFolderState, type RecentRoots } from '@shared/types'
+import { storage } from './lib/storage'
 import { relativeTime, Welcome } from './Welcome'
 
 
@@ -35,6 +36,8 @@ afterEach(() => {
   root = null
   container?.remove()
   container = null
+  // The display-name test's fake bridge — dropped here so a failing expectation cannot leak it.
+  delete (window as unknown as Record<string, unknown>).yaseenDraw
 })
 
 describe('relativeTime', () => {
@@ -98,6 +101,15 @@ describe('Welcome', () => {
     expect(row?.disabled).toBe(true)
     expect(row?.querySelector('.welcome__recent-when')?.textContent).toBe('Folder not found')
     expect(row?.querySelector('.welcome__recent-name')?.textContent).toBe('gone')
+  })
+
+  it('a renamed vault shows its display name; its path line stays the folder path (Docs YAZ-1974 D4)', async () => {
+    const state = { ...defaultAppState(), folders: { '/vaults/business-wiki-MASTER': { ...defaultFolderState(), name: '🚀 Business Wiki' } } }
+    Object.defineProperty(window, 'yaseenDraw', { value: { state: { get: async () => state, onChange: () => () => undefined }, window: { identity: async () => ({}) } }, configurable: true, writable: true })
+    await storage.init()
+    const { el } = mount({ recents: [{ path: '/vaults/business-wiki-MASTER', lastOpened: Date.now() }, { path: '/vaults/work', lastOpened: Date.now() }] })
+    expect(rows(el).map((b) => b.querySelector('.welcome__recent-name')?.textContent)).toEqual(['🚀 Business Wiki', 'work'])
+    expect(rows(el)[0]?.querySelector('.welcome__recent-path')?.textContent).toBe('/vaults/business-wiki-MASTER')
   })
 
   it('disables the Open folder… button while the dialog is open', () => {

@@ -73,7 +73,7 @@ describe('storage.init', () => {
       ...defaultAppState(),
       settings: { ...DEFAULT_SETTINGS, theme: 'dark' },
       recents: [{ path: '/v', lastOpened: 5 }],
-      folders: { '/v': { expanded: ['/v/sub'], lastFile: '/v/a.excalidraw', sortOrder: 'name' } },
+      folders: { '/v': { expanded: ['/v/sub'], lastFile: '/v/a.excalidraw', sortOrder: 'name', name: null } },
     }
     b = installBridge(seeded, { id: 'w2', root: '/v', file: '/v/a.excalidraw', tabs: ['/v/a.excalidraw'], sidebarCollapsed: true })
     await storage.init()
@@ -119,7 +119,7 @@ describe('storage', () => {
     expect(storage.getRoot()).toBeNull()
     storage.setRoot('/notes')
     expect(storage.getRoot()).toBe('/notes')
-    expect(b.bridge.window.setIdentity).toHaveBeenLastCalledWith({ root: '/notes', file: null, tabs: [], focusDirs: [], focusFavorites: [] })
+    expect(b.bridge.window.setIdentity).toHaveBeenLastCalledWith({ root: '/notes', file: null, tabs: [], sidebarLens: 'files', focusDirs: [], focusFavorites: [] })
     storage.setWorkspace('/notes', ['/notes/a.excalidraw'], '/notes/a.excalidraw')
     storage.setRoot('/notes')
     expect(b.bridge.window.setIdentity).toHaveBeenLastCalledWith({ root: '/notes' })
@@ -127,7 +127,7 @@ describe('storage', () => {
     expect(storage.getTabs()).toEqual(['/notes/a.excalidraw'])
     storage.setRoot(null)
     expect(storage.getRoot()).toBeNull()
-    expect(b.bridge.window.setIdentity).toHaveBeenLastCalledWith({ root: null, file: null, tabs: [], focusDirs: [], focusFavorites: [] })
+    expect(b.bridge.window.setIdentity).toHaveBeenLastCalledWith({ root: null, file: null, tabs: [], sidebarLens: 'files', focusDirs: [], focusFavorites: [] })
     expect(storage.getFile()).toBeNull()
     expect(storage.getTabs()).toEqual([])
   })
@@ -167,6 +167,19 @@ describe('storage', () => {
     expect(b.bridge.state.setFolder).toHaveBeenLastCalledWith('/r1', { sortOrder: 'updated' })
     storage.setExpanded('/r1', ['/r1/a'])
     expect(storage.getSortOrder('/r1')).toBe('updated') // the other folder fields survive
+  })
+
+  it('vaultName falls back to the folder name; setVaultName cleans, stores the folder name as null, and rides setFolder (Docs YAZ-1974 D3)', () => {
+    expect(storage.vaultName('/v/business-wiki-MASTER')).toBe('business-wiki-MASTER')
+    storage.setVaultName('/v/business-wiki-MASTER', '  Business Wiki ')
+    expect(storage.vaultName('/v/business-wiki-MASTER')).toBe('Business Wiki')
+    expect(b.bridge.state.setFolder).toHaveBeenLastCalledWith('/v/business-wiki-MASTER', { name: 'Business Wiki' })
+    storage.setVaultName('/v/business-wiki-MASTER', 'business-wiki-MASTER') // the folder's own name = no custom name
+    expect(b.bridge.state.setFolder).toHaveBeenLastCalledWith('/v/business-wiki-MASTER', { name: null })
+    storage.setVaultName('/v/business-wiki-MASTER', 'Business Wiki')
+    storage.setVaultName('/v/business-wiki-MASTER', '')
+    expect(b.bridge.state.setFolder).toHaveBeenLastCalledWith('/v/business-wiki-MASTER', { name: null })
+    expect(storage.vaultName('/v/business-wiki-MASTER')).toBe('business-wiki-MASTER')
   })
 
   it('expanded and lastFile are keyed by root; setWorkspace records lastFile and one complete identity write', () => {
@@ -235,7 +248,7 @@ describe('storage', () => {
 
   it('boot precedence (GRO-2160): identity file wins over the folder lastFile, a pasted hash beats both', async () => {
     // Two windows on the same folder: w2 restored on b.excalidraw while the folder's lastFile is a.excalidraw.
-    const seeded: AppState = { ...defaultAppState(), folders: { '/v': { expanded: [], lastFile: '/v/a.excalidraw', sortOrder: 'name' } } }
+    const seeded: AppState = { ...defaultAppState(), folders: { '/v': { expanded: [], lastFile: '/v/a.excalidraw', sortOrder: 'name', name: null } } }
     b = installBridge(seeded, { id: 'w2', root: '/v', file: '/v/b.excalidraw', tabs: ['/v/b.excalidraw'], sidebarCollapsed: false })
     await storage.init()
     expect(bootFile('', '/v')).toBe('/v/b.excalidraw')
@@ -257,7 +270,7 @@ describe('storage', () => {
     b.emit({ ...defaultAppState(), sidebarWidth: 333 })
     expect(storage.getFocusFavorites()).toEqual(['/r1/a'])
     storage.setRoot('/r2')
-    expect(b.bridge.window.setIdentity).toHaveBeenLastCalledWith({ root: '/r2', file: null, tabs: [], focusDirs: [], focusFavorites: [] })
+    expect(b.bridge.window.setIdentity).toHaveBeenLastCalledWith({ root: '/r2', file: null, tabs: [], sidebarLens: 'files', focusDirs: [], focusFavorites: [] })
     expect(storage.getFocusFavorites()).toEqual([])
   })
 
@@ -283,7 +296,7 @@ describe('storage', () => {
     expect(b.bridge.window.setIdentity).toHaveBeenLastCalledWith({ root: '/r1' })
     expect(storage.getFocusFavorites()).toEqual(['/r1/fav'])
     storage.setRoot('/r2')
-    expect(b.bridge.window.setIdentity).toHaveBeenLastCalledWith({ root: '/r2', file: null, tabs: [], focusDirs: [], focusFavorites: [] })
+    expect(b.bridge.window.setIdentity).toHaveBeenLastCalledWith({ root: '/r2', file: null, tabs: [], sidebarLens: 'files', focusDirs: [], focusFavorites: [] })
     expect(storage.getFocusDirs()).toEqual([])
     expect(storage.getFocusFavorites()).toEqual([])
   })
@@ -298,7 +311,7 @@ describe('storage', () => {
     expect(b.bridge.window.setIdentity).toHaveBeenLastCalledWith({ sidebarCollapsed: false })
   })
 
-  it('sidebarLens is this window identity (YAZ-847, per window since YAZ-1628): restored at boot, written through window.setIdentity, deaf to state broadcasts, kept by a root change', async () => {
+  it('sidebarLens is this window identity (YAZ-847, per window since YAZ-1628): restored at boot, written through window.setIdentity, deaf to state broadcasts, reset to Files by a root change (Docs YAZ-1846 D2)', async () => {
     expect(storage.getSidebarLens()).toBe('files')
     storage.setSidebarLens('favorites')
     expect(storage.getSidebarLens()).toBe('favorites')
@@ -314,10 +327,14 @@ describe('storage', () => {
     b.emit({ ...defaultAppState(), sidebarWidth: 333 })
     expect(storage.getSidebarWidth()).toBe(333)
     expect(storage.getSidebarLens()).toBe('favorites')
-    // A root change keeps it: the lens is a view preference, not vault content.
-    storage.setRoot('/r2')
-    expect(b.bridge.window.setIdentity).toHaveBeenLastCalledWith({ root: '/r2', file: null, tabs: [], focusDirs: [], focusFavorites: [] })
+    // Re-setting the SAME root keeps it.
+    storage.setRoot('/r1')
+    expect(b.bridge.window.setIdentity).toHaveBeenLastCalledWith({ root: '/r1' })
     expect(storage.getSidebarLens()).toBe('favorites')
+    // A root CHANGE lands on Files (Docs YAZ-1846 D2) — in the same single identity write.
+    storage.setRoot('/r2')
+    expect(b.bridge.window.setIdentity).toHaveBeenLastCalledWith({ root: '/r2', file: null, tabs: [], sidebarLens: 'files', focusDirs: [], focusFavorites: [] })
+    expect(storage.getSidebarLens()).toBe('files')
   })
 
   it('settings default and round-trip through the bridge', () => {
@@ -334,7 +351,7 @@ describe('storage', () => {
     const next: AppState = {
       ...defaultAppState(),
       settings: { ...DEFAULT_SETTINGS, theme: 'light' },
-      folders: { '/v': { expanded: ['/v/sub'], lastFile: '/v/a.excalidraw', sortOrder: 'name' } },
+      folders: { '/v': { expanded: ['/v/sub'], lastFile: '/v/a.excalidraw', sortOrder: 'name', name: null } },
     }
     b.emit(next)
     expect(seen).toHaveBeenCalledTimes(1)

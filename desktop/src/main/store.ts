@@ -3,6 +3,7 @@ import { dirname, isAbsolute } from 'node:path'
 import {
   DEFAULT_CANVAS_PANEL,
   DEFAULT_SETTINGS,
+  DEFAULT_SIDEBAR_LENS,
   DIAGRAM_DARK_COLORS,
   MAX_RECENT_ROOTS,
   SIDEBAR_DEFAULT_W,
@@ -10,6 +11,7 @@ import {
   SIDEBAR_MIN_W,
   THEMES,
   addRecentRoot,
+  cleanVaultName,
   defaultAppState,
   defaultFolderState,
   isCanvasPanelTab,
@@ -18,6 +20,7 @@ import {
   type AppState,
   type CanvasPanelState,
   type DiagramDarkColors,
+  type FolderPatch,
   type FolderState,
   type RecentRoots,
   type SettingsState,
@@ -43,7 +46,7 @@ export interface Store {
   setSidebarWidth(width: number): void
   pushRecent(path: string, now?: number): void
   removeRecent(path: string): void
-  setFolder(root: string, patch: Partial<Pick<FolderState, 'expanded' | 'lastFile' | 'sortOrder'>>): void
+  setFolder(root: string, patch: FolderPatch): void
   upsertWindow(entry: WindowEntry): void
   removeWindow(id: string): void
   /**
@@ -193,6 +196,7 @@ function sanitizeFolder(raw: unknown): FolderState | null {
     expanded: [],
     lastFile: typeof raw.lastFile === 'string' ? raw.lastFile : null,
     sortOrder: isSortOrder(raw.sortOrder) ? raw.sortOrder : defaultFolderState().sortOrder,
+    name: cleanVaultName(raw.name),
   }
 }
 
@@ -221,7 +225,7 @@ function sanitizeState(raw: unknown): AppState | null {
   // YAZ-1628 migration, the same shape: a v1 file's retired global lens (YAZ-847) seeds only
   // windows without a valid lens of their own; a pre-847 file has none at all, and missing or
   // junk both read as the default. The returned state omits the old key too.
-  const legacySidebarLens: SidebarLens = isSidebarLens(raw.sidebarLens) ? raw.sidebarLens : 'files'
+  const legacySidebarLens: SidebarLens = isSidebarLens(raw.sidebarLens) ? raw.sidebarLens : DEFAULT_SIDEBAR_LENS
   return {
     version: 1,
     settings: sanitizeSettings(raw.settings),
@@ -324,6 +328,7 @@ export function createStore(filePath: string): Store {
         ...(patch.expanded !== undefined ? { expanded: [...patch.expanded] } : {}),
         ...(patch.lastFile !== undefined ? { lastFile: patch.lastFile } : {}),
         ...(patch.sortOrder !== undefined ? { sortOrder: patch.sortOrder } : {}),
+        ...(patch.name !== undefined ? { name: cleanVaultName(patch.name) } : {}),
       }
       commit({ ...state, folders: { ...state.folders, [root]: next } })
     },

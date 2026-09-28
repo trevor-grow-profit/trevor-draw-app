@@ -1068,9 +1068,215 @@ describe('search results (YAZ-803)', () => {
     expect(props.onOpenFile).toHaveBeenCalledExactlyOnceWith('/v/Alpha.excalidraw')
   })
 
-  it('right-clicking the results offers no menu — "New drawing" there would have no target', async () => {
+  it('right-clicking blank space in the results offers no menu — not even the OS one (YAZ-803, Docs YAZ-2050)', async () => {
     const { el } = await search('a')
-    act(() => void el.querySelector('.sidebar__body')?.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true })))
+    let reached = true
+    act(() => void (reached = el.querySelector('.sidebar__body')!.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }))))
+    expect(reached).toBe(false) // default-prevented: Electron's Cut/Copy/Paste menu never opens
+    expect(el.querySelector('.ctx-menu')).toBeNull()
+  })
+})
+
+/**
+ * A search row's right-click (Docs YAZ-2050, YAZ-2056 D5/D6): the SAME menu its tree row gets,
+ * never Electron's Cut/Copy/Paste. Docs YAZ-2050 D1 / YAZ-2056 D5: it follows the FILES rules on
+ * either tab — the lens is pinned onto the menu, so Focus and the Favorites hop read Files. Docs
+ * YAZ-2050 D2 / YAZ-2056 D6: the seven items that draw INTO the tree (Focus, the five births,
+ * Rename) leave the search through the folder-row door (`onRevealInFiles`) and then act;
+ * everything else acts in place and the query stays.
+ */
+describe('search-row context menu (Docs YAZ-2050, YAZ-2056 D5/D6)', () => {
+  const drawing = (path: string, name: string): TreeNode => ({ type: 'file', name, path, size: 1, mtime: 1, kind: 'drawing' })
+  /** Notes/, Projects/ holding Roadmap/ (holding plan) and p, and a root drawing `top`. */
+  const VAULT = (v: string): TreeNode[] => [
+    { type: 'dir', name: 'Notes', path: `${v}/Notes`, children: [drawing(`${v}/Notes/n.excalidraw`, 'n.excalidraw')] },
+    {
+      type: 'dir', name: 'Projects', path: `${v}/Projects`,
+      children: [
+        { type: 'dir', name: 'Roadmap', path: `${v}/Projects/Roadmap`, children: [drawing(`${v}/Projects/Roadmap/plan.excalidraw`, 'plan.excalidraw')] },
+        drawing(`${v}/Projects/p.excalidraw`, 'p.excalidraw'),
+      ],
+    },
+    drawing(`${v}/top.excalidraw`, 'top.excalidraw'),
+  ]
+
+  let vaults = 0
+  /** A fresh vault AND window per mount — expansion is per root, and `focus` seeds the window's Files focus (YAZ-1628). */
+  const mountVault = async (over: Partial<SidebarProps> = {}, opts: { focus?: string[] } = {}) => {
+    const v = `/v-search-menu-${++vaults}`
+    const m = await mount({ root: v, ...over }, async (b) => {
+      b.tree.mockResolvedValue({ root: v, tree: VAULT(v), generatedAt: 1 } as never)
+      b.window.identity.mockResolvedValue({ id: 'w1', root: v, file: null, tabs: [], sidebarCollapsed: false, sidebarLens: 'files', focusDirs: (opts.focus ?? []).map((p) => `${v}${p}`), focusFavorites: [] })
+      await storage.init()
+    })
+    return { ...m, v, input: searchInput(m.el)! }
+  }
+  const search = async (query: string, over: Partial<SidebarProps> = {}, opts: { focus?: string[] } = {}) => {
+    const m = await mountVault(over, opts)
+    await type(m.input, query)
+    return m
+  }
+  const rightClick = (target: Element | null) => act(() => void target?.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true })))
+  /** Right-click that reports whether the event survived — false means default-prevented (no OS menu). */
+  const rightClickReached = (target: Element) => {
+    let reached = true
+    act(() => void (reached = target.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }))))
+    return reached
+  }
+  const labels = (el: HTMLElement) => menuItems(el).map((b) => b.textContent)
+  const results = (el: HTMLElement) => [...el.querySelectorAll<HTMLLIElement>('.search-results__row')]
+  const result = (el: HTMLElement, dir = false) => el.querySelector<HTMLLIElement>(`.search-results__row${dir ? '--dir' : ':not(.search-results__row--dir)'}`)
+  const rowByPath = (el: HTMLElement, path: string) => el.querySelector<HTMLButtonElement>(`.tree__row[data-path="${path}"]`)
+  const topLabels = (el: HTMLElement) => [...el.querySelectorAll('ul.tree[role="tree"] > li > .tree__row .tree__label')].map((n) => n.textContent)
+  const eye = (el: HTMLElement) => el.querySelector<HTMLButtonElement>('.sidebar__lenses .sidebar__focus-off')
+  /** The name box inside `dir`'s own children — where a birth into that folder mounts. */
+  const boxIn = (el: HTMLElement, dir: string) => rowByPath(el, dir)?.closest('[role="treeitem"]')?.querySelector<HTMLInputElement>('.create-inline__input') ?? null
+  /** What App does with `onRevealInFiles`: flip to Files and issue the reveal the Sidebar consumes. */
+  const appReveals = (rerender: (next: Partial<SidebarProps>) => Promise<void>, path: string) =>
+    rerender({ lens: 'files', revealRequest: { id: 1, path, lens: 'files' } })
+  /** The tree row's menu, read off its own mount — the reference every search-row menu must equal. */
+  const treeMenu = async (path: string) => {
+    const { el, v } = await mountVault()
+    rightClick(rowByPath(el, `${v}${path}`))
+    const out = labels(el)
+    act(() => root?.unmount())
+    container?.remove()
+    return out
+  }
+
+  it('a BOARD result opens the board row\'s menu — never the OS edit menu — and becomes the highlighted row', async () => {
+    const expected = await treeMenu('/top.excalidraw')
+    const { el } = await search('o')
+    const board = results(el).find((r) => r.getAttribute('title')?.endsWith('/top.excalidraw'))!
+    expect(board.classList.contains('search-results__row--active')).toBe(false)
+    expect(rightClickReached(board)).toBe(false)
+    expect(labels(el)).toEqual(expected)
+    expect(board.classList.contains('search-results__row--active')).toBe(true)
+  })
+
+  it('a FOLDER result opens the folder row\'s menu', async () => {
+    const expected = await treeMenu('/Projects')
+    const { el } = await search('proj')
+    rightClick(result(el, true))
+    expect(labels(el)).toEqual(expected)
+    expect(labels(el)).toEqual(expect.arrayContaining(['Focus on folder', 'New folder', 'New dated folder']))
+  })
+
+  it('on the FAVORITES tab a result still gets the Files-tab menu (YAZ-2056 D5)', async () => {
+    const files = await search('top')
+    rightClick(result(files.el))
+    const expected = labels(files.el)
+    expect(expected).toEqual(expect.arrayContaining(['Rename', 'Paste', 'New folder']))
+    act(() => root?.unmount())
+    container?.remove()
+    const favorites = await search('top', { lens: 'favorites' })
+    rightClick(result(favorites.el))
+    expect(labels(favorites.el)).toEqual(expected)
+  })
+
+  it('Rename leaves the search, then the inline input mounts on the (nested) row (YAZ-2056 D6)', async () => {
+    const { el, input, props, rerender, v } = await search('plan')
+    rightClick(result(el))
+    act(() => itemByLabel(el, 'Rename')?.click())
+    expect(props.onRevealInFiles).toHaveBeenCalledExactlyOnceWith(`${v}/Projects/Roadmap/plan.excalidraw`)
+    await appReveals(rerender, `${v}/Projects/Roadmap/plan.excalidraw`)
+    expect(input.value).toBe('')
+    expect(el.querySelector('.search-results')).toBeNull()
+    expect(el.querySelector<HTMLInputElement>('.create-inline__input')?.value).toBe('plan')
+  })
+
+  it.each(['New Excalidraw drawing', 'New dated Excalidraw drawing', 'New draw.io diagram', 'New folder', 'New dated folder'])(
+    '%s on a FOLDER result leaves the search and mounts the name box inside that folder (YAZ-2056 D6)',
+    async (item) => {
+      const { el, input, props, rerender, v } = await search('road')
+      rightClick(result(el, true))
+      act(() => itemByLabel(el, item)?.click())
+      expect(props.onRevealInFiles).toHaveBeenCalledExactlyOnceWith(`${v}/Projects/Roadmap`)
+      await appReveals(rerender, `${v}/Projects/Roadmap`)
+      expect(input.value).toBe('')
+      expect(boxIn(el, `${v}/Projects/Roadmap`)).not.toBeNull()
+    },
+  )
+
+  it('New drawing on a BOARD result mounts the name box in its parent folder, and the birth lands there (YAZ-2056 D6)', async () => {
+    const { el, props, rerender, bridge, v } = await search('plan')
+    rightClick(result(el))
+    act(() => itemByLabel(el, 'New Excalidraw drawing')?.click())
+    expect(props.onRevealInFiles).toHaveBeenCalledExactlyOnceWith(`${v}/Projects/Roadmap/plan.excalidraw`)
+    await appReveals(rerender, `${v}/Projects/Roadmap/plan.excalidraw`)
+    const box = boxIn(el, `${v}/Projects/Roadmap`)!
+    await type(box, 'Next')
+    await act(async () => void box.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })))
+    expect(bridge.createFile).toHaveBeenCalledExactlyOnceWith({ path: `${v}/Projects/Roadmap/Next.excalidraw`, content: EMPTY_SCENE_JSON })
+  })
+
+  it('Focus from search lands focused in Files — the reveal keeps a focus on its own target (YAZ-2056 D6)', async () => {
+    const { el, props, rerender, bridge, v } = await search('road')
+    rightClick(result(el, true))
+    await act(async () => itemByLabel(el, 'Focus on folder')?.click())
+    expect(props.onRevealInFiles).toHaveBeenCalledExactlyOnceWith(`${v}/Projects/Roadmap`)
+    await appReveals(rerender, `${v}/Projects/Roadmap`)
+    expect(topLabels(el)).toEqual(['Roadmap'])
+    expect(eye(el)).not.toBeNull()
+    expect(bridge.window.setIdentity).toHaveBeenLastCalledWith({ focusDirs: [`${v}/Projects/Roadmap`] })
+  })
+
+  it('Focus from the FAVORITES tab focuses FILES, never the Favorites list, and needs no Favorites hop (YAZ-2056 D5)', async () => {
+    const { el, props, rerender, bridge, v } = await search('road', { lens: 'favorites' })
+    rightClick(result(el, true))
+    await act(async () => itemByLabel(el, 'Focus on folder')?.click())
+    expect(bridge.window.setIdentity).toHaveBeenCalledWith({ focusDirs: [`${v}/Projects/Roadmap`] })
+    expect(bridge.window.setIdentity).not.toHaveBeenCalledWith({ focusFavorites: expect.anything() })
+    await appReveals(rerender, `${v}/Projects/Roadmap`)
+    expect(topLabels(el)).toEqual(['Roadmap'])
+    expect(props.onLensChange).not.toHaveBeenCalled() // App's reveal flipped the tab, not the Sidebar
+  })
+
+  it('New drawing from the FAVORITES tab skips the Favorites hop — the reveal door brings Files (YAZ-2056 D5/D6)', async () => {
+    const { el, props, rerender, v } = await search('road', { lens: 'favorites' })
+    rightClick(result(el, true))
+    act(() => itemByLabel(el, 'New Excalidraw drawing')?.click())
+    expect(props.onRevealInFiles).toHaveBeenCalledExactlyOnceWith(`${v}/Projects/Roadmap`)
+    expect(props.onLensChange).not.toHaveBeenCalled()
+    await appReveals(rerender, `${v}/Projects/Roadmap`)
+    expect(boxIn(el, `${v}/Projects/Roadmap`)).not.toBeNull()
+  })
+
+  it('a Files focus that would HIDE the row is ended by the reveal, so the rename box has a row to mount on (YAZ-2056 D6)', async () => {
+    const { el, rerender, bridge, v } = await search('plan', {}, { focus: ['/Notes'] })
+    rightClick(result(el))
+    act(() => itemByLabel(el, 'Rename')?.click())
+    await appReveals(rerender, `${v}/Projects/Roadmap/plan.excalidraw`)
+    expect(bridge.window.setIdentity).toHaveBeenLastCalledWith({ focusDirs: [] })
+    expect(eye(el)).toBeNull()
+    expect(el.querySelector<HTMLInputElement>('.create-inline__input')?.value).toBe('plan')
+  })
+
+  it('items that need no tree act in place and keep the search (YAZ-2056 D6)', async () => {
+    const writeText = vi.fn(async () => undefined)
+    const original = Object.getOwnPropertyDescriptor(navigator, 'clipboard')
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true })
+    try {
+      const { el, input, props, bridge, v } = await search('plan')
+      rightClick(result(el))
+      act(() => itemByLabel(el, 'Copy path')?.click())
+      expect(writeText).toHaveBeenCalledExactlyOnceWith(`${v}/Projects/Roadmap/plan.excalidraw`)
+      rightClick(result(el))
+      await clickSubAsync(el, 'Reveal in Finder')
+      expect(bridge.shell.reveal).toHaveBeenCalledExactlyOnceWith({ path: `${v}/Projects/Roadmap/plan.excalidraw` })
+      expect(props.onRevealInFiles).not.toHaveBeenCalled()
+      expect(input.value).toBe('plan')
+      expect(el.querySelector('.search-results')).not.toBeNull()
+    } finally {
+      // Put the real clipboard back, so no later test writes through this spy.
+      if (original === undefined) delete (navigator as unknown as Record<string, unknown>).clipboard
+      else Object.defineProperty(navigator, 'clipboard', original)
+    }
+  })
+
+  it('"No matches" offers no menu either — not even the OS one', async () => {
+    const { el } = await search('zzz')
+    expect(rightClickReached(el.querySelector('.sidebar__msg')!)).toBe(false)
     expect(el.querySelector('.ctx-menu')).toBeNull()
   })
 })

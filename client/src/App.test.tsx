@@ -476,7 +476,7 @@ describe('App openRoot (C3, GRO-2165)', () => {
     // The window entry records the switch (D6, tabs rule 13): ONE write clears root's file+tabs,
     // then ONE {tabs, file} write restores the folder's remembered file.
     expect(bridge.window.setIdentity.mock.calls).toEqual([
-      [{ root: '/w', file: null, tabs: [], focusDirs: [], focusFavorites: [] }],
+      [{ root: '/w', file: null, tabs: [], sidebarLens: 'files', focusDirs: [], focusFavorites: [] }],
       [{ tabs: ['/w/b.excalidraw'], file: '/w/b.excalidraw' }],
     ])
   })
@@ -486,7 +486,7 @@ describe('App openRoot (C3, GRO-2165)', () => {
     await act(async () => emitOpenRoot('/w'))
     expect(el.querySelector('[data-editor]')?.getAttribute('data-path')).toBe('')
     expect(location.hash).toBe('')
-    expect(bridge.window.setIdentity.mock.calls).toEqual([[{ root: '/w', file: null, tabs: [], focusDirs: [], focusFavorites: [] }]])
+    expect(bridge.window.setIdentity.mock.calls).toEqual([[{ root: '/w', file: null, tabs: [], sidebarLens: 'files', focusDirs: [], focusFavorites: [] }]])
   })
 
   it('a dead recent chosen from the menu drops the MRU entry and leaves the window on its folder', async () => {
@@ -516,6 +516,14 @@ describe('App window title (C3, GRO-2165)', () => {
     expect(document.title).toBe('Note — w')
     await act(async () => emitOpenRoot('/vaults/empty'))
     expect(document.title).toBe('empty')
+  })
+
+  it('names the vault by its display name, live: a rename from another window retitles it (Docs YAZ-1974 D4)', async () => {
+    const named = (name: string): AppState => ({ ...defaultAppState(), folders: { '/vaults/w': { ...defaultFolderState(), name } } })
+    const { emitStateChanged } = await mount(named('Wiki'), { id: 'w1', root: '/vaults/w', file: '/vaults/w/Note.excalidraw', tabs: ['/vaults/w/Note.excalidraw'] })
+    expect(document.title).toBe('Note — Wiki')
+    await act(async () => emitStateChanged(named('Team Wiki')))
+    expect(document.title).toBe('Note — Team Wiki')
   })
 })
 
@@ -671,6 +679,15 @@ describe('App sidebar lens (🔒 YAZ-1775 D4, YAZ-847)', () => {
     act(() => el.querySelector<HTMLButtonElement>('.tabbar-nav__btn[aria-label="Show sidebar"]')?.click())
     expect(el.querySelector('[data-sidebar]')).not.toBeNull()
     expect(captured.sidebar?.lens).toBe('favorites')
+  })
+
+  it('a switch to a DIFFERENT vault lands on Files; re-opening the same vault keeps the tab (Docs YAZ-1846 D2, YAZ-2056 D1)', async () => {
+    const { emitOpenRoot } = await mount(defaultAppState(), { id: 'w1', root: '/v', file: null, tabs: [], sidebarLens: 'favorites' })
+    await act(async () => emitOpenRoot('/v'))
+    expect(captured.sidebar?.lens).toBe('favorites')
+    await act(async () => emitOpenRoot('/w'))
+    expect(captured.sidebar?.root).toBe('/w')
+    expect(captured.sidebar?.lens).toBe('files')
   })
 })
 
@@ -1006,7 +1023,7 @@ describe('App root-missing (C2, GRO-2164)', () => {
     expect(el.querySelector('.welcome__title')?.textContent).toBe('Yaseen Draw')
     expect(el.querySelector('[data-sidebar]')).toBeNull()
     expect(el.querySelector('[data-editor]')).toBeNull()
-    expect(bridge.window.setIdentity).toHaveBeenLastCalledWith({ root: null, file: null, tabs: [], focusDirs: [], focusFavorites: [] })
+    expect(bridge.window.setIdentity).toHaveBeenLastCalledWith({ root: null, file: null, tabs: [], sidebarLens: 'files', focusDirs: [], focusFavorites: [] })
   })
 })
 
