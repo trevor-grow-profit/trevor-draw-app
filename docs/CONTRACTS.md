@@ -23,6 +23,7 @@ nothing to do with each other. A bare `D3` would be unresolvable, so there are n
 |---|---|
 | `client/` | the renderer: React 19, Vite. Talks to nothing but `window.yaseenDraw`. |
 | `client/src/drawings/` | the drawing document: the engine seam (`ExcalidrawSurface`, the ONE importer of the package), its host, and what a scene is |
+| `client/src/documents/` | what both board documents share (YAZ-2073 🔒 D16): `useBoardDocument` (autosave, the watcher rule and conflict bar, the quit/unmount flush, rename continuity, the menu's board commands, the tab-reveal focus, the chips) and `BoardDocumentShell` (load, then the error pane or the host) |
 | `client/src/diagrams/` | the draw.io diagram document (YAZ-1802): `DrawioEditor` (the iframe host), `drawioProtocol.ts` (the postMessage dialect and the configure object) and `renderDiagram.ts` (the D9 renderer: the hover picture, Version history's pictures, Export Image…) |
 | `desktop/drawio-overlay/` | OUR files laid over the draw.io webapp by `tools/packDrawio.mjs`: the `PreConfig.js` / `PostConfig.js` config hooks (page view off, ⌘-wheel zoom, the keymap) and the preview page `yaseen-render.html` — draw.io's own files are never modified |
 | `client/src/drawings/presentation/` | the canvas panel's Present tab: the slide rules, the panel and the full-pane player |
@@ -1000,7 +1001,7 @@ buttons painted over the active tab and took its clicks.
 **Focus on tab reveal** (🔒 the focus-handoff decision on YAZ-1812). Several tabs are mounted at
 once; the canvas has `autoFocus`, but that fires only at mount, so switching to an
 already-mounted tab used to leave the keyboard nowhere until the user clicked. The reveal effect in
-`DrawingEditor` (the `IntersectionObserver` that re-measures the canvas) now also hands it the
+`useBoardDocument` (the `IntersectionObserver` that re-measures the canvas) now also hands it the
 keyboard through `DrawingSurfaceApi.focus()` — GATED by `drawings/focusHandoff.ts`: only when
 `document.activeElement` is the body or nothing at all, or is inside the tab layer (the tab being
 left). The sidebar search bar, the vault switcher, a dialog and the tab strip keep what they have;
@@ -1286,9 +1287,10 @@ but for two config hooks, inside an iframe on its OWN origin.
   end; comments after it are fine), so a broken file is an error pane and draw.io is never mounted
   on it — it cannot autosave over what it failed to read — and `diagram:save` refuses anything that
   is not a whole diagram (`BAD_REQUEST`) before touching the disk. The
-  host reuses `lib/autosave.ts` (500 ms), the watcher rule (echo / reload when clean / Reload–Keep
-  mine when dirty), the quit flush, the tab-close flush, rename continuity and `noteBoardSaved`
-  exactly as `DrawingEditor` does.
+  host shares `useBoardDocument` with `DrawingEditor` (YAZ-2073 🔒 D16): `lib/autosave.ts` (500 ms),
+  the watcher rule (echo / reload when clean / Reload–Keep mine when dirty), the quit flush, the
+  tab-close flush, rename continuity and `noteBoardSaved`; main's two doors share
+  `fs/boardDocument.ts` with `drawing:load` / `drawing:save`.
 - **🔒 D17 — the handshake.** Our `PostConfig.js` posts `{ event: 'yaseenReady' }` once its patches
   and fonts are in; the host answers draw.io's `configure` only after that (a 3 s fallback, so a
   missing overlay costs the keymap, never the document), then `init` → `load` with `autosave: 1`,

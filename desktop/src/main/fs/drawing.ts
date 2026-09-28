@@ -53,33 +53,11 @@
 import { link, mkdir, readdir, readFile, rename, unlink } from 'node:fs/promises'
 import path from 'node:path'
 import type { DrawingFileEntry, DrawingLoadRequest, DrawingLoadResponse, DrawingSaveRequest, DrawingSaveResponse } from '@shared/types'
-import { MAX_DRAWING_BYTES } from '@shared/types'
-import { isDrawing } from '@shared/fileKind'
-import { isWithin } from '@shared/paths'
 import { ASSETS_DIR, assetFileName, extForMime, fileIdOfAssetName, isValidFileId, mimeForAssetExt, parseDataUrl, referencedFileIds, serializeBoard, stampBoardMetaScene, stripEmbeddedFiles, stripEmbeddedScene } from '@shared/drawingAssets'
 import type { Thumbs } from '../drawings/thumbs'
-import { readBoardHead } from './boardHead'
+import { BOARDS, boardTarget, guardedStamp } from './boardDocument'
 import { readBoundedRegularFile } from './boundedRead'
-import { atomicWrite, BridgeFailure, fsCall, requireAbsPath, requireDir, tmpSibling, writeDurable } from './fsUtils'
-
-const TOO_LARGE = `drawing exceeds ${MAX_DRAWING_BYTES} bytes`
-
-/** A document path — vault-relative or absolute — resolved INSIDE `dir`, with the drawing extension. */
-export function resolveDocument(dir: string, rel: unknown): string {
-  if (typeof rel !== 'string' || rel.trim() === '' || rel.includes('\0')) throw new BridgeFailure('BAD_REQUEST', "missing 'path'")
-  const file = path.resolve(dir, rel)
-  if (!isWithin(dir, file, true)) throw new BridgeFailure('BAD_REQUEST', 'path escapes the vault root', { path: rel })
-  if (!isDrawing(file)) throw new BridgeFailure('UNSUPPORTED_EXTENSION', 'only .excalidraw files open as drawings', { path: file })
-  return file
-}
-
-/** The request's `{ root, path }` pair, validated once for both doors. */
-function target(raw: unknown): { dir: string; file: string; body: Record<string, unknown> } {
-  if (typeof raw !== 'object' || raw === null) throw new BridgeFailure('BAD_REQUEST', 'request must be an object')
-  const body = raw as Record<string, unknown>
-  const dir = requireAbsPath(body.root, 'root')
-  return { dir, file: resolveDocument(dir, body.path), body }
-}
+import { atomicWrite, BridgeFailure, fsCall, requireDir, tmpSibling, writeDurable } from './fsUtils'
 
 /**
  * The scene's elements, or a failure. The OUTLINE only (see the module doc): an object carrying
@@ -125,11 +103,11 @@ async function listStore(dir: string): Promise<Map<string, string>> {
  * `imageMaxPx` — a picture of the scene, never an editor — uses it (🔒 YAZ-2073 D6).
  */
 export async function loadDrawing(req: DrawingLoadRequest, thumbs?: Thumbs): Promise<DrawingLoadResponse> {
-  const { dir, file, body } = target(req)
+  const { dir, file, body } = boardTarget(req, 'drawing')
   const { imageMaxPx } = body
   if (imageMaxPx !== undefined && (typeof imageMaxPx !== 'number' || !Number.isInteger(imageMaxPx) || imageMaxPx <= 0)) throw new BridgeFailure('BAD_REQUEST', "'imageMaxPx' must be a positive integer", { path: file })
   await requireDir(dir)
-  const snapshot = await readBoundedRegularFile(file, MAX_DRAWING_BYTES, TOO_LARGE)
+  const snapshot = await readBoundedRegularFile(file, BOARDS.drawing.max, BOARDS.drawing.tooLarge)
   const text = snapshot.data.toString('utf8')
   // The ONE parse: the outline check, the embedded pictures and the lean text all come from it.
   const { scene, elements } = parseScene(text, file, 'IO_ERROR')
@@ -257,7 +235,7 @@ function checkAsset(entry: unknown, file: string): PendingAsset {
 }
 
 export async function saveDrawing(req: DrawingSaveRequest): Promise<DrawingSaveResponse> {
-  const { dir, file, body } = target(req)
+  const { dir, file, body } = boardTarget(req, 'drawing')
   const { json, expectedMtime, newFiles } = body
   if (typeof json !== 'string') throw new BridgeFailure('BAD_REQUEST', "'json' must be a string", { path: file })
   if (expectedMtime !== undefined && typeof expectedMtime !== 'number') throw new BridgeFailure('BAD_REQUEST', "'expectedMtime' must be a number", { path: file })
@@ -270,19 +248,7 @@ export async function saveDrawing(req: DrawingSaveRequest): Promise<DrawingSaveR
   const { lean, lifted } = liftEmbedded(scene, elements, new Set(pending.map((p) => p.fileId)))
   pending.push(...lifted)
   await requireDir(dir)
-  // The file as it is now: its block and mtime in one open (🔒 YAZ-1834 D3), serving both the
-  // conflict guard and the stamp. A block-less board is as old as its file; a brand-new one is
-  // born now. The bytes measured against the ceiling are the bytes that will be written.
-  const prior = await fsCall(file, () => readBoardHead(file))
-  const now = Date.now()
-  const bornAt = prior?.mtime ?? now
-  const stamped = serializeBoard(stampBoardMetaScene(lean, { createdAt: bornAt, updatedAt: now }, prior?.block ?? null))
-  if (Buffer.byteLength(stamped, 'utf8') > MAX_DRAWING_BYTES) throw new BridgeFailure('TOO_LARGE', TOO_LARGE, { path: file })
-  if (expectedMtime !== undefined && prior !== null && prior.mtime !== expectedMtime) {
-    // A file that is GONE is not a conflict: the tab's own copy is the only one left, and
-    // refusing here would strand it. Only a file that is there and DIFFERENT blocks the write.
-    throw new BridgeFailure('CONFLICT', 'Excalidraw drawing changed on disk since last read', { path: file, mtime: prior.mtime })
-  }
+  const stamped = await guardedStamp(file, 'drawing', expectedMtime, (at, prior) => serializeBoard(stampBoardMetaScene(lean, at, prior)))
   // Assets first (see the module doc), and only once the conflict guard has passed — a refused
   // save must leave the vault exactly as it found it.
   const persisted = await landAssets(dir, pending)

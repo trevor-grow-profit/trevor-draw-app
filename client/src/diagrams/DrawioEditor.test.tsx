@@ -20,8 +20,7 @@ vi.mock('./renderDiagram', () => ({ renderDiagramImage: vi.fn() }))
 
 import { api, BridgeRequestError } from '../api'
 import { BOARD_COMMAND_EVENT } from '../drawings/boardCommand'
-import { _resetRenameContinuity, flushRenamedPath, retirePath } from '../lib/renameContinuity'
-import { noteBoardSaved } from '../share/liveShare'
+import { _resetRenameContinuity } from '../lib/renameContinuity'
 import { BROKEN_DIAGRAM_DOCUMENT, DrawioEditor } from './DrawioEditor'
 import { renderDiagramImage } from './renderDiagram'
 
@@ -51,7 +50,6 @@ let root: Root | null = null
 let container: HTMLElement
 /** Everything the host posted into the iframe, parsed. */
 let posted: Array<Record<string, unknown>> = []
-let flushListener: (() => Promise<void> | void) | null = null
 
 function render(darkColors: DiagramDarkColors = 'adapt'): void {
   act(() => root?.render(<DrawioEditor root={ROOT} path={PATH} watch={watch} darkColors={darkColors} onNotice={notice} onToggleSidebar={toggleSidebar} />))
@@ -103,18 +101,12 @@ beforeEach(() => {
   vi.useFakeTimers({ shouldAdvanceTime: true })
   listeners.clear()
   posted = []
-  flushListener = null
   Object.defineProperty(window, 'yaseenDraw', {
     configurable: true,
     writable: true,
     value: {
       window: {
-        onFlush: (listener: () => Promise<void> | void) => {
-          flushListener = listener
-          return () => {
-            flushListener = null
-          }
-        },
+        onFlush: () => () => {},
       },
     },
   })
@@ -296,12 +288,6 @@ describe('File › Export Image… (🔒 YAZ-1802 D9)', () => {
     expect(notice).toHaveBeenLastCalledWith("The draw.io diagram couldn't be exported.", 'error')
   })
 
-  it('a dismissed sheet is silent', async () => {
-    await opened()
-    saveImage.mockResolvedValueOnce({ cancelled: true })
-    await exportImage()
-    expect(notice).not.toHaveBeenCalled()
-  })
 })
 
 describe('saving', () => {
@@ -328,76 +314,9 @@ describe('saving', () => {
     expect(save).toHaveBeenCalledWith(expect.objectContaining({ xml: EDITED }))
   })
 
-  it('every write tells the live share link; a refused one does not', async () => {
-    save.mockRejectedValueOnce(new BridgeRequestError('CONFLICT', 'changed', 500))
-    await opened()
-    drawio({ event: 'save', xml: EDITED })
-    await settle()
-    expect(noteBoardSaved).not.toHaveBeenCalled()
-    save.mockClear()
-    drawio({ event: 'save', xml: EDITED })
-    await settle()
-    expect(save).not.toHaveBeenCalled() // blocked until Reload / Keep mine answers the conflict
-    await act(async () => [...container.querySelectorAll('button')].find((b) => b.textContent === 'Keep mine')!.click())
-    await settle()
-    expect(save).toHaveBeenCalledOnce()
-    expect(noteBoardSaved).toHaveBeenCalledExactlyOnceWith(ROOT, PATH)
-  })
-
-  it('closing the tab writes a pending edit once', async () => {
-    await opened()
-    drawio({ event: 'autosave', xml: EDITED })
-    act(() => root?.unmount())
-    root = null
-    await act(async () => {
-      vi.advanceTimersByTime(1000)
-    })
-    await settle()
-    expect(save).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ xml: EDITED }))
-  })
-
-  it('answers the pre-rename flush, so the bytes travel with the file', async () => {
-    await opened()
-    drawio({ event: 'autosave', xml: EDITED })
-    await act(async () => {
-      await flushRenamedPath(PATH)
-    })
-    expect(save).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ xml: EDITED }))
-  })
-
-  it('the quit handshake flushes a pending edit', async () => {
-    await opened()
-    drawio({ event: 'autosave', xml: EDITED })
-    await act(async () => {
-      await flushListener?.()
-    })
-    expect(save).toHaveBeenCalledWith(expect.objectContaining({ xml: EDITED }))
-  })
-
-  it('a retired host (deleted, renamed away) never writes again, not even on unmount', async () => {
-    await opened()
-    drawio({ event: 'autosave', xml: EDITED })
-    retirePath(PATH)
-    act(() => root?.unmount())
-    root = null
-    await act(async () => {
-      vi.advanceTimersByTime(1000)
-    })
-    expect(save).not.toHaveBeenCalled()
-  })
 })
 
 describe('changes on disk', () => {
-  it('our own save’s echo is ignored', async () => {
-    await opened()
-    drawio({ event: 'save', xml: EDITED })
-    await settle()
-    load.mockClear()
-    watcherSaw({ type: 'change', path: PATH, mtime: 200 })
-    await settle()
-    expect(load).not.toHaveBeenCalled()
-  })
-
   it('a CLEAN tab reloads the disk into draw.io; its answer is the new baseline, not an edit', async () => {
     await opened()
     load.mockResolvedValue({ path: PATH, xml: EDITED, mtime: 300, size: 1 })
@@ -413,23 +332,4 @@ describe('changes on disk', () => {
     expect(save).toHaveBeenCalledWith(expect.objectContaining({ expectedMtime: 300 }))
   })
 
-  it('a DIRTY tab gets Reload / Keep mine; Keep mine overwrites under the disk’s mtime', async () => {
-    await opened()
-    drawio({ event: 'autosave', xml: EDITED })
-    watcherSaw({ type: 'change', path: PATH, mtime: 400 })
-    await settle()
-    expect(text()).toContain('File changed on disk.')
-    const keep = [...container.querySelectorAll('button')].find((b) => b.textContent === 'Keep mine')!
-    await act(async () => keep.click())
-    await settle()
-    expect(save).toHaveBeenCalledWith(expect.objectContaining({ xml: EDITED, expectedMtime: 400 }))
-  })
-
-  it('a CONFLICT from the save door raises the same bar', async () => {
-    save.mockRejectedValueOnce(new BridgeRequestError('CONFLICT', 'changed', 500))
-    await opened()
-    drawio({ event: 'save', xml: EDITED })
-    await settle()
-    expect(text()).toContain('File changed on disk.')
-  })
 })

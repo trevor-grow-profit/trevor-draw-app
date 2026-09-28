@@ -2,8 +2,9 @@ import path from 'node:path'
 import { MAX_DIAGRAM_BYTES, MAX_DRAWING_BYTES, type BoardVersion, type BoardVersionScene } from '@shared/types'
 import { diagramDocumentError } from '@shared/diagramFile'
 import { isDiagram } from '@shared/fileKind'
-import { resolveDiagram, saveDiagram } from '../fs/diagram'
-import { resolveDocument, sceneElements, sceneFiles } from '../fs/drawing'
+import { resolveBoard } from '../fs/boardDocument'
+import { saveDiagram } from '../fs/diagram'
+import { sceneElements, sceneFiles } from '../fs/drawing'
 import { atomicWrite, BridgeFailure, requireAbsPath } from '../fs/fsUtils'
 import { git, resolveGit } from './exec'
 import { BEFORE_MERGE_REF } from './resolve'
@@ -40,7 +41,7 @@ interface Board {
  */
 async function board(root: unknown, rawPath: unknown): Promise<Board | null> {
   const dir = requireAbsPath(root, 'root')
-  const file = typeof rawPath === 'string' && isDiagram(rawPath) ? resolveDiagram(dir, rawPath) : resolveDocument(dir, rawPath)
+  const file = resolveBoard(dir, rawPath, typeof rawPath === 'string' && isDiagram(rawPath) ? 'diagram' : 'drawing')
   const bin = await resolveGit()
   if (bin === null) return null
   return { bin, root: dir, rel: path.relative(dir, file).split(path.sep).join('/'), file }
