@@ -22,6 +22,7 @@
  */
 import type { TreeNode } from '@shared/types'
 import { isBoard } from '@shared/fileKind'
+import { sepOf, trimSep } from '@shared/paths'
 import { stripExt } from '../lib/paths'
 import { matchCandidates } from './matchCandidates'
 
@@ -47,10 +48,13 @@ export const SEARCH_CAP = 50
 /** The empty catalog, shared — the lazy feed hands this back until the first query (`useSearchResults`). */
 export const EMPTY_CATALOG: readonly SearchCandidate[] = []
 
-/** One row, its `folder` read off the path relative to `prefix` (the root with exactly one trailing slash). */
+/**
+ * One row, its `folder` read off the path relative to `prefix` (the root with exactly one trailing
+ * separator, in the root's own — `C:\v\` on Windows, YAZ-2073 8B).
+ */
 function row(kind: SearchCandidate['kind'], prefix: string, path: string, name: string): SearchCandidate {
   const rel = path.startsWith(prefix) ? path.slice(prefix.length) : path
-  const cut = rel.lastIndexOf('/')
+  const cut = rel.lastIndexOf(prefix[prefix.length - 1])
   return { kind, name, lower: name.toLowerCase(), label: name, path, folder: cut === -1 ? '' : rel.slice(0, cut) }
 }
 
@@ -60,7 +64,7 @@ function row(kind: SearchCandidate['kind'], prefix: string, path: string, name: 
  * rank bucket — the reveal is the cheaper mistake (🔒 D1, YAZ-1491).
  */
 export function buildBoardCatalog(root: string, tree: readonly TreeNode[]): SearchCandidate[] {
-  const prefix = `${root.replace(/\/+$/, '')}/`
+  const prefix = trimSep(root) + sepOf(root)
   const folders: SearchCandidate[] = []
   const boards: SearchCandidate[] = []
   const walk = (nodes: readonly TreeNode[]): void => {

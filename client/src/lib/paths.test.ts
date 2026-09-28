@@ -7,6 +7,11 @@ describe('basename', () => {
     expect(basename('/a/b/')).toBe('b')
     expect(basename('/')).toBe('/')
   })
+
+  it('reads a Windows path in its own separator (YAZ-2073 8B)', () => {
+    expect(basename('C:\\v\\Nested\\b.excalidraw')).toBe('b.excalidraw')
+    expect(basename('C:\\v\\Nested\\')).toBe('Nested')
+  })
 })
 
 describe('stripExt', () => {
