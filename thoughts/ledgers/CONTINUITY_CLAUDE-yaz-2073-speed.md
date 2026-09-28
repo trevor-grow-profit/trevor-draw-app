@@ -37,3 +37,4 @@
 - Wave worktrees: `../yaseen-draw-app-yaz-2073-{p1-net,p1c-e2e,p2-reliability,p34-size-launch,p5-main}`
 - Engine fork: `/Users/yasin/Documents/GitHub/yaseen-excalidraw` @ e72242f8 (read-only; work in a separate worktree)
 - Tests: `npm test`, `npm run typecheck`, `npm run e2e` (after 1C), `npm run perf:budget`, `npm run perf -- <scenario>` (after 1A/1B)
+- Flaky under heavy load (seen once at load ~130, passed on rerun): tools/dmg.test.mjs lzmaDmg (real hdiutil) → check in 8A
