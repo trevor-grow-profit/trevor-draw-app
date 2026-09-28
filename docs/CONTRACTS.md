@@ -206,8 +206,10 @@ Rules that hold across the whole surface:
   own size check — because they all have to open legacy scenes that still embed their images as
   base64. There is no separate text-read ceiling any more (the markdown layer that had one went
   in YAZ-1808); `fs:tree` reads only a board's first KB (`BOARD_META_HEAD_BYTES`).
-- **Assets are immutable and append-only.** A save writes an asset with `wx` and treats EEXIST as
-  success; nothing but the orphan sweep ever removes one.
+- **Assets are immutable and append-only.** A save lands an asset on a tmp sibling, fsyncs it, then
+  `link`s it to its content-addressed name (a volume without hard links renames), so a torn write
+  never sits under a valid name; EEXIST is success (YAZ-2073 2B1). Nothing but the orphan sweep
+  ever removes one.
 - **The renderer never reaches a provider** (🔒 YAZ-1775 D4). Iconify and Pixabay are fetched by MAIN, which
   holds the key, does the curation, keeps the cache and enforces the import cap. The renderer's
   whole knowledge of the key is the boolean `pixabayAvailable`.

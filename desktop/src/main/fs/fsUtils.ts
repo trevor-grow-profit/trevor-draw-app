@@ -174,9 +174,14 @@ export async function writeDurable(file: string, content: string | Uint8Array, f
   }
 }
 
-/** Writes `content` durably to `<file>.tmp-<rand>` then renames over `file`. Parent dir must exist. */
+/** The sibling a write lands in before it takes `file`'s name — same dir, so a rename or link is atomic. */
+export function tmpSibling(file: string): string {
+  return `${file}.tmp-${randomBytes(6).toString('hex')}`
+}
+
+/** Writes `content` durably to `tmpSibling(file)` then renames over `file`. Parent dir must exist. */
 export async function atomicWrite(file: string, content: string | Uint8Array, mode?: number): Promise<{ mtime: number; size: number }> {
-  const tmp = `${file}.tmp-${randomBytes(6).toString('hex')}`
+  const tmp = tmpSibling(file)
   try {
     await writeDurable(tmp, content, 'w', mode)
     await rename(tmp, file)
