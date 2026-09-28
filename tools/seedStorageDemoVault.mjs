@@ -30,20 +30,11 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { assetFileName, fileIdFor } from './lib/seedDemoVault.mjs'
-import { embedded, git as runGit, identity, indexedKit, json, noiseRaw, pngFromRaw, refuseExisting, scene as sceneOf, wipe, write, writeProfile } from './lib/seedKit.mjs'
+import { cli, embedded, git, identity, indexedKit, json, noiseRaw, pngFromRaw, refuseExisting, scene as sceneOf, wipe, write, writeProfile } from './lib/seedKit.mjs'
 
 const USAGE = 'usage: node tools/seedStorageDemoVault.mjs --root <dir> [--force]'
-const args = process.argv.slice(2)
-const flagAt = args.indexOf('--root')
-const ROOT_ARG = flagAt === -1 ? undefined : args[flagAt + 1]
-// Strict, like `lib/seedDemoVault.mjs`'s parseArgs: a typo'd flag must not seed somewhere unexpected.
-const unknown = args.filter((a, i) => a !== '--force' && a !== '--root' && i !== flagAt + 1)
-if (ROOT_ARG === undefined || ROOT_ARG === '' || ROOT_ARG.startsWith('--') || unknown.length > 0) {
-  if (unknown.length > 0) console.error(`unknown argument: ${unknown[0]}`)
-  console.error(USAGE)
-  process.exit(2)
-}
-const ROOT = path.resolve(ROOT_ARG)
+const args = cli(USAGE, { '--root': 'dir' }, ['--root'])
+const ROOT = args.root
 
 // ---------------------------------------------------------------- the safety guard
 const HOME = os.homedir()
@@ -61,7 +52,7 @@ for (const p of PRECIOUS) {
     process.exit(2)
   }
 }
-refuseExisting(ROOT, USAGE, { what: 'path' })
+refuseExisting(ROOT, USAGE, { what: 'path', force: args.force })
 wipe(ROOT)
 fs.mkdirSync(ROOT, { recursive: true })
 // /tmp is a symlink on macOS; the app compares roots as strings, so everything is written real.
@@ -70,8 +61,6 @@ const REMOTE = path.join(REAL_ROOT, 'remote.git')
 const VAULT = path.join(REAL_ROOT, 'Board Size Considerations (YAZ-1801)')
 const PLAIN = path.join(REAL_ROOT, 'Board Size Considerations (YAZ-1801) - no git')
 
-const GIT = process.env.GIT || (fs.existsSync('/usr/bin/git') ? '/usr/bin/git' : 'git')
-const git = (cwd, gitArgs) => runGit(cwd, gitArgs, GIT)
 
 const MB = 1024 * 1024
 const CREATED = Date.UTC(2026, 0, 15, 10, 0)
@@ -93,7 +82,7 @@ function noisyPNG(bytes, [r, g, b]) {
   const raw = noiseRaw(side, side)
   for (let y = 0; y < Math.floor(side * BAND); y++)
     for (let x = 0; x < side; x++) raw.set([r, g, b], y * stride + 1 + x * 3)
-  const png = pngFromRaw(side, side, raw, 1)
+  const png = pngFromRaw(side, side, raw, { level: 1 })
   return { id: fileIdFor(png), mime: 'image/png', bytes: png, side }
 }
 const COLORS = [
@@ -136,7 +125,7 @@ git(REAL_ROOT, ['init', '-q', '--bare', '-b', 'main', REMOTE])
 // ---------------------------------------------------------------- the vault
 fs.mkdirSync(VAULT, { recursive: true })
 git(VAULT, ['init', '-q', '-b', 'main'])
-identity(VAULT, 'YAZ-1801 Demo', 'demo@example.invalid', GIT)
+identity(VAULT, 'YAZ-1801 Demo', 'demo@example.invalid')
 git(VAULT, ['remote', 'add', 'origin', REMOTE])
 write(VAULT, '.yaseendraw/github.json', `${JSON.stringify({ enabled: true })}\n`)
 

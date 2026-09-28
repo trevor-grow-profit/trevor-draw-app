@@ -30,6 +30,7 @@ import path from 'node:path'
 import { Readable } from 'node:stream'
 import { fileURLToPath } from 'node:url'
 import { handle as workerHandle } from '../share/worker.js'
+import { excalidrawFontsDir } from './lib/excalidrawFonts.mjs'
 import { DRAWIO_TAG } from './packDrawio.mjs'
 
 const USAGE = 'usage: node tools/fakeCloudflare.mjs --data <dir> [--port 8787] (0 = any free port)'
@@ -50,10 +51,6 @@ const ASSET_DIR = path.join(DATA, 'assets')
 const REPO_ASSETS = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'share', 'dist', 'assets')
 /** The app's draw.io webapp: share setup publishes its viewer files under `/assets/drawio/` (🔒 YAZ-1802 D5). */
 const REPO_DRAWIO = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'desktop', '.cache', 'drawio', DRAWIO_TAG)
-/** Excalidraw's own fonts: share setup publishes the app's copy of them under `/assets/fonts/` (YAZ-2073 3C). */
-const REPO_FONTS = ['client', '.']
-  .map((base) => path.join(path.dirname(fileURLToPath(import.meta.url)), '..', base, 'node_modules', '@excalidraw', 'excalidraw', 'dist', 'prod', 'fonts'))
-  .find((dir) => fs.existsSync(dir))
 const STATE_FILE = path.join(DATA, 'state.json')
 fs.mkdirSync(BUCKET_DIR, { recursive: true })
 fs.mkdirSync(ASSET_DIR, { recursive: true })
@@ -159,8 +156,12 @@ const assetsBinding = (manifest) => ({
       if (candidate.startsWith(`${REPO_ASSETS}/`)) file = candidate
       const drawio = path.resolve(REPO_DRAWIO, `.${pathname.slice('/assets/drawio'.length)}`)
       if (pathname.startsWith('/assets/drawio/') && !fs.existsSync(candidate) && drawio.startsWith(`${REPO_DRAWIO}/`)) file = drawio
-      const font = path.resolve(REPO_FONTS, `.${pathname.slice('/assets/fonts'.length)}`)
-      if (pathname.startsWith('/assets/fonts/') && font.startsWith(`${REPO_FONTS}/`)) file = font
+      if (pathname.startsWith('/assets/fonts/')) {
+        // Excalidraw's own fonts: share setup publishes the app's copy of them here (YAZ-2073 3C).
+        const fonts = excalidrawFontsDir()
+        const font = path.resolve(fonts, `.${pathname.slice('/assets/fonts'.length)}`)
+        if (font.startsWith(`${fonts}/`)) file = font
+      }
     }
     if (file === null || !fs.existsSync(file)) return new Response('not found', { status: 404 })
     const type = MIME[path.extname(pathname)] ?? 'application/octet-stream'

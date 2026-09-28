@@ -18,7 +18,7 @@ const freePort = () =>
     })
   })
 
-/** A CDP session on one target: `ev` an expression (awaited, by value), wait for one, send input. */
+/** A CDP session on one target: `ev` an expression (awaited, by value), wait for one, send input or any command. */
 async function attach(wsUrl) {
   const ws = new WebSocket(wsUrl)
   await new Promise((resolve, reject) => {
@@ -31,6 +31,11 @@ async function attach(wsUrl) {
     const d = JSON.parse(m.data)
     pending.get(d.id)?.(d)
     pending.delete(d.id)
+  }
+  // A window that closes (or an app that dies) under a command fails it rather than hanging the run.
+  ws.onclose = () => {
+    for (const settle of pending.values()) settle({ error: { message: 'the DevTools socket closed' } })
+    pending.clear()
   }
   const send = (method, params = {}) =>
     new Promise((resolve, reject) => {
@@ -56,7 +61,7 @@ async function attach(wsUrl) {
     await send('Input.dispatchKeyEvent', { type: 'rawKeyDown', key, code, windowsVirtualKeyCode: keyCode, modifiers })
     await send('Input.dispatchKeyEvent', { type: 'keyUp', key, code, windowsVirtualKeyCode: keyCode, modifiers })
   }
-  return { ev, waitFor, mouse, key, close: () => ws.close() }
+  return { send, ev, waitFor, mouse, key, close: () => ws.close() }
 }
 
 /**
@@ -85,12 +90,20 @@ export async function launch({ bin, args = [], profile }) {
     }
     throw new Error('no app window appeared')
   }
-  /** Quits like ⌘Q would (SIGTERM → before-quit → flush); a hung quit is killed after 10 s. */
+  /**
+   * Quits like ⌘Q would (SIGTERM → before-quit → flush); a hung quit is killed after 10 s, and so
+   * are the helpers a killed main leaves behind (they carry the profile path on their command line).
+   */
   const quit = async () => {
     child.kill('SIGTERM')
     if ((await Promise.race([exited.then(() => true), sleep(10_000)])) !== true) {
       child.kill('SIGKILL')
       await exited
+      try {
+        execFileSync('pkill', ['-f', profile])
+      } catch {
+        // none left
+      }
     }
   }
   return { pid: child.pid, spawnedAt, page, quit }

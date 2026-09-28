@@ -15,11 +15,12 @@
  */
 import fs from 'node:fs'
 import path from 'node:path'
-import { flag, json as pretty, refuseExisting, required, scene as sceneOf, wipe, write } from './lib/seedKit.mjs'
+import { cli, json as pretty, refuseExisting, scene as sceneOf, wipe, write } from './lib/seedKit.mjs'
 
 const USAGE = 'usage: node tools/seedSortDemoVault.mjs --vault <dir> [--force]'
-const VAULT = required(flag('--vault'), USAGE)
-refuseExisting(VAULT, USAGE, { what: 'vault' })
+const args = cli(USAGE, { '--vault': 'dir' }, ['--vault'])
+const VAULT = args.vault
+refuseExisting(VAULT, USAGE, { what: 'vault', force: args.force })
 wipe(VAULT)
 fs.mkdirSync(VAULT, { recursive: true })
 

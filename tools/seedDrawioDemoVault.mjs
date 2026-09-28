@@ -24,15 +24,16 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import zlib from 'node:zlib'
-import { cloneAs, dirFlag, elementKit, git, json, png, publish, refuseExisting, required, scene, wipe, write as writeIn, writeProfile } from './lib/seedKit.mjs'
+import { cli, cloneAs, elementKit, git, json, png, publish, refuseExisting, scene, wipe, write as writeIn, writeProfile } from './lib/seedKit.mjs'
 
 const USAGE = 'usage: node tools/seedDrawioDemoVault.mjs --vault <dir> [--profile <dir>] [--force]'
-const VAULT = required(dirFlag('--vault'), USAGE)
-const PROFILE = dirFlag('--profile')
+const args = cli(USAGE, { '--vault': 'dir', '--profile': 'dir' }, ['--vault'])
+const VAULT = args.vault
+const PROFILE = args.profile
 const ORIGIN = `${VAULT} (origin).git`
 const SAM = `${VAULT} (Sam)`
 const targets = [VAULT, ORIGIN, SAM, PROFILE].filter(Boolean)
-for (const dir of targets) refuseExisting(dir, USAGE)
+for (const dir of targets) refuseExisting(dir, USAGE, { force: args.force })
 wipe(...targets)
 fs.mkdirSync(VAULT, { recursive: true })
 
@@ -180,7 +181,6 @@ const syncDoc = (a, b, c, days) => mxfile([page('Page-1', [
   vertex('Both computers changed this diagram — the first sync keeps BOTH copies', 40, 0, 700, 40, 'text;html=1;fontSize=18;align=left;'),
   vertex(a, 40, 80, 180, 70), vertex(b, 280, 80, 180, 70), vertex(c, 520, 80, 180, 70),
 ])], stampAttrs(...days))
-cellId = 9000
 for (const rel of syncFiles) {
   cellId = 9000
   write(rel, syncDoc('Plan', 'Build', 'Ship', [3, 3]))
