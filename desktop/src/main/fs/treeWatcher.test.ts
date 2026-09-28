@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { spawn } from 'node:child_process'
 import { once } from 'node:events'
+import type { WatchListener, WatchOptionsWithStringEncoding } from 'node:fs'
 import { mkdir, mkdtemp, rename, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
@@ -13,14 +14,29 @@ import { settled, sleep, until } from './testFixture'
  * that is not there yet, the watched folder itself going and coming back, tmp files that linger,
  * reading `mount`, and the polling fallback.
  */
-/** `fail`: every `fs.watch` throws, as on a platform without it; `refuse`: only a watch of that one path does (EACCES). */
-const nativeWatch = vi.hoisted(() => ({ fail: false, refuse: null as string | null }))
+/**
+ * `fail`: every `fs.watch` throws, as on a platform without it; `refuse`: only a watch of that one
+ * path does (EACCES). `lateStream`: FSEvents as libuv serves it on macOS (YAZ-2073 5F1) — opening a
+ * watch leaves the process's one stream deaf until it is rebuilt, which a close waits for and which
+ * otherwise lands `LATE_STREAM_MS` later; `deafUntil` is when.
+ */
+const nativeWatch = vi.hoisted(() => ({ fail: false, refuse: null as string | null, lateStream: false, deafUntil: 0 }))
+const LATE_STREAM_MS = 300
 vi.mock('node:fs', async (importOriginal) => {
   const fs = await importOriginal<typeof import('node:fs')>()
-  const watch = ((...args: Parameters<typeof fs.watch>) => {
+  const watch = ((p: string, opts?: WatchOptionsWithStringEncoding | WatchListener<string>, listener?: WatchListener<string>) => {
     if (nativeWatch.fail) throw Object.assign(new Error('not here'), { code: 'ERR_FEATURE_UNAVAILABLE_ON_PLATFORM' })
-    if (args[0] === nativeWatch.refuse) throw Object.assign(new Error('permission denied'), { code: 'EACCES' })
-    return fs.watch(...args)
+    if (p === nativeWatch.refuse) throw Object.assign(new Error('permission denied'), { code: 'EACCES' })
+    if (!nativeWatch.lateStream) return fs.watch(p, opts as WatchOptionsWithStringEncoding, listener)
+    const heard = typeof opts === 'function' ? opts : listener
+    nativeWatch.deafUntil = Date.now() + LATE_STREAM_MS
+    const w = fs.watch(p, typeof opts === 'function' ? {} : opts, (type, name) => Date.now() >= nativeWatch.deafUntil && heard?.(type, name))
+    const close = w.close.bind(w)
+    w.close = () => {
+      close()
+      nativeWatch.deafUntil = 0
+    }
+    return w
   }) as typeof fs.watch
   return { ...fs, default: { ...fs, watch }, watch }
 })
@@ -30,6 +46,7 @@ const watchers: TreeWatcher[] = []
 afterEach(async () => {
   nativeWatch.fail = false
   nativeWatch.refuse = null
+  nativeWatch.lateStream = false
   await Promise.all(watchers.splice(0).map((w) => w.close()))
   await Promise.all(dirs.splice(0).map((d) => rm(d, { recursive: true, force: true })))
 })
@@ -114,7 +131,18 @@ describe('treeWatcher', { timeout: 20_000 }, () => {
     expect(await r.quiet()).toEqual(['add big.excalidraw'])
   })
 
-  it('a watch reopened the moment the last one closed hears the first write after `ready` (YAZ-2073 5F1)', async () => {
+  it.runIf(process.platform === 'darwin')('`ready` comes once the stream hears: the first write after it is never missed (YAZ-2073 5F1)', async () => {
+    nativeWatch.lateStream = true
+    const dir = await tempDir()
+    const r = record(dir)
+    await r.ready()
+    await writeFile(path.join(dir, 'first.json'), '{}')
+    expect(await r.quiet()).toEqual(['add first.json'])
+  })
+
+  // The same against the real FSEvents, made to happen every time. Opt-in (`FSEVENTS_STRESS=1`):
+  // the crowded `fseventsd` it needs slows every other watch on the machine, parallel tests included.
+  it.runIf(process.platform === 'darwin' && process.env.FSEVENTS_STRESS === '1')('a watch reopened the moment the last one closed hears the first write after `ready`, however busy `fseventsd` is (YAZ-2073 5F1)', async () => {
     const dir = await tempDir()
     // `fs.watch` returns before macOS starts the stream that hears it. A busy `fseventsd` (a sync
     // client, a build, a full test run) makes that start late; `CROWDED_FSEVENTSD` makes it
