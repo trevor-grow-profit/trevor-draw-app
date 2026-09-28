@@ -191,7 +191,7 @@ export interface MenuTargets {
   /** "Open in default app" — the same target rule a third time (YAZ-1577); its OWN field, same doctrine. */
   openDefaultPath: string | null
   /**
-   * "Focus on folder" / "Focus on N folders" (YAZ-1605): the DIRS the active lens narrows to.
+   * "Focus on folder" / "Focus on N folders" (YAZ-1605): the DIRS the menu's `lens` narrows to.
    * Inside a 2+ selection that holds the right-clicked row it is the selection's eligible rows,
    * in panel order — `copyPaths`' plural rule, counting only what can be focused, as
    * `openTabPaths` counts only files. Otherwise the one row, or null on file rows and blank
@@ -210,6 +210,17 @@ export interface MenuTargets {
    * selection. "Share" (🔒 YAZ-1802 D11) and "Version history" (🔒 YAZ-1802 D10) take it too. Its OWN field.
    */
   infoPath: string | null
+  /**
+   * The lens the items act in (Docs YAZ-2050 D1, YAZ-2056 D5): the active one, or FILES for a search
+   * row — a search row is a disk row, whichever tab sits under the query. Every lens read in the
+   * menu path reads this.
+   */
+  lens: SidebarLens
+  /**
+   * A search row's path (Docs YAZ-2050 D2, YAZ-2056 D6), null for every tree row and blank space: the
+   * items that draw INTO the tree (a name box, Focus) reveal it in Files first, since the tree is hidden.
+   */
+  leaveSearchTo: string | null
 }
 
 /**
@@ -746,6 +757,9 @@ export function Sidebar({
       setMenu({
         x: e.clientX,
         y: e.clientY,
+        // Only a search ROW opens a menu while searching (blank space there offers none), so `searching` names the origin.
+        lens: searching ? 'files' : lens,
+        leaveSearchTo: searching ? (node?.path ?? null) : null,
         targetDir: targetDirFor(node, root),
         rowKind: node?.type ?? null,
         // ONE field per item, each resolved on its own (GRO-2296). Several are the same
@@ -779,7 +793,7 @@ export function Sidebar({
         infoPath: plural === null && filePath !== null && isBoardRow(tree?.tree ?? [], filePath) ? filePath : null,
       })
     },
-    [root, tree, selectedPaths, orderedSelectedPaths, favorites],
+    [root, tree, selectedPaths, orderedSelectedPaths, favorites, lens, searching],
   )
 
   // ---- Cut / Copy / Paste (YAZ-1674) ----
@@ -891,18 +905,18 @@ export function Sidebar({
   }, [clipboardRef, menu, selectedPaths, clip, clipTo, orderedSelectedPaths, pasteInto, pasteTargetDir])
 
   /**
-   * Focus Mode (YAZ-1605): narrow the ACTIVE lens to these folders — REPLACING any focus,
-   * one or many — and OPEN each row (the synthetic-child idiom `startCreate` uses), so the tree
-   * never lands on closed chevrons.
+   * Focus Mode (YAZ-1605): narrow `inLens` — the menu's pinned lens, FILES for a search row (Docs
+   * YAZ-2050 D1, YAZ-2056 D5) — to these folders, REPLACING any focus, one or many — and OPEN each
+   * row (the synthetic-child idiom `startCreate` uses), so the tree never lands on closed chevrons.
    */
   const focusOn = useCallback(
-    (paths: string[]) => {
+    (paths: string[], inLens: SidebarLens) => {
       // Favorites keeps its OWN list (YAZ-1766 D5); both lenses share the one expansion (D7).
-      if (lens === 'favorites') setFocusFavorites(paths)
+      if (inLens === 'favorites') setFocusFavorites(paths)
       else setFocusDirs(paths)
       for (const path of paths) dispatch({ type: 'expandTo', root, file: `${path}/x` })
     },
-    [lens, root],
+    [root],
   )
   const focused = lens === 'favorites' ? focusFavorites.length > 0 : focusNodes.length > 0
   const exitFocus = useCallback(() => (lens === 'favorites' ? setFocusFavorites([]) : setFocusDirs([])), [lens])
@@ -952,11 +966,11 @@ export function Sidebar({
       // Favorites shows a SUBSET of the vault (YAZ-1766, 3B1): a target dir it does not hold would give
       // the input nowhere to mount, so the create moves to Files — where the `expandTo` above has
       // already opened that dir. The reveal hop's rule (D10), applied to the other gesture that needs a row.
-      if (lens === 'favorites' && menu.targetDir !== root && findDirNode(favoriteNodes, menu.targetDir) === null) onLensChange('files')
+      if (menu.lens === 'favorites' && menu.targetDir !== root && findDirNode(favoriteNodes, menu.targetDir) === null) onLensChange('files')
       setCreating({ kind, seed, parentDir: menu.targetDir })
       setMenu(null)
     },
-    [menu, root, lens, favoriteNodes, onLensChange],
+    [menu, root, favoriteNodes, onLensChange],
   )
 
   const submitCreate = useCallback(
@@ -1147,6 +1161,16 @@ export function Sidebar({
   // ONE gate for both disk-folder births (YAZ-948 rule; YAZ-1604 adds the dated twin).
   const canNewFolder = menu !== null
 
+  // A search row's tree-drawing items leave the search first (Docs YAZ-2050 D2, YAZ-2056 D6) through
+  // the folder-row door (YAZ-1491 D3): App flips to Files; the reveal clears the query, ends a focus
+  // that would hide the row, expands and flashes it — and the item's box or focus lands beside it.
+  const viaTree =
+    <A extends unknown[]>(run: (...args: A) => void) =>
+    (...args: A): void => {
+      if (menu?.leaveSearchTo != null) onRevealInFiles(menu.leaveSearchTo)
+      run(...args)
+    }
+
   return (
     <aside ref={asideRef} className="sidebar">
       {/* The root header doubles as the "move to the vault root" drop target (E1b). */}
@@ -1309,12 +1333,13 @@ export function Sidebar({
         />
       </div>
       {/* The blank-space menu is the TREE's ("New drawing" here creates in the vault root); the
-          results list has no such target, so right-clicking it offers nothing (YAZ-803).
+          results list has no such target, so right-clicking it offers nothing (YAZ-803) — not even
+          Electron's text menu, which leaked through until Docs YAZ-2050. Its ROWS get the full menu.
           Blank space means the same thing in either lens: the vault ROOT. */}
       <div
         ref={bodyRef}
         className="sidebar__body"
-        onContextMenu={(e) => (searching ? undefined : openMenu(null, e))}
+        onContextMenu={(e) => (searching ? e.preventDefault() : openMenu(null, e))}
         // Escape drops the multi-select (YAZ-1336) — and ONLY when there is one: with nothing
         // selected the key still belongs to everyone else listening for it, so this must neither
         // swallow it nor stop it travelling. An OPEN context menu owns the key outright
@@ -1347,7 +1372,7 @@ export function Sidebar({
         {searching ? (
           // A typed query replaces the ACTIVE TAB's body, whichever lens that is (🔒 YAZ-847 D5).
           results.length > 0 ? (
-            <SearchResults results={results} selected={sel} onSelect={setSelected} onActivate={activate} />
+            <SearchResults results={results} selected={sel} onSelect={setSelected} onActivate={activate} onRowContextMenu={(hit, e) => openMenu({ type: hit.kind, path: hit.path }, e)} />
           ) : (
             <p className="sidebar__msg">No matches</p>
           )
@@ -1430,19 +1455,19 @@ export function Sidebar({
               onOpenDefault: openDefault,
               onReveal: reveal,
               focusLabel: focusLabel(menu.focusPaths?.length ?? 0),
-              onFocus: focusOn,
+              onFocus: viaTree((paths) => focusOn(paths, menu.lens)),
               onCut: (paths) => clipTo(paths, 'cut'),
               onCopy: (paths) => clipTo(paths, 'copy'),
               // Paste goes exactly where "New folder" goes (🔒 D5, YAZ-1674).
               onPaste: canNewFolder ? () => void pasteInto(menu.targetDir) : null,
               onNotice,
-              onNewDrawing: () => startCreate('drawing'),
-              onNewDatedDrawing: () => startCreate('drawing', datedSeed()),
-              onNewDiagram: () => startCreate('diagram'),
-              onNewFolder: canNewFolder ? () => startCreate('dir') : null,
-              onNewDatedFolder: canNewFolder ? () => startCreate('dir', datedSeed()) : null,
+              onNewDrawing: viaTree(() => startCreate('drawing')),
+              onNewDatedDrawing: viaTree(() => startCreate('drawing', datedSeed())),
+              onNewDiagram: viaTree(() => startCreate('diagram')),
+              onNewFolder: canNewFolder ? viaTree(() => startCreate('dir')) : null,
+              onNewDatedFolder: canNewFolder ? viaTree(() => startCreate('dir', datedSeed())) : null,
               onToggleFavorite: toggleFavorite,
-              onRename: (path) => setRenamingEntry({ path, kind: menu.rowKind === 'file' ? 'file' : 'dir' }),
+              onRename: viaTree((path) => setRenamingEntry({ path, kind: menu.rowKind === 'file' ? 'file' : 'dir' })),
               onInfo: (path) => setInfoPopover({ x: menu.x, y: menu.y, path, now: Date.now() }),
               onShare: onShareFile,
               onHistory: onHistoryFile,

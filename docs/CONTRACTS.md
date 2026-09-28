@@ -658,7 +658,7 @@ One search, over NAMES, in the sidebar's own bar (🔒 YAZ-797: a persistent bar
 with a FLAT ranked list (🔒 the flat-list ruling on YAZ-739), never a filtered tree.
 
 - **The catalog** (`client/src/search/searchCandidates.ts`, 🔒 YAZ-1814 on YAZ-1814) is one row per
-  `.excalidraw` file — under the name the tree and the tab strip show, WITHOUT the extension — plus
+  board — `.excalidraw` or `.drawio` (🔒 YAZ-1802 D2) — under the name the tree and the tab strip show, WITHOUT the extension — plus
   one row per folder, matched by its own name (🔒 YAZ-1775 D2 on YAZ-1491) and labelled by its parent. A
   drawing never matches on its folder; the folder is its own row instead.
 - **It is derived, not indexed.** There is no vault index any more (it went with the markdown layer
@@ -680,6 +680,19 @@ with a FLAT ranked list (🔒 the flat-list ruling on YAZ-739), never a filtered
   both ends; Enter activates — a drawing OPENS in the current tab, a folder REVEALS itself in the
   Files lens (🔒 YAZ-1775 D3 on YAZ-1491) — ⌘-Enter opens in a background tab; Escape clears a typed query
   and only gives up focus on a second press. A click does exactly what Enter does on that row.
+- **A right-click on a result row** (YAZ-2056 D5/D6, a port of Docs YAZ-2050) opens the SAME menu
+  that board's or folder's Files row gets, through the same `openMenu` (`SearchResults.onRowContextMenu`),
+  and highlights the row; blank space under the results, or "No matches", offers no menu at all and
+  is default-prevented, so Electron's text menu never leaks through (the bar itself keeps it). It
+  follows the FILES rules on either tab — a search row is a disk row: `MenuTargets.lens` pins
+  `'files'` for a search row (the active lens otherwise), and every lens read in the menu path reads
+  it — `focusOn(paths, lens)` and `startCreate`'s Favorites hop. The seven items that draw INTO the
+  hidden tree — Focus, New Excalidraw drawing, New dated Excalidraw drawing, New draw.io diagram,
+  New folder, New dated folder, Rename — first leave the search through the folder-row reveal door:
+  `MenuTargets.leaveSearchTo` names the row, `viaTree` calls `onRevealInFiles` with it, and the
+  reveal clears the query, ends a focus that would hide the row, expands and flashes it before the
+  box or the focus lands beside it. Every other item acts in place and the query stays. Multi-select
+  never reaches this menu (a query clears the selection).
 
 ## Menus and shortcuts
 
