@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { TreeNode } from '@shared/types'
-import { datedFolderSeed, entryPath, renamedPath, renameInputName, targetDirFor, untitledBoardName, validateEntryName } from './createEntry'
+import { datedSeed, entryPath, renamedPath, renameInputName, targetDirFor, validateEntryName } from './createEntry'
 
 const dir = (path: string): TreeNode => ({ type: 'dir', name: path.split('/').pop()!, path, children: [] })
 const file = (path: string): TreeNode => ({ type: 'file', name: path.split('/').pop()!, path, size: 0, mtime: 1, kind: 'drawing' })
@@ -19,30 +19,38 @@ describe('validateEntryName', () => {
 })
 
 describe('entryPath', () => {
-  it('appends .excalidraw to file names without the drawing extension', () => {
-    expect(entryPath('/r', 'sketch', 'file')).toBe('/r/sketch.excalidraw')
-    expect(entryPath('/r', 'sketch.txt', 'file')).toBe('/r/sketch.txt.excalidraw')
+  it('appends .excalidraw to drawing names without the drawing extension', () => {
+    expect(entryPath('/r', 'sketch', 'drawing')).toBe('/r/sketch.excalidraw')
+    expect(entryPath('/r', 'sketch.txt', 'drawing')).toBe('/r/sketch.txt.excalidraw')
   })
 
   it('keeps an existing drawing extension, case-insensitive', () => {
-    expect(entryPath('/r', 'sketch.excalidraw', 'file')).toBe('/r/sketch.excalidraw')
-    expect(entryPath('/r', 'sketch.EXCALIDRAW', 'file')).toBe('/r/sketch.EXCALIDRAW')
+    expect(entryPath('/r', 'sketch.excalidraw', 'drawing')).toBe('/r/sketch.excalidraw')
+    expect(entryPath('/r', 'sketch.EXCALIDRAW', 'drawing')).toBe('/r/sketch.EXCALIDRAW')
   })
 
   it('uses dir names as-is and trims whitespace', () => {
     expect(entryPath('/r', 'Folder', 'dir')).toBe('/r/Folder')
-    expect(entryPath('/r', '  sketch ', 'file')).toBe('/r/sketch.excalidraw')
+    expect(entryPath('/r', 'Plans.excalidraw', 'dir')).toBe('/r/Plans.excalidraw')
+    expect(entryPath('/r', '  sketch ', 'drawing')).toBe('/r/sketch.excalidraw')
+  })
+
+  it('a diagram gets .drawio, keeping one that was typed; the other kind\'s suffix is just part of the name (🔒 YAZ-1802 D13)', () => {
+    expect(entryPath('/v', 'Flow', 'diagram')).toBe('/v/Flow.drawio')
+    expect(entryPath('/v', 'Flow.DRAWIO', 'diagram')).toBe('/v/Flow.DRAWIO')
+    expect(entryPath('/v', 'Flow.excalidraw', 'diagram')).toBe('/v/Flow.excalidraw.drawio')
+    expect(entryPath('/v', 'Flow.drawio', 'drawing')).toBe('/v/Flow.drawio.excalidraw')
   })
 })
 
-describe('datedFolderSeed (YAZ-1604)', () => {
+describe('datedSeed (YAZ-1604, YAZ-1999)', () => {
   it('is MM_DD of the given day, zero-padded, then "- " so the title lands one space after the dash', () => {
-    expect(datedFolderSeed(new Date(2026, 5, 22))).toBe('06_22- ')
-    expect(datedFolderSeed(new Date(2026, 11, 3))).toBe('12_03- ')
+    expect(datedSeed(new Date(2026, 5, 22))).toBe('06_22- ')
+    expect(datedSeed(new Date(2026, 11, 3))).toBe('12_03- ')
   })
 
   it('defaults to today', () => {
-    expect(datedFolderSeed()).toMatch(/^\d{2}_\d{2}- $/)
+    expect(datedSeed()).toMatch(/^\d{2}_\d{2}- $/)
   })
 })
 
@@ -136,52 +144,7 @@ describe('renamedPath (Links E1, GRO-2194)', () => {
   })
 })
 
-/**
- * "New drawing" names itself (🔒 YAZ-1775 R1): the context menu no longer asks for a name, so
- * the birth has to pick one the folder does not already hold — and never overwrite.
- */
-describe('untitledBoardName', () => {
-  it('an empty folder gets the bare name', () => {
-    expect(untitledBoardName([])).toBe('Untitled')
-    expect(untitledBoardName(['Board.excalidraw', 'Plan.excalidraw'])).toBe('Untitled')
-  })
-
-  it('counts UP from 2, never reusing a taken name', () => {
-    expect(untitledBoardName(['Untitled.excalidraw'])).toBe('Untitled 2')
-    expect(untitledBoardName(['Untitled.excalidraw', 'Untitled 2.excalidraw'])).toBe('Untitled 3')
-    expect(untitledBoardName(['Untitled.excalidraw', 'Untitled 2.excalidraw', 'Untitled 3.excalidraw'])).toBe('Untitled 4')
-  })
-
-  it('fills a gap rather than running past it', () => {
-    expect(untitledBoardName(['Untitled.excalidraw', 'Untitled 3.excalidraw'])).toBe('Untitled 2')
-  })
-
-  it('compares case-insensitively — the Mac`s own filesystem does, so `untitled` is in the way', () => {
-    expect(untitledBoardName(['untitled.EXCALIDRAW'])).toBe('Untitled 2')
-  })
-
-  it('a folder or a non-drawing of the same stem is NOT in the way — only the exact file name is', () => {
-    expect(untitledBoardName(['Untitled', 'Untitled.png'])).toBe('Untitled')
-  })
-})
-
-/** "New draw.io diagram" (🔒 YAZ-1802 D13): the same birth rules, on the `.drawio` names. */
-describe('untitledBoardName for a diagram', () => {
-  it('counts on .drawio names only — an Excalidraw Untitled is a different file', () => {
-    expect(untitledBoardName(['Untitled.excalidraw', 'Untitled 2.excalidraw'], 'diagram')).toBe('Untitled')
-    expect(untitledBoardName(['Untitled.drawio'], 'diagram')).toBe('Untitled 2')
-    expect(untitledBoardName(['Untitled.drawio', 'Untitled 3.drawio'], 'diagram')).toBe('Untitled 2')
-    expect(untitledBoardName(['UNTITLED.DRAWIO', 'untitled 2.Drawio'], 'diagram')).toBe('Untitled 3')
-    expect(untitledBoardName(['Untitled.drawio.svg'], 'diagram')).toBe('Untitled')
-  })
-
-  it('builds the path with .drawio, keeping one that was typed', () => {
-    expect(entryPath('/v', 'Untitled', 'file', 'diagram')).toBe('/v/Untitled.drawio')
-    expect(entryPath('/v', 'Flow.DRAWIO', 'file', 'diagram')).toBe('/v/Flow.DRAWIO')
-    expect(entryPath('/v', 'Flow.excalidraw', 'file', 'diagram')).toBe('/v/Flow.excalidraw.drawio')
-    expect(entryPath('/v', 'Flow.drawio', 'file')).toBe('/v/Flow.drawio.excalidraw')
-  })
-
+describe('a diagram through the rename helpers (🔒 YAZ-1802 D13)', () => {
   it('a diagram hides its suffix in the rename field and keeps its kind through a rename', () => {
     expect(renameInputName('/v/Flow.drawio')).toBe('Flow')
     expect(renameInputName('/v/image.drawio.svg')).toBe('image.drawio.svg')

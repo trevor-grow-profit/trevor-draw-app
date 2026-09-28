@@ -7,6 +7,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { CreateInline } from './CreateInline'
+import type { EntryKind } from './createEntry'
 
 
 let root: Root | null = null
@@ -18,13 +19,13 @@ afterEach(() => {
   container = null
 })
 
-function mount(seed?: string) {
+function mount(seed?: string, kind: EntryKind = 'dir') {
   const onSubmit = vi.fn(() => Promise.resolve())
   const onCancel = vi.fn()
   container = document.createElement('div')
   document.body.appendChild(container)
   root = createRoot(container)
-  act(() => root?.render(<CreateInline kind="dir" seed={seed} indent={0} onSubmit={onSubmit} onCancel={onCancel} />))
+  act(() => root?.render(<CreateInline kind={kind} seed={seed} indent={0} onSubmit={onSubmit} onCancel={onCancel} />))
   const field = container.querySelector<HTMLInputElement>('.create-inline__input')
   if (field === null) throw new Error('the create input did not mount')
   return { field, onSubmit }
@@ -38,6 +39,13 @@ describe('CreateInline seed (YAZ-1604)', () => {
     expect(document.activeElement).toBe(field)
     expect(field.value).toBe('')
     expect(field.placeholder).toBe('New folder')
+  })
+
+  it.each([
+    ['drawing', 'New Excalidraw drawing'],
+    ['diagram', 'New draw.io diagram'],
+  ] as const)('a %s box names what it makes in its placeholder (🔒 YAZ-1999 D6)', (kind, placeholder) => {
+    expect(mount(undefined, kind).field.placeholder).toBe(placeholder)
   })
 
   it('shows the seed with the caret at its end, right after the dash', () => {

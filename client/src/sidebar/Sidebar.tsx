@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react'
-import { SIDEBAR_LENSES, SORT_ORDERS, type FileClipState, type FileKind, type SettingsState, type SidebarLens, type SortOrder, type TreeNode, type TreeResponse } from '@shared/types'
+import { SIDEBAR_LENSES, SORT_ORDERS, type FileClipState, type SettingsState, type SidebarLens, type SortOrder, type TreeNode, type TreeResponse } from '@shared/types'
 import { EMPTY_DIAGRAM_XML } from '@shared/diagramFile'
-import { BOARD_TYPE_NAME } from '@shared/fileKind'
 import { api, BridgeRequestError } from '../api'
 import { EMPTY_SCENE_JSON } from '../drawings/drawingScene'
 import { ContextMenuSurface } from '../components/ContextMenuSurface'
@@ -22,7 +21,7 @@ import type { SearchCandidate } from '../search/searchCandidates'
 import { useSearchResults } from '../search/useSearchResults'
 import { ConfirmDelete, type DeleteTarget } from './ConfirmDelete'
 import { ContextMenu } from './ContextMenu'
-import { datedFolderSeed, entryPath, renamedPath, targetDirFor, untitledBoardName, type EntryKind, type MenuRow } from './createEntry'
+import { datedSeed, entryPath, renamedPath, targetDirFor, type EntryKind, type MenuRow } from './createEntry'
 import { SettingsButton } from '../settings/SettingsButton'
 import { buildMenuSections, countItems } from './menuSections'
 import type { NoticeKind } from '../lib/notice'
@@ -965,59 +964,15 @@ export function Sidebar({
       if (creating === null) return
       const p = entryPath(creating.parentDir, name, creating.kind)
       if (creating.kind === 'dir') await api.createDir(p)
-      // Content-at-create (🔒 YAZ-1810): a new drawing is an EMPTY SCENE, not an empty file — a
-      // zero-byte `.excalidraw` is exactly the corrupt case the editor's error pane exists for.
-      else await api.createFile({ path: p, content: EMPTY_SCENE_JSON })
+      // Content-at-create (🔒 YAZ-1810): a new board is born with its EMPTY content in the same `wx`
+      // write — a zero-byte `.excalidraw` or `.drawio` is exactly the corrupt case the editor's error pane exists for.
+      else await api.createFile({ path: p, content: creating.kind === 'diagram' ? EMPTY_DIAGRAM_XML : EMPTY_SCENE_JSON })
       setCreating(null)
       refresh()
       if (creating.kind !== 'dir') onOpenFile(p)
     },
     [creating, refresh, onOpenFile],
   )
-
-  /**
-   * "New Excalidraw drawing" / "New draw.io diagram" (🔒 R1 on YAZ-1775, YAZ-1815; 🔒 YAZ-1802 D13):
-   * the ONE file-creation door in the app, and it does NOT ask for a name. The board is born as
-   * `Untitled` (`Untitled 2`, `Untitled 3`… beside its siblings of the same extension), with its
-   * empty content in the same `wx` write (content-at-create, 🔒 YAZ-1810 — a zero-byte file is the
-   * corrupt case, not a new board): the EMPTY SCENE for a drawing, the EMPTY DIAGRAM (one page, page
-   * view off) for a diagram. It opens in the CURRENT tab and lands with the tree's inline rename
-   * field focused so the first thing the user types is its name. Nothing is ever overwritten:
-   * `fs:create-file` refuses an existing path, and a name lost to a race (another window, a sync)
-   * is simply retried with the next number.
-   */
-  const createBoard = useCallback(async (board: FileKind) => {
-    if (menu === null) return
-    const parentDir = menu.targetDir
-    const content = board === 'diagram' ? EMPTY_DIAGRAM_XML : EMPTY_SCENE_JSON
-    setMenu(null)
-    // The row has to be visible for the rename field to mount, exactly as the inline create needs.
-    if (parentDir !== root) dispatch({ type: 'expandTo', root, file: `${parentDir}/x` })
-    if (lens === 'favorites' && parentDir !== root && findDirNode(favoriteNodes, parentDir) === null) onLensChange('files')
-    const node = tree === null || parentDir === root ? null : findDirNode(tree.tree, parentDir)
-    const level: readonly TreeNode[] = tree === null ? [] : parentDir === root ? tree.tree : node !== null && node.type === 'dir' ? node.children : []
-    const siblings = level.map((n) => n.name)
-    const taken = [...siblings]
-    for (let attempt = 0; attempt < 5; attempt++) {
-      const path = entryPath(parentDir, untitledBoardName(taken, board), 'file', board)
-      try {
-        await api.createFile({ path, content })
-        refresh()
-        onOpenFile(path)
-        setRenamingEntry({ path, kind: 'file' })
-        return
-      } catch (err: unknown) {
-        // Someone else got there between the tree we read and the write: take the next number.
-        if (err instanceof BridgeRequestError && err.code === 'ALREADY_EXISTS') {
-          taken.push(path.slice(path.lastIndexOf('/') + 1))
-          continue
-        }
-        onNotice(`Can't create ${BOARD_TYPE_NAME[board]}: ${err instanceof Error ? err.message : String(err)}`, 'error')
-        return
-      }
-    }
-    onNotice(`Can't create ${BOARD_TYPE_NAME[board]}: too many untitled ones here`, 'error')
-  }, [menu, root, lens, favoriteNodes, onLensChange, tree, refresh, onOpenFile, onNotice])
 
   const cancelCreate = useCallback(() => setCreating(null), [])
 
@@ -1481,10 +1436,11 @@ export function Sidebar({
               // Paste goes exactly where "New folder" goes (🔒 D5, YAZ-1674).
               onPaste: canNewFolder ? () => void pasteInto(menu.targetDir) : null,
               onNotice,
-              onNewDrawing: () => void createBoard('drawing'),
-              onNewDiagram: () => void createBoard('diagram'),
+              onNewDrawing: () => startCreate('drawing'),
+              onNewDatedDrawing: () => startCreate('drawing', datedSeed()),
+              onNewDiagram: () => startCreate('diagram'),
               onNewFolder: canNewFolder ? () => startCreate('dir') : null,
-              onNewDatedFolder: canNewFolder ? () => startCreate('dir', datedFolderSeed()) : null,
+              onNewDatedFolder: canNewFolder ? () => startCreate('dir', datedSeed()) : null,
               onToggleFavorite: toggleFavorite,
               onRename: (path) => setRenamingEntry({ path, kind: menu.rowKind === 'file' ? 'file' : 'dir' }),
               onInfo: (path) => setInfoPopover({ x: menu.x, y: menu.y, path, now: Date.now() }),

@@ -7,8 +7,8 @@
 import { BOARD_EXTENSION, fileKind } from '@shared/fileKind'
 import type { FileKind } from '@shared/types'
 
-/** What the inline input creates: a drawing or a folder. */
-export type EntryKind = 'file' | 'dir'
+/** What the inline input creates (🔒 YAZ-1999 D6): a drawing, a diagram, or a folder. */
+export type EntryKind = FileKind | 'dir'
 
 /** Human-readable reason the name is unusable, or null when fine. Callers trim first via entryPath. */
 export function validateEntryName(name: string): string | null {
@@ -19,43 +19,18 @@ export function validateEntryName(name: string): string | null {
   return null
 }
 
-/**
- * Absolute path for the new entry; a `board` file (a drawing unless told otherwise) gains its
- * kind's extension unless the typed name already carries it.
- */
-export function entryPath(parentDir: string, name: string, kind: EntryKind, board: FileKind = 'drawing'): string {
+/** Absolute path for the new entry; a board gains its kind's extension unless the typed name already carries it. */
+export function entryPath(parentDir: string, name: string, kind: EntryKind): string {
   let final = name.trim()
-  if (kind === 'file' && fileKind(final) !== board) final += BOARD_EXTENSION[board]
+  if (kind !== 'dir' && fileKind(final) !== kind) final += BOARD_EXTENSION[kind]
   return `${parentDir}/${final}`
 }
 
-/** The name a new board is born with (🔒 YAZ-1775 R1), before the user renames it. */
-export const UNTITLED_BOARD = 'Untitled'
-
 /**
- * The next free "New drawing" / "New diagram" name in a folder (🔒 R1 on YAZ-1775, YAZ-1815):
- * `Untitled`, then `Untitled 2`, `Untitled 3`… — never a name the folder already holds, because
- * the birth must not overwrite anything (`fs:create-file` writes `wx` and would refuse anyway;
- * this is so the user sees a new board rather than an error). `taken` is the folder's existing entry names WITH their
- * extensions, compared case-insensitively: the Mac's own filesystem is, so `untitled.excalidraw`
- * and `Untitled.excalidraw` are the same file and the second one must not be offered.
- *
- * Only names of the same `board` kind count (🔒 YAZ-1802 D13): `Untitled.excalidraw` and
- * `Untitled.drawio` can sit side by side — they are different files.
+ * Seed for "New dated folder" (YAZ-1604) and "New dated Excalidraw drawing" (YAZ-1999): `09_14- ` —
+ * today's MM_DD, then `- ` so the title lands one space after the dash.
  */
-export function untitledBoardName(taken: readonly string[], board: FileKind = 'drawing'): string {
-  const used = new Set(taken.map((n) => n.toLowerCase()))
-  const free = (name: string): boolean => !used.has(`${name}${BOARD_EXTENSION[board]}`.toLowerCase())
-  if (free(UNTITLED_BOARD)) return UNTITLED_BOARD
-  // Terminates: `used` is finite, so one of the first `used.size + 1` numbered candidates is free.
-  for (let n = 2; ; n++) {
-    const candidate = `${UNTITLED_BOARD} ${n}`
-    if (free(candidate)) return candidate
-  }
-}
-
-/** Seed for "New dated folder" (YAZ-1604): `09_14- ` — today's MM_DD, then `- ` so the title lands one space after the dash. */
-export function datedFolderSeed(now: Date = new Date()): string {
+export function datedSeed(now: Date = new Date()): string {
   const p = (n: number) => String(n).padStart(2, '0')
   return `${p(now.getMonth() + 1)}_${p(now.getDate())}- `
 }
