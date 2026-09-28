@@ -265,6 +265,14 @@ function load(filePath: string): AppState {
   return defaultAppState()
 }
 
+/**
+ * The open-vault roots — `AppState.windows`, where null is Welcome — unique: two windows on one
+ * vault are one root. What main keeps per open vault (sync, favorites, repairs) is kept per these.
+ */
+export function openRoots(state: AppState): string[] {
+  return [...new Set(state.windows.map((w) => w.root).filter((r): r is string => r !== null))]
+}
+
 // ---------- the store ----------
 
 export function createStore(filePath: string): Store {

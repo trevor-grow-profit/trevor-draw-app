@@ -3,19 +3,19 @@ import { CONTRACT } from '@shared/ipc'
 import { isStringArray } from '@shared/guards'
 import { getFavorites, setFavorites, subscribeFavorites } from '../favorites'
 import { BridgeFailure, requireAbsPath } from '../fs/fsUtils'
-import type { Store } from '../store'
+import { openRoots, type Store } from '../store'
 import { broadcastAll } from './broadcast'
 import { handle } from './envelope'
 
 /** Main's own favorites subscription per open-vault root; dropped when the last window on that root goes. */
 const subs = new Map<string, () => void>()
 
-/** Every live window gets the change; renderers filter by their own root and re-read (the `vaultConfig:changed` posture). */
+/** Every live window gets the change; renderers filter by their own root and re-read (`broadcastAll`'s posture). */
 const broadcast = (change: { root: string }): void => broadcastAll(CONTRACT.favorites.onChanged, change)
 
-/** The open-vault roots are `AppState.windows` (null = Welcome); one `subscribeFavorites` each, no more. */
+/** One `subscribeFavorites` per open-vault root, no more. */
 function syncSubscriptions(state: AppState): void {
-  const roots = new Set(state.windows.map((w) => w.root).filter((r): r is string => r !== null))
+  const roots = new Set(openRoots(state))
   for (const [root, off] of subs) {
     if (!roots.has(root)) {
       off()

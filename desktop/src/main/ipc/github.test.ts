@@ -3,11 +3,11 @@ import { mkdir, mkdtemp, readFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { BrowserWindow, ipcMain } from 'electron'
-import { defaultAppState, VAULT_CONFIG_DIR, type AppState, type GithubSyncStatus, type WindowEntry } from '@shared/types'
+import { VAULT_CONFIG_DIR, type GithubSyncStatus, type WindowEntry } from '@shared/types'
 import { CONTRACT, type Envelope } from '@shared/ipc'
 import { createStore, type Store } from '../store'
 import { activeConfigWatcherRoots } from '../vaultConfig'
-import { registerGithubIpc, rootsOf } from './github'
+import { registerGithubIpc } from './github'
 
 vi.mock('electron', () => ({
   ipcMain: { handle: vi.fn(), on: vi.fn() },
@@ -47,7 +47,6 @@ function fakeWindow() {
 const bounds = { x: 0, y: 0, width: 800, height: 600 }
 const sender = { id: 1 }
 
-const stateWith = (windows: WindowEntry[]): AppState => ({ ...defaultAppState(), windows })
 const win = (id: string, root: string | null): WindowEntry => ({ id, root, file: null, tabs: [], sidebarCollapsed: false, sidebarLens: 'files', focusDirs: [], focusFavorites: [], bounds })
 
 let dir: string
@@ -68,14 +67,6 @@ afterEach(async () => {
   await until(() => activeConfigWatcherRoots().length === 0)
   await store.flush()
   await rm(dir, { recursive: true, force: true })
-})
-
-describe('rootsOf', () => {
-  it('is the unique non-null window roots (a Welcome window has none, two windows on a vault are one root)', () => {
-    expect(rootsOf(stateWith([]))).toEqual([])
-    expect(rootsOf(stateWith([win('w1', null)]))).toEqual([])
-    expect(rootsOf(stateWith([win('w1', '/a'), win('w2', '/a'), win('w3', null), win('w4', '/b')]))).toEqual(['/a', '/b'])
-  })
 })
 
 describe('registerGithubIpc', () => {

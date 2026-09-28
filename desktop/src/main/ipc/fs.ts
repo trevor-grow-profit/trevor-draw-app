@@ -13,13 +13,10 @@ import { revealItem } from '../fs/reveal'
 import { tree } from '../fs/tree'
 import { repairShares, shareFsHooks } from '../share/fsHooks'
 import { sweepVaultOnce } from './drawing'
-import type { Store } from '../store'
+import { openRoots, type Store } from '../store'
 import type { WindowLookup } from '../windows'
 import { broadcastAll } from './broadcast'
 import { handle, handleWithEvent } from './envelope'
-
-/** The open-vault roots (`AppState.windows`, null = Welcome) — where a favorites.json may need repair (YAZ-1766 D13). */
-const openRoots = (store: Store): string[] => store.get().windows.map((w) => w.root).filter((r): r is string => r !== null)
 
 /**
  * The favorites.json repair (YAZ-1766 6A, D13) rides the SAME handlers as the store repair below,
@@ -68,9 +65,9 @@ export function registerFsIpc(store: Store, windows: WindowLookup): void {
     }
     const res = await renameFile(req)
     store.renamePath(res.oldPath, res.newPath)
-    await repairFavorites(favorites.renamePath(openRoots(store), res.oldPath, res.newPath))
+    await repairFavorites(favorites.renamePath(openRoots(store.get()), res.oldPath, res.newPath))
     // YAZ-1799: a shared board's link follows it (shares.json key rewritten, same id).
-    await repairShares(shareFsHooks.renamed(openRoots(store), res.oldPath, res.newPath))
+    await repairShares(shareFsHooks.renamed(openRoots(store.get()), res.oldPath, res.newPath))
     broadcastAll(CONTRACT.file.onRenamed, { oldPath: res.oldPath, newPath: res.newPath, kind: res.kind })
     return res
   })
@@ -96,9 +93,9 @@ export function registerFsIpc(store: Store, windows: WindowLookup): void {
     }
     const res = await removeEntry(req)
     store.removePath(res.path)
-    await repairFavorites(favorites.removePath(openRoots(store), res.path))
+    await repairFavorites(favorites.removePath(openRoots(store.get()), res.path))
     // YAZ-1799: deleting a shared board (or a folder holding some) stops sharing them.
-    await repairShares(shareFsHooks.deleted(openRoots(store), res.path))
+    await repairShares(shareFsHooks.deleted(openRoots(store.get()), res.path))
     broadcastAll(CONTRACT.file.onDeleted, { path: res.path, kind: res.kind })
     return res
   })
@@ -138,8 +135,8 @@ export function registerFsIpc(store: Store, windows: WindowLookup): void {
       move: async (from, to) => {
         const r = await renameFile({ oldPath: from, newPath: to })
         store.renamePath(r.oldPath, r.newPath)
-        await repairFavorites(favorites.renamePath(openRoots(store), r.oldPath, r.newPath))
-        await repairShares(shareFsHooks.renamed(openRoots(store), r.oldPath, r.newPath))
+        await repairFavorites(favorites.renamePath(openRoots(store.get()), r.oldPath, r.newPath))
+        await repairShares(shareFsHooks.renamed(openRoots(store.get()), r.oldPath, r.newPath))
         broadcastAll(CONTRACT.file.onRenamed, { oldPath: r.oldPath, newPath: r.newPath, kind: r.kind })
         return r
       },

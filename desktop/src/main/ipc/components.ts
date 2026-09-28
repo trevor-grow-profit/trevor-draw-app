@@ -12,10 +12,10 @@
  * those are the same rules whether the call came over the bridge or not.
  */
 import { shell } from 'electron'
-import type { AppState, ComponentRenameRequest, ComponentSaveRequest, ComponentSlugRequest } from '@shared/types'
+import type { ComponentRenameRequest, ComponentSaveRequest, ComponentSlugRequest } from '@shared/types'
 import { CONTRACT } from '@shared/ipc'
 import { requireObject, str } from '../fs/validate'
-import { resolveLibraryFolder } from '../library/folder'
+import { followLibraryFolder } from '../library/folder'
 import { createComponentStore, type ComponentStore } from '../library/componentStore'
 import type { Store } from '../store'
 import { broadcastAll } from './broadcast'
@@ -45,17 +45,12 @@ function requireRenameRequest(v: unknown): ComponentRenameRequest {
 
 /** Returns the store so a test can close its watcher; `main/index.ts` lets the process end take it. */
 export function registerComponentsIpc(store: Store, userData: string, trash: (p: string) => Promise<void> = (p) => shell.trashItem(p)): ComponentStore {
-  const folderFor = (state: AppState): string => resolveLibraryFolder(state.settings.libraryFolder, userData)
-  let folder = folderFor(store.get())
-  const components = createComponentStore(folder, { trash })
-  components.onChanged(() => broadcastAll(CONTRACT.components.onChanged))
-  store.onChange((state) => {
-    const next = folderFor(state)
-    if (next === folder) return
-    folder = next
+  const folder = followLibraryFolder(store, userData, (next) => {
     components.setFolder(next)
     broadcastAll(CONTRACT.components.onChanged)
   })
+  const components = createComponentStore(folder, { trash })
+  components.onChanged(() => broadcastAll(CONTRACT.components.onChanged))
   handle(CONTRACT.components.list, async () => components.list())
   handle(CONTRACT.components.save, async (req: unknown) => components.save(requireSaveRequest(req)))
   handle(CONTRACT.components.read, async (req: unknown) => ({ fragmentJson: await components.read(requireSlugRequest(req)) }))
