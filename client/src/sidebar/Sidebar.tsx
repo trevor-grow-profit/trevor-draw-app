@@ -12,11 +12,10 @@ import { storage } from '../lib/storage'
 import { EMPTY_SELECTION, orderedSelection, selectionReducer } from '../lib/selection'
 import { allDirs, ancestorDirs, favoriteRoots, findDirNode, findNode, focusRoots, treeHasFile, treeHasPath, treeReducer } from '../lib/treeState'
 import { sortTree, type FileNode } from '@shared/treeSort'
-import { useAppliedTheme } from '../lib/theme'
+import { createStore } from '../lib/store'
 import { BoardInfo } from './BoardInfo'
 import { useShareBadges } from '../share/useShareBadges'
-import { BoardPreview } from './BoardPreview'
-import { boardPreviewKey } from './boardPreviewCache'
+import { HoverPreviewHost, type HoverState } from './HoverPreviewHost'
 import { SearchResults } from '../search/SearchResults'
 import type { SearchCandidate } from '../search/searchCandidates'
 import { useSearchResults } from '../search/useSearchResults'
@@ -418,11 +417,9 @@ export function Sidebar({
   // board beside the sidebar. `hover` is the row — pending until the dwell ends, then shown. A save to
   // it is only a new picture key, which the panel swaps in place (🔒 D5 amendment); only the row
   // leaving the tree closes it. Every close bumps `hoverRequest`, so an earlier row's dwell never fires late.
+  // It is a STORE only `HoverPreviewHost` reads (YAZ-2073 5D): crossing rows re-renders the panel, never this.
   const asideRef = useRef<HTMLElement>(null)
-  const theme = useAppliedTheme()
-  const [hover, setHover] = useState<{ path: string; shown: boolean } | null>(null)
-  const hoverRef = useRef(hover)
-  hoverRef.current = hover
+  const [hover] = useState(() => createStore<HoverState>({ path: null, shown: false }))
   const hoverTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const hoverRequest = useRef(0)
   // A menu or the Info popover owns the pointer while it stands: nothing opens under it.
@@ -433,58 +430,32 @@ export function Sidebar({
     hoverRequest.current++
     if (hoverTimer.current !== null) clearTimeout(hoverTimer.current)
     hoverTimer.current = null
-    hoverRef.current = null
-    setHover(null)
-  }, [])
+    hover.set({ path: null, shown: false })
+  }, [hover])
   const hoverFile = useCallback(
     (node: FileNode | null) => {
       // The same row again (focus after the pointer, or back) keeps its dwell or its panel.
-      if (node !== null && hoverRef.current?.path === node.path) return
+      if (node !== null && hover.getState().path === node.path) return
       closePreview()
       if (node === null || hoverBlockedRef.current) return
       const id = hoverRequest.current
       const { path } = node
-      hoverRef.current = { path, shown: false }
-      setHover(hoverRef.current)
+      hover.set({ path, shown: false })
       hoverTimer.current = setTimeout(() => {
         hoverTimer.current = null
-        if (id === hoverRequest.current) setHover({ path, shown: true })
+        if (id === hoverRequest.current) hover.set({ shown: true })
       }, BOARD_PREVIEW_DWELL_MS)
     },
-    [closePreview],
+    [hover, closePreview],
   )
   const previewsOn = settings.hoverPreview && !searching
   // YAZ-1799: a link mark on shared boards (red when the last update failed or the link is stale).
   const shareBadges = useShareBadges(root)
-  // The hovered board off the LIVE tree (the Info popover's rule): its fresh mtime keys the picture, and gone closes the panel.
-  const hoverNode = useMemo(() => {
-    if (hover === null || tree === null) return null
-    const n = findNode(tree.tree, hover.path)
-    return n !== null && n.type === 'file' ? n : null
-  }, [hover, tree])
-  useEffect(() => {
-    if (hover !== null && tree !== null && hoverNode === null) closePreview()
-  }, [hover, tree, hoverNode, closePreview])
   // Everything else that ends a glance: the toggle, a search, a menu opening, another board opening.
   useEffect(() => {
     if (!previewsOn || hoverBlocked) closePreview()
   }, [previewsOn, hoverBlocked, closePreview])
   useEffect(() => closePreview(), [activeFile, closePreview])
-  // Escape closes the preview — and ONLY while there is one, so the key is otherwise untouched for the
-  // selection, the menus and the canvas. Capture phase, so it wins before the body's own Escape.
-  const hoverActive = hover !== null
-  useEffect(() => {
-    if (!hoverActive) return
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key !== 'Escape') return
-      e.preventDefault()
-      e.stopPropagation()
-      e.stopImmediatePropagation()
-      closePreview()
-    }
-    document.addEventListener('keydown', onKey, true)
-    return () => document.removeEventListener('keydown', onKey, true)
-  }, [hoverActive, closePreview])
   useEffect(() => closePreview, [closePreview]) // unmount: no dwell timer outlives the sidebar
 
   // One activation rule for keyboard AND click (🔒 D3, YAZ-1491): a folder reveals, a file opens.
@@ -1089,8 +1060,11 @@ export function Sidebar({
     [renamingEntry, onRenameFile],
   )
 
-  const renaming: PendingRename | null =
-    renamingEntry === null ? null : { path: renamingEntry.path, onSubmit: submitRename, onCancel: () => setRenamingEntry(null) }
+  const cancelRename = useCallback(() => setRenamingEntry(null), [])
+  const renaming = useMemo<PendingRename | null>(
+    () => (renamingEntry === null ? null : { path: renamingEntry.path, onSubmit: submitRename, onCancel: cancelRename }),
+    [renamingEntry, submitRename, cancelRename],
+  )
 
   // ---- File drag-to-move (E1b, GRO-2241): drop a FILE row on a folder row or the root header ----
 
@@ -1109,17 +1083,20 @@ export function Sidebar({
     [dragging, onRenameFile],
   )
 
-  const fileMove: TreeFileMove = {
-    dragging,
-    dropDir,
-    start: setDragging,
-    end: () => {
-      setDragging(null)
-      setDropDir(null)
-    },
-    hover: setDropDir,
-    drop: dropOnDir,
-  }
+  const fileMove = useMemo<TreeFileMove>(
+    () => ({
+      dragging,
+      dropDir,
+      start: setDragging,
+      end: () => {
+        setDragging(null)
+        setDropDir(null)
+      },
+      hover: setDropDir,
+      drop: dropOnDir,
+    }),
+    [dragging, dropDir, dropOnDir],
+  )
 
   // ---- Favorites drag-to-reorder (YAZ-1766 D4): a root row dropped above/below another rewrites the list ----
 
@@ -1138,35 +1115,40 @@ export function Sidebar({
   }, [reorderDragging, reorderOver, saveFavorites])
 
   /** Off while the tab is focused: the focus list is what is shown then, not the favorites order. */
-  const favoriteReorder: TreeReorder = {
-    dragging: reorderDragging,
-    over: reorderOver,
-    start: focusFavorites.length > 0 ? () => undefined : setReorderDragging,
-    hover: (path, edge) => setReorderOver((prev) => (prev?.path === path && prev.edge === edge ? prev : { path, edge })),
-    drop: dropReorder,
-    end: () => {
-      setReorderDragging(null)
-      setReorderOver(null)
-    },
-  }
+  const reorderOff = focusFavorites.length > 0
+  const favoriteReorder = useMemo<TreeReorder>(
+    () => ({
+      dragging: reorderDragging,
+      over: reorderOver,
+      start: reorderOff ? () => undefined : setReorderDragging,
+      hover: (path, edge) => setReorderOver((prev) => (prev?.path === path && prev.edge === edge ? prev : { path, edge })),
+      drop: dropReorder,
+      end: () => {
+        setReorderDragging(null)
+        setReorderOver(null)
+      },
+    }),
+    [reorderDragging, reorderOver, reorderOff, dropReorder],
+  )
 
   /** The multi-select as both trees take it (YAZ-1336): the set, plus its two gestures — toggle (shift) and set (any other click, D9). */
-  const selection: TreeSelection = {
-    paths: selectedPaths,
-    toggle: (path) => dispatchSelection({ type: 'toggle', path }),
-    set: (path) => dispatchSelection({ type: 'set', path }),
-  }
+  const selection = useMemo<TreeSelection>(
+    () => ({
+      paths: selectedPaths,
+      toggle: (path) => dispatchSelection({ type: 'toggle', path }),
+      set: (path) => dispatchSelection({ type: 'set', path }),
+    }),
+    [selectedPaths],
+  )
 
-  const pending: PendingCreate | null =
-    creating === null
-      ? null
-      : {
-          kind: creating.kind,
-          seed: creating.seed,
-          parentDir: creating.parentDir,
-          onSubmit: submitCreate,
-          onCancel: cancelCreate,
-        }
+  const pending = useMemo<PendingCreate | null>(
+    () => (creating === null ? null : { kind: creating.kind, seed: creating.seed, parentDir: creating.parentDir, onSubmit: submitCreate, onCancel: cancelCreate }),
+    [creating, submitCreate, cancelCreate],
+  )
+
+  // The Tree is memoized (YAZ-2073 5D): these two, like every object above, keep their identity until they change.
+  const expandedSet = useMemo(() => new Set(expanded), [expanded])
+  const toggleDir = useCallback((dir: string) => dispatch({ type: 'toggle', dir }), [])
 
   // ONE gate for both disk-folder births (YAZ-948 rule; YAZ-1604 adds the dated twin).
   const canNewFolder = menu !== null
@@ -1399,9 +1381,9 @@ export function Sidebar({
               <Tree
                 nodes={favoriteNodes}
                 dirPath={root}
-                expanded={new Set(expanded)}
+                expanded={expandedSet}
                 activeFile={activeFile}
-                onToggle={(dir) => dispatch({ type: 'toggle', dir })}
+                onToggle={toggleDir}
                 onOpenFile={onOpenFile}
                 onOpenFileBackground={onOpenFileBackground}
                 onOpenDefault={openDefault}
@@ -1428,9 +1410,9 @@ export function Sidebar({
               <Tree
                 nodes={sortedNodes}
                 dirPath={root}
-                expanded={new Set(expanded)}
+                expanded={expandedSet}
                 activeFile={activeFile}
-                onToggle={(dir) => dispatch({ type: 'toggle', dir })}
+                onToggle={toggleDir}
                 onOpenFile={onOpenFile}
                 onOpenFileBackground={onOpenFileBackground}
                 onOpenDefault={openDefault}
@@ -1500,9 +1482,7 @@ export function Sidebar({
           <BoardInfo node={infoNode} root={root} now={infoPopover.now} />
         </ContextMenuSurface>
       )}
-      {hover?.shown === true && hoverNode !== null && previewsOn && (
-        <BoardPreview key={hoverNode.path} root={root} node={hoverNode} cacheKey={boardPreviewKey(root, hoverNode, theme, settings.diagramDarkColors)} anchor={asideRef} />
-      )}
+      <HoverPreviewHost hover={hover} tree={tree} root={root} enabled={previewsOn} diagramDarkColors={settings.diagramDarkColors} anchor={asideRef} onClose={closePreview} />
       {confirmingDelete !== null && <ConfirmDelete target={confirmingDelete} onConfirm={confirmDelete} onCancel={() => setConfirmingDelete(null)} />}
     </aside>
   )

@@ -515,6 +515,29 @@ describe('chips and the canvas frame', () => {
     expect(chips()).toContain('Pending')
   })
 
+  // YAZ-2073 5D: the chips read a store, so a save's status moves (unsaved → saving → saved) repaint
+  // the chips alone — the host never re-renders the surface — and a sync change keeps the top-right
+  // renderer's identity, which the surface hands straight to the memoized `<Excalidraw>`.
+  it('a save and a sync change repaint the chips without a new top-right renderer', async () => {
+    const onSyncNow = vi.fn()
+    render({ sync: { state: 'pending', enabled: true } as GithubSyncStatus, onSyncNow })
+    await flush()
+    emit(7)
+    const props = surface.props
+    emit(8)
+    expect(chips()).toContain('Unsaved')
+    await act(async () => {
+      vi.advanceTimersByTime(500)
+    })
+    expect(save).toHaveBeenCalledTimes(1)
+    expect(chips()).toContain('Saved')
+    expect(surface.props).toBe(props)
+
+    render({ sync: { state: 'synced', enabled: true } as GithubSyncStatus, onSyncNow })
+    expect(chips()).not.toContain('Pending')
+    expect(surface.props?.renderTopRight).toBe(props?.renderTopRight)
+  })
+
   /**
    * The reveal effect: one `IntersectionObserver`, two jobs — re-measure, and the gated focus
    * handoff (🔒 "Focus handoff on tab reveal", YAZ-1812).

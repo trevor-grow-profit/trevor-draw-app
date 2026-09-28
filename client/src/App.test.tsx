@@ -644,6 +644,25 @@ describe('App sidebar resize (YAZ-738)', () => {
     expect(bridge.window.setIdentity).toHaveBeenCalledWith({ sidebarCollapsed: true })
     expect(bridge.state.setSidebarWidth).not.toHaveBeenCalled()
   })
+
+  // YAZ-2073 5D: the moves paint the CSS var alone; App (and with it the sidebar, the tab bar and every
+  // editor host) renders when the drag starts and when it lands, never per move.
+  it('the moves of a drag re-render nothing; the release commits the width the next drag starts from', async () => {
+    const { bridge, el } = await mount(defaultAppState(), { id: 'w1', root: '/v', file: null, tabs: [] })
+    act(() => void el.querySelector('.sidebar-resize')?.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, clientX: 0 })))
+    const rendered = captured.sidebar
+    for (const dx of [10, 40, 90, 120]) {
+      act(() => void window.dispatchEvent(new MouseEvent('mousemove', { clientX: dx })))
+      expect(sideW()).toBe(`${260 + dx}px`)
+    }
+    expect(captured.sidebar).toBe(rendered)
+    act(() => void window.dispatchEvent(new MouseEvent('mouseup', { clientX: 120 })))
+    expect(captured.sidebar).not.toBe(rendered)
+    expect(sideW()).toBe('380px')
+    act(() => drag(el, 20))
+    expect(sideW()).toBe('400px')
+    expect(bridge.state.setSidebarWidth.mock.calls).toEqual([[380], [400]])
+  })
 })
 
 /**
