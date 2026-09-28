@@ -1219,7 +1219,8 @@ an unpackaged (dev) build — a shipped app always sends the real token to the r
   window from a disconnected monitor comes back on screen.
 - Closing runs the flush handshake: main holds the window open, pushes `app:flush`, and waits for
   `app:flushed` (5s cap) so an in-flight autosave lands before the process lets go. ⌘Q does the
-  same for every window, then writes the state file.
+  same for every window, then writes the state file. SIGTERM and SIGINT (a logout, `kill`, ⌃C in a
+  terminal) are the same quit: Electron turns them into `app.quit()` (`e2e/autosave.spec.ts` pins it).
 - One running instance. A second launch focuses the first; a `yaseendraw://` URL in its argv
   routes instead of focusing.
 

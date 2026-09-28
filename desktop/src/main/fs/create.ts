@@ -4,6 +4,7 @@ import { isDiagram, isDrawing } from '@shared/fileKind'
 import { stampBoardMeta } from '@shared/drawingAssets'
 import { diagramDocumentError, diagramRoot, stampDiagramMeta } from '@shared/diagramFile'
 import { BridgeFailure, fsCall, requireAbsPath } from './fsUtils'
+import { requireObject } from './validate'
 
 /**
  * Creation calls for the sidebar's "New folder" / "New drawing" (GRO-2022). Existence races
@@ -30,9 +31,7 @@ export async function createDir(path: string): Promise<CreateDirResponse> {
  */
 export async function createFile(req: CreateFileRequest): Promise<CreateFileResponse> {
   // Crosses IPC from a sandboxed renderer: shape-checked like a request body.
-  const raw: unknown = req
-  if (typeof raw !== 'object' || raw === null) throw new BridgeFailure('BAD_REQUEST', 'request must be an object')
-  const { path, content } = raw as Record<string, unknown>
+  const { path, content } = requireObject(req)
   const p = requireAbsPath(path, 'path')
   if (!isDrawing(p) && !isDiagram(p)) throw new BridgeFailure('UNSUPPORTED_EXTENSION', 'only .excalidraw and .drawio files can be created', { path: p })
   if (typeof content !== 'string') throw new BridgeFailure('BAD_REQUEST', "'content' must be a string", { path: p })

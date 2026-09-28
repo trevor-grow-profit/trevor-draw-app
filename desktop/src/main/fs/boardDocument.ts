@@ -10,6 +10,7 @@ import { isDiagram, isDrawing } from '@shared/fileKind'
 import { isWithin } from '@shared/paths'
 import { readBoardHead } from './boardHead'
 import { BridgeFailure, fsCall, requireAbsPath } from './fsUtils'
+import { requireObject } from './validate'
 
 export type BoardKind = 'drawing' | 'diagram'
 
@@ -30,8 +31,7 @@ export function resolveBoard(dir: string, rel: unknown, kind: BoardKind): string
 
 /** The request's `{ root, path }` pair, validated once for both of a kind's doors. */
 export function boardTarget(raw: unknown, kind: BoardKind): { dir: string; file: string; body: Record<string, unknown> } {
-  if (typeof raw !== 'object' || raw === null) throw new BridgeFailure('BAD_REQUEST', 'request must be an object')
-  const body = raw as Record<string, unknown>
+  const body = requireObject(raw)
   const dir = requireAbsPath(body.root, 'root')
   return { dir, file: resolveBoard(dir, body.path, kind), body }
 }

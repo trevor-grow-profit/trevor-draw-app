@@ -3,6 +3,7 @@ import { stat } from 'node:fs/promises'
 import path from 'node:path'
 import type { DeleteResponse } from '@shared/types'
 import { BridgeFailure, fsCall, isSkipped, requireAbsPath } from './fsUtils'
+import { requireObject } from './validate'
 
 /**
  * In-app delete (GRO-2272 — decision A, LOCKED): the entry moves to the SYSTEM TRASH.
@@ -32,8 +33,7 @@ import { BridgeFailure, fsCall, isSkipped, requireAbsPath } from './fsUtils'
  * and needs no push, exactly as rename relies on.
  */
 export async function removeEntry(req: unknown): Promise<DeleteResponse> {
-  if (typeof req !== 'object' || req === null) throw new BridgeFailure('BAD_REQUEST', 'request must be an object')
-  const p = requireAbsPath((req as Record<string, unknown>).path, 'path')
+  const p = requireAbsPath(requireObject(req).path, 'path')
   return fsCall(p, async () => {
     const src = await stat(p) // missing → ENOENT → NOT_FOUND
     const kind = src.isDirectory() ? ('dir' as const) : ('file' as const)

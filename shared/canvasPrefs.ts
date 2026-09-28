@@ -28,6 +28,7 @@
  * existed must still load, keeping every key it does have.
  */
 
+import { isRecord } from './guards'
 import { DEFAULT_CANVAS_PREFS, ROUGHNESS_LEVELS, SELECT_ON_MODES, TEXT_ALIGNS, type CanvasPrefs, type Roughness, type SelectOn, type TextAlign } from './types'
 
 /** Every pref key, in declaration order — the order `changedPrefKeys` reports in. */
@@ -58,12 +59,12 @@ const FIELD_OK: { [K in keyof CanvasPrefs]: (v: unknown) => v is CanvasPrefs[K] 
 
 /** Strict: every field present and valid — the IPC boundary's check. */
 export function isCanvasPrefs(v: unknown): v is CanvasPrefs {
-  return typeof v === 'object' && v !== null && !Array.isArray(v) && CANVAS_PREF_KEYS.every((k) => FIELD_OK[k]((v as Record<string, unknown>)[k]))
+  return isRecord(v) && CANVAS_PREF_KEYS.every((k) => FIELD_OK[k](v[k]))
 }
 
 /** Lenient: field by field over the defaults, so a state file from before a key existed still loads. */
 export function sanitizeCanvasPrefs(raw: unknown): CanvasPrefs {
-  const src = typeof raw === 'object' && raw !== null && !Array.isArray(raw) ? (raw as Record<string, unknown>) : {}
+  const src = isRecord(raw) ? raw : {}
   const out = { ...DEFAULT_CANVAS_PREFS }
   for (const k of CANVAS_PREF_KEYS) {
     const v = src[k]

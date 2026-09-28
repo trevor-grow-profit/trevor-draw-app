@@ -17,28 +17,26 @@ import { mkdir } from 'node:fs/promises'
 import { isMediaBytesProvider, isMediaSearchSource, PIXABAY_SECRET, type MediaBytesRequest, type MediaSearchRequest } from '@shared/types'
 import { CH } from '../../channels'
 import { BridgeFailure } from '../fs/fsUtils'
+import { requireObject, str, strOrNull } from '../fs/validate'
 import { createMediaCache, type MediaCache } from '../media/cache'
 import { MEDIA_CACHE_DIR } from '../media/cachePolicy'
 import { createMediaProviders, type MediaProviders } from '../media/providers'
 import type { Secrets } from '../secrets'
-import { isRecord } from '@shared/guards'
 import { handle } from './envelope'
 
 function requireSearchRequest(v: unknown): MediaSearchRequest {
-  if (!isRecord(v)) throw new BridgeFailure('BAD_REQUEST', 'missing request')
-  if (typeof v.q !== 'string') throw new BridgeFailure('BAD_REQUEST', "'q' must be a string")
-  if (!isMediaSearchSource(v.source)) throw new BridgeFailure('BAD_REQUEST', "'source' must be all, iconify or pixabay")
-  if (v.cursor !== undefined && v.cursor !== null && typeof v.cursor !== 'string') throw new BridgeFailure('BAD_REQUEST', "'cursor' must be a string or null")
-  return { q: v.q, source: v.source, cursor: (v.cursor as string | null | undefined) ?? null }
+  const r = requireObject(v, 'missing request')
+  if (typeof r.q !== 'string') throw new BridgeFailure('BAD_REQUEST', "'q' must be a string")
+  if (!isMediaSearchSource(r.source)) throw new BridgeFailure('BAD_REQUEST', "'source' must be all, iconify or pixabay")
+  return { q: r.q, source: r.source, cursor: r.cursor === undefined ? null : strOrNull(r.cursor, 'cursor') }
 }
 
 function requireBytesRequest(v: unknown): MediaBytesRequest {
-  if (!isRecord(v)) throw new BridgeFailure('BAD_REQUEST', 'missing request')
+  const r = requireObject(v, 'missing request')
   // `shape` is deliberately not one of these: a shape is drawn by the renderer from its own
   // catalog and has no bytes to fetch (🔒 YAZ-1775 D4).
-  if (!isMediaBytesProvider(v.provider)) throw new BridgeFailure('BAD_REQUEST', "'provider' must be pixabay or iconify")
-  if (typeof v.id !== 'string' || v.id === '') throw new BridgeFailure('BAD_REQUEST', "'id' must be a non-empty string")
-  return { provider: v.provider, id: v.id }
+  if (!isMediaBytesProvider(r.provider)) throw new BridgeFailure('BAD_REQUEST', "'provider' must be pixabay or iconify")
+  return { provider: r.provider, id: str(r.id, 'id') }
 }
 
 /** The cache folder this registration owns — the one fact a test needs back from it. */

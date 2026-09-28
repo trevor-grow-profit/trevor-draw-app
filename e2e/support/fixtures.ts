@@ -164,13 +164,25 @@ export class DrawApp {
    * once the sequence has provably finished (support/mainHook.cjs's marker) a process still
    * lingering after EXIT_GRACE_MS is killed — everything the app writes on quit is written by then.
    */
-  async quit(): Promise<void> {
+  quit(): Promise<void> {
+    return this.endBy(() => void this.electron.close().catch(() => {}))
+  }
+
+  /**
+   * A shutdown signal — SIGTERM from a logout or `kill`, SIGINT from a terminal's ⌃C. Electron turns
+   * it into `app.quit()`, so it runs the same quit sequence as ⌘Q (YAZ-2073 2G); resolves as `quit`.
+   */
+  terminate(signal: 'SIGTERM' | 'SIGINT' = 'SIGTERM'): Promise<void> {
+    return this.endBy(() => void this.proc.kill(signal))
+  }
+
+  private async endBy(start: () => void): Promise<void> {
     const { proc } = this
     if (proc.exitCode !== null || proc.signalCode !== null) return
     const marker = join(this.sandbox.dir, 'quit.marker')
     rmSync(marker, { force: true })
     const exited = new Promise<void>((resolve) => proc.once('exit', () => resolve()))
-    void this.electron.close().catch(() => {})
+    start()
     const gone = await Promise.race([exited.then(() => true), until(() => existsSync(marker), QUIT_TIMEOUT_MS).then(() => false)])
     if (gone) return
     if (!existsSync(marker)) {

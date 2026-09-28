@@ -1,8 +1,9 @@
 import type { AppState } from '@shared/types'
 import { CH } from '../../channels'
+import { isStringArray } from '@shared/guards'
 import { getFavorites, setFavorites, subscribeFavorites } from '../favorites'
 import { BridgeFailure, requireAbsPath } from '../fs/fsUtils'
-import { isStringArray, type Store } from '../store'
+import type { Store } from '../store'
 import { broadcastAll } from './broadcast'
 import { handle } from './envelope'
 

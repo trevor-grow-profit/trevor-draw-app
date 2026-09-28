@@ -32,7 +32,7 @@ import {
 import { isCanvasPrefs, sanitizeCanvasPrefs } from '@shared/canvasPrefs'
 import { isWithin } from '@shared/paths'
 import { atomicWrite } from './fs/fsUtils'
-import { isFiniteNumber, isRecord } from '@shared/guards'
+import { isFiniteNumber, isRecord, isStringArray } from '@shared/guards'
 
 /**
  * The app state store (D9, GRO-2159): one user-global JSON file owned by the main process.
@@ -82,8 +82,6 @@ export const WRITE_DEBOUNCE_MS = 150
 
 // ---------- validation (field by field; anything off falls back to its default) ----------
 
-/** Shared with the IPC boundary (`ipc/state.ts` / `ipc/window.ts`) — one guard, three call sites. */
-export const isStringArray = (v: unknown): v is string[] => Array.isArray(v) && v.every((x) => typeof x === 'string')
 const isStringOrNull = (v: unknown): v is string | null => v === null || typeof v === 'string'
 const clampSidebarWidth = (w: number): number => Math.min(SIDEBAR_MAX_W, Math.max(SIDEBAR_MIN_W, w))
 
