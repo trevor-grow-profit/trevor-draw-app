@@ -1,0 +1,336 @@
+diff --git a/packages/element/src/image.ts b/packages/element/src/image.ts
+index 562b4890..3c808358 100644
+--- a/packages/element/src/image.ts
++++ b/packages/element/src/image.ts
+@@ -31,6 +31,43 @@ export const loadHTMLImageElement = (dataURL: DataURL) => {
+   });
+ };
+ 
++type ImageCacheEntry = Parameters<AppClassProperties["imageCache"]["set"]>[1];
++
++/** The formats a full-resolution ImageBitmap draws pixel-for-pixel like the
++ * element itself, measured in Chromium through the editor and export paths
++ * (YAZ-2073 5B). Not SVG, which rasterises at the drawn size; not JPEG or AVIF,
++ * which the element path draws up to 48/255 differently. */
++const BITMAP_MIME_TYPES: ReadonlySet<string> = new Set([
++  MIME_TYPES.png,
++  MIME_TYPES.webp,
++  MIME_TYPES.gif,
++  MIME_TYPES.bmp,
++  MIME_TYPES.ico,
++]);
++
++/** The decoded-image cache. An ImageBitmap's pixels are not evictable, so an
++ * entry that is replaced or dropped frees its bitmap at once rather than
++ * whenever GC gets to it (YAZ-2073 D5). */
++export class ImageCache extends Map<FileId, ImageCacheEntry> {
++  set(fileId: FileId, entry: ImageCacheEntry) {
++    const bitmap = this.get(fileId)?.bitmap;
++    if (bitmap !== entry.bitmap) {
++      bitmap?.close();
++    }
++    return super.set(fileId, entry);
++  }
++
++  delete(fileId: FileId) {
++    this.get(fileId)?.bitmap?.close();
++    return super.delete(fileId);
++  }
++
++  clear() {
++    this.forEach((entry) => entry.bitmap?.close());
++    super.clear();
++  }
++}
++
+ /** NOTE: updates cache even if already populated with given image. Thus,
+  * you should filter out the images upstream if you want to optimize this. */
+ export const updateImageCache = async ({
+@@ -67,8 +104,15 @@ export const updateImageCache = async ({
+               imageCache.set(fileId, data);
+ 
+               const image = await imagePromise;
+-
+-              imageCache.set(fileId, { ...data, image });
++              // Decode once, off the main thread: an `onload`-only image is
++              // decoded synchronously by its first drawImage (~15 ms for a
++              // 1440×822 PNG). Full resolution, so zooming in stays sharp
++              // (YAZ-2073 D5).
++              const bitmap = BITMAP_MIME_TYPES.has(fileData.mimeType)
++                ? await createImageBitmap(image).catch(() => undefined)
++                : undefined;
++
++              imageCache.set(fileId, { ...data, image, bitmap });
+             } catch (error: any) {
+               erroredFiles.set(fileId, true);
+             }
+diff --git a/packages/element/src/renderElement.ts b/packages/element/src/renderElement.ts
+index 64160ee6..42a3377a 100644
+--- a/packages/element/src/renderElement.ts
++++ b/packages/element/src/renderElement.ts
+@@ -464,7 +464,7 @@ const drawElementOnCanvas = (
+           }
+ 
+           context.drawImage(
+-            img,
++            cacheEntry?.bitmap ?? img,
+             x,
+             y,
+             width,
+diff --git a/packages/element/tests/image.test.tsx b/packages/element/tests/image.test.tsx
+new file mode 100644
+index 00000000..15d6fcdc
+--- /dev/null
++++ b/packages/element/tests/image.test.tsx
+@@ -0,0 +1,185 @@
++import React from "react";
++import { vi } from "vitest";
++
++import { IMAGE_MIME_TYPES, MIME_TYPES } from "@excalidraw/common";
++
++import { Excalidraw, exportToCanvas } from "@excalidraw/excalidraw";
++
++import { API } from "@excalidraw/excalidraw/tests/helpers/api";
++import { mockHTMLImageElement } from "@excalidraw/excalidraw/tests/helpers/mocks";
++import {
++  render,
++  unmountComponent,
++  waitFor,
++} from "@excalidraw/excalidraw/tests/test-utils";
++
++import type { BinaryFiles, DataURL } from "@excalidraw/excalidraw/types";
++
++import { ImageCache, updateImageCache } from "../src/image";
++
++import type { FileId } from "../src/types";
++
++const { h } = window;
++
++const PNG = MIME_TYPES.png as string as FileId;
++
++/** one file per image format, keyed by its mime type */
++const files: BinaryFiles = Object.fromEntries(
++  Object.values(IMAGE_MIME_TYPES).map((mimeType) => [
++    mimeType,
++    {
++      id: mimeType as string as FileId,
++      mimeType,
++      dataURL: `data:${mimeType};base64,AAAA` as DataURL,
++      created: 1,
++    },
++  ]),
++);
++
++const bitmapOf = (imageCache: ImageCache, fileId: FileId) => {
++  const bitmap = imageCache.get(fileId)?.bitmap;
++  expect(bitmap).toBeDefined();
++  return bitmap!;
++};
++
++beforeEach(() => {
++  unmountComponent();
++  vi.restoreAllMocks();
++  mockHTMLImageElement(1440, 822);
++});
++
++describe("updateImageCache decodes raster images into bitmaps (YAZ-2073 D5)", () => {
++  it.each([
++    MIME_TYPES.png,
++    MIME_TYPES.webp,
++    MIME_TYPES.gif,
++    MIME_TYPES.bmp,
++    MIME_TYPES.ico,
++  ])("creates a bitmap from the loaded %s", async (mimeType) => {
++    const createImageBitmap = vi.spyOn(window, "createImageBitmap");
++    const fileId = mimeType as string as FileId;
++    const { imageCache } = await updateImageCache({
++      fileIds: [fileId],
++      files,
++      imageCache: new ImageCache(),
++    });
++
++    const entry = imageCache.get(fileId)!;
++    expect(entry.image).toBeInstanceOf(HTMLImageElement);
++    expect(createImageBitmap).toHaveBeenCalledWith(entry.image);
++    expect(entry.bitmap).toBe(await createImageBitmap.mock.results[0].value);
++  });
++
++  // SVG rasterises at the drawn size; JPEG and AVIF draw differently from a bitmap
++  it.each([MIME_TYPES.svg, MIME_TYPES.jpg, MIME_TYPES.jfif, MIME_TYPES.avif])(
++    "keeps %s as an element only",
++    async (mimeType) => {
++      const createImageBitmap = vi.spyOn(window, "createImageBitmap");
++      const fileId = mimeType as string as FileId;
++      const { imageCache } = await updateImageCache({
++        fileIds: [fileId],
++        files,
++        imageCache: new ImageCache(),
++      });
++
++      expect(imageCache.get(fileId)!.image).toBeInstanceOf(HTMLImageElement);
++      expect(imageCache.get(fileId)!.bitmap).toBeUndefined();
++      expect(createImageBitmap).not.toHaveBeenCalled();
++    },
++  );
++
++  it("falls back to the element when createImageBitmap fails", async () => {
++    vi.spyOn(window, "createImageBitmap").mockRejectedValue(
++      new DOMException("decode failed"),
++    );
++    const { imageCache, erroredFiles } = await updateImageCache({
++      fileIds: [PNG],
++      files,
++      imageCache: new ImageCache(),
++    });
++
++    expect(imageCache.get(PNG)!.image).toBeInstanceOf(HTMLImageElement);
++    expect(imageCache.get(PNG)!.bitmap).toBeUndefined();
++    expect(erroredFiles.size).toBe(0);
++  });
++});
++
++describe("ImageCache frees bitmaps it drops", () => {
++  const cached = async () =>
++    (
++      await updateImageCache({
++        fileIds: [PNG],
++        files,
++        imageCache: new ImageCache(),
++      })
++    ).imageCache as ImageCache;
++
++  it("on delete", async () => {
++    const imageCache = await cached();
++    const bitmap = bitmapOf(imageCache, PNG);
++    imageCache.delete(PNG);
++    expect(bitmap.close).toHaveBeenCalledTimes(1);
++  });
++
++  it("on clear", async () => {
++    const imageCache = await cached();
++    const bitmap = bitmapOf(imageCache, PNG);
++    imageCache.clear();
++    expect(bitmap.close).toHaveBeenCalledTimes(1);
++    expect(imageCache.size).toBe(0);
++  });
++
++  it("when the entry is re-initialised, but not when it is re-set as is", async () => {
++    const imageCache = await cached();
++    const bitmap = bitmapOf(imageCache, PNG);
++    imageCache.set(PNG, { ...imageCache.get(PNG)! });
++    expect(bitmap.close).not.toHaveBeenCalled();
++
++    await updateImageCache({ fileIds: [PNG], files, imageCache });
++    expect(bitmap.close).toHaveBeenCalledTimes(1);
++    expect(bitmapOf(imageCache, PNG)).not.toBe(bitmap);
++  });
++});
++
++describe("rendering draws from the bitmap", () => {
++  it("exports with the bitmap and frees it afterwards", async () => {
++    const createImageBitmap = vi.spyOn(window, "createImageBitmap");
++    const drawImage = vi.spyOn(CanvasRenderingContext2D.prototype, "drawImage");
++    const image = API.createElement({
++      type: "image",
++      fileId: PNG,
++      status: "saved",
++      width: 360,
++      height: 206,
++    });
++
++    await exportToCanvas({ elements: [image], files, appState: {} });
++
++    const bitmap = await createImageBitmap.mock.results[0].value;
++    expect(drawImage.mock.calls.map(([source]) => source)).toContain(bitmap);
++    expect(bitmap.close).toHaveBeenCalledTimes(1);
++  });
++
++  it("frees the editor's bitmaps when it unmounts", async () => {
++    const image = API.createElement({
++      type: "image",
++      fileId: PNG,
++      status: "saved",
++      width: 360,
++      height: 206,
++    });
++    await render(
++      <Excalidraw
++        initialData={{ elements: [image], files: { [PNG]: files[PNG] } }}
++      />,
++    );
++    await waitFor(() =>
++      expect(h.app.imageCache.get(PNG)?.bitmap).toBeDefined(),
++    );
++    const bitmap = h.app.imageCache.get(PNG)!.bitmap!;
++
++    unmountComponent();
++
++    expect(bitmap.close).toHaveBeenCalledTimes(1);
++  });
++});
+diff --git a/packages/excalidraw/components/App.tsx b/packages/excalidraw/components/App.tsx
+index e392c1ce..11f0bf63 100644
+--- a/packages/excalidraw/components/App.tsx
++++ b/packages/excalidraw/components/App.tsx
+@@ -173,6 +173,7 @@ import {
+   maybeParseEmbedSrc,
+   getEmbedLink,
+   getInitializedImageElements,
++  ImageCache,
+   normalizeSVG,
+   updateImageCache as _updateImageCache,
+   getBoundTextElement,
+@@ -680,7 +681,7 @@ class App extends React.Component<AppProps, AppState> {
+   };
+ 
+   public files: BinaryFiles = {};
+-  public imageCache: AppClassProperties["imageCache"] = new Map();
++  public imageCache: AppClassProperties["imageCache"] = new ImageCache();
+   private iFrameRefs = new Map<ExcalidrawElement["id"], HTMLIFrameElement>();
+   /**
+    * Indicates whether the embeddable's url has been validated for rendering.
+diff --git a/packages/excalidraw/scene/export.ts b/packages/excalidraw/scene/export.ts
+index 33989315..f71626f5 100644
+--- a/packages/excalidraw/scene/export.ts
++++ b/packages/excalidraw/scene/export.ts
+@@ -18,6 +18,7 @@ import {
+ import { getCommonBounds, getElementAbsoluteCoords } from "@excalidraw/element";
+ 
+ import {
++  ImageCache,
+   getInitializedImageElements,
+   updateImageCache,
+ } from "@excalidraw/element";
+@@ -239,7 +240,7 @@ export const exportToCanvas = async (
+   const defaultAppState = getDefaultAppState();
+ 
+   const { imageCache } = await updateImageCache({
+-    imageCache: new Map(),
++    imageCache: new ImageCache(),
+     fileIds: getInitializedImageElements(elementsForRender).map(
+       (element) => element.fileId,
+     ),
+@@ -279,6 +280,8 @@ export const exportToCanvas = async (
+       theme: appState.exportWithDarkMode ? THEME.DARK : THEME.LIGHT,
+     },
+   });
++  // the decoded bitmaps served this one render; free them now (YAZ-2073 D5)
++  imageCache.clear();
+ 
+   return canvas;
+ };
+diff --git a/packages/excalidraw/types.ts b/packages/excalidraw/types.ts
+index 40c6aeb3..db953cc0 100644
+--- a/packages/excalidraw/types.ts
++++ b/packages/excalidraw/types.ts
+@@ -1109,6 +1109,10 @@ export type AppClassProperties = {
+     FileId,
+     {
+       image: HTMLImageElement | Promise<HTMLImageElement>;
++      /** the pixels decoded off the main thread, at full resolution, for
++       * drawImage — for the formats that draw identically from one (see
++       * `updateImageCache`); `image` stays for naturalWidth & co. */
++      bitmap?: ImageBitmap;
+       mimeType: ValueOf<typeof IMAGE_MIME_TYPES>;
+     }
+   >;

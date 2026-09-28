@@ -1401,6 +1401,10 @@ but for two config hooks, inside an iframe on its OWN origin.
 
 Bumping the vendored engine is `node tools/packEngine.mjs --commit <sha>` followed by `npm ci` —
 see `client/vendor/README.md` for the two traps that script exists to defuse.
+A bump that must change no pixels proves it with `node tools/perf/exportPixels.mjs --dev --out <a>`
+on the old build and `--out <b> --compare <a>` on the new: PNG, JPEG, WebP, GIF and SVG images,
+cropped, flipped and rotated, and text, exported (PNG and SVG) and on the live canvas, in both
+themes (YAZ-2073 5A/5B).
 
 ## Out of scope (locked)
 
