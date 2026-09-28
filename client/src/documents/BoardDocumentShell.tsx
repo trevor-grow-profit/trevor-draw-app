@@ -1,15 +1,14 @@
 import { Fragment, useEffect, useState, type ReactNode } from 'react'
 
-export interface BoardDocumentShellProps<T> {
+interface BoardDocumentShellProps<T> {
   root: string
   path: string
   /** `editor--drawing` or `editor--diagram`: the section `boardCommand.ts` dispatches on. */
   className: string
-  /** Reads the document; a rejection is the error pane. Module-level, so its identity never changes. */
+  /** Module-level, so its identity never changes; a rejection is `errorText`'s error pane. */
   load: (req: { root: string; path: string }) => Promise<T>
-  /** What the error pane says for `load`'s rejection. */
   errorText: (err: unknown) => string
-  /** The host, handed the loaded document and the error pane (an engine that fails after mount). */
+  /** The host, handed the document and the error pane (for an engine that fails after mount). */
   children: (loaded: T, onFailed: (message: string) => void) => ReactNode
 }
 

@@ -26,7 +26,7 @@
  * (🔒 YAZ-1812) are both claimed on THIS host's own element: the shell keeps several boards
  * mounted, and exactly one of them is in front.
  */
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type ReactNode, type RefObject } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react'
 import type { GithubSyncStatus, SaveDrawingResponse } from '@shared/types'
 import { BridgeRequestError } from '../api'
 import type { WatchSource } from '../hooks/useWatch'
@@ -51,40 +51,27 @@ export interface BoardDocumentOptions {
   /** The vault's sync status (YAZ-1081), App-owned; null while fetching, undefined = no chip. */
   sync?: GithubSyncStatus | null
   onSyncNow?: () => void
-  /** Writes the live document under `expectedMtime` and answers the new mtime. */
   write: (expectedMtime: number) => Promise<{ mtime: number }>
   /** Disk truth into the engine, and `autosave` reset to it; throws when the file cannot be read. */
   reload: (autosave: Autosave<number>) => Promise<void>
-  /** A menu command reached this board (`boardCommand.ts`). */
   onCommand: (command: BoardCommand) => void
-  /** The tab came back into view. */
+  /** The tab came back into view; `focus` then hands the engine the keyboard, unless something holds it. */
   onShown?: () => void
-  /** Hand the engine the keyboard. */
   focus: () => void
 }
 
-export interface BoardDocument {
-  /** The host's own element: commands and the reveal observer are claimed on it. */
-  hostRef: RefObject<HTMLDivElement | null>
-  /** Null until the engine's baseline `start`s it. */
-  autosave: RefObject<Autosave<number> | null>
-  /** A retired host never writes again (a delete, or a rename that moved this path away). */
-  retired: RefObject<boolean>
-  /** The engine's content `content` at `mtime` is the clean baseline: autosave starts here. */
-  start: (content: number, mtime: number) => void
-  /** ⌘S: save now. */
-  flush: () => void
-  chips: Store<ChipState>
-  conflictBar: ReactNode
-}
-
-export function useBoardDocument(options: BoardDocumentOptions): BoardDocument {
+/**
+ * `hostRef` goes on the host's own element (commands and the reveal are claimed on it); `start` hands
+ * over the engine's clean baseline, and `autosave` is null until it has.
+ */
+export function useBoardDocument(options: BoardDocumentOptions) {
   const { root, path, watch, sync, onSyncNow } = options
   /** The engine's callbacks as of the last render: the listeners below are bound once, at mount. */
   const engine = useRef(options)
   engine.current = options
   const hostRef = useRef<HTMLDivElement>(null)
   const autosave = useRef<Autosave<number> | null>(null)
+  /** A retired host never writes again (a delete, or a rename that moved this path away). */
   const retired = useRef(false)
   const [conflictMtime, setConflictMtime] = useState<number | null>(null)
   // The chips' live state, read by `<BoardChips>` alone (YAZ-2073 5D).
