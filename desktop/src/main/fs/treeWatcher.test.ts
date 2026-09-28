@@ -138,6 +138,19 @@ describe('treeWatcher', { timeout: 20_000 }, () => {
     expect(await r.quiet()).toEqual(['add first.json'])
   })
 
+  it.runIf(process.platform === 'darwin')('an awaited folder that appears before the stream hears is still found, and watched (YAZ-2073 5F1)', async () => {
+    nativeWatch.lateStream = true
+    const dir = path.join(await tempDir(), 'library')
+    const r = record(dir)
+    await sleep(100) // the parent is watched by now, and the stream still deaf (`LATE_STREAM_MS`)
+    await mkdir(dir)
+    await writeFile(path.join(dir, 'media.json'), '{}')
+    await r.ready()
+    await writeFile(path.join(dir, 'media.json'), '{"items":[]}')
+    await until(() => r.lines.length > 0)
+    expect(await r.quiet()).toEqual(['change media.json'])
+  })
+
   // The same against the real FSEvents, made to happen every time. Opt-in (`FSEVENTS_STRESS=1`):
   // the crowded `fseventsd` it needs slows every other watch on the machine, parallel tests included.
   it.runIf(process.platform === 'darwin' && process.env.FSEVENTS_STRESS === '1')('a watch reopened the moment the last one closed hears the first write after `ready`, however busy `fseventsd` is (YAZ-2073 5F1)', async () => {

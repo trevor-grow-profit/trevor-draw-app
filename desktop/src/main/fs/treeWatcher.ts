@@ -107,6 +107,9 @@ async function probeStream(): Promise<Probe> {
   }
 }
 
+/** Closes a probe; one that never opened has nothing to close. */
+const closeProbe = (probe: Promise<Probe>): Promise<void> => probe.then((p) => p.close(), () => undefined)
+
 /**
  * Whether `dir` sits on a volume macOS does not call `local` (SMB, NFS, AFP, WebDAV), read off
  * `mount`'s table: the longest mount point containing it decides. Windows' change notifications
@@ -142,8 +145,10 @@ class Engine extends EventEmitter implements TreeWatcher {
   private chain: Promise<void> = Promise.resolve()
   private native: FSWatcher | null = null
   private polling: TreeWatcher | null = null
-  /** macOS: vouches that the stream serving `native` hears, and stays open while it does. */
+  /** macOS: the probe opened after `native`, open while it is. */
   private probe: Promise<Probe> | null = null
+  /** Resolves once the stream serving `native` hears — at once off macOS; renewed with `native`. */
+  private listening: Promise<void> = Promise.resolve()
   private started = false
   private closed = false
 
@@ -164,7 +169,7 @@ class Engine extends EventEmitter implements TreeWatcher {
     this.native?.close()
     this.timers.forEach(clearTimeout)
     this.timers.clear()
-    await Promise.all([this.chain, this.polling?.close(), this.probe?.then((p) => p.close())])
+    await Promise.all([this.chain, this.polling?.close(), this.probe && closeProbe(this.probe)])
   }
 
   private async start(): Promise<void> {
@@ -176,9 +181,9 @@ class Engine extends EventEmitter implements TreeWatcher {
     } catch {
       return this.poll()
     }
-    if (process.platform === 'darwin') this.probe = probeStream()
+    // The walk reads the folder once the stream hears, so nothing lands between the two unreported.
+    await this.heard()
     await this.walk(this.dir, false)
-    await (await this.probe)?.heard
     this.started = true
     // What moved during the walk is looked at now, against what the walk found.
     for (const [p, timer] of [...this.timers]) {
@@ -208,9 +213,27 @@ class Engine extends EventEmitter implements TreeWatcher {
     this.polling = w as unknown as TreeWatcher
   }
 
+  /** Resolves once the stream serving `native` hears, however often `native` changes meanwhile. */
+  private async heard(): Promise<void> {
+    for (let at = this.listening; ; at = this.listening) {
+      await at
+      if (at === this.listening) return
+    }
+  }
+
+  /** `w` is the watch now; a new probe must vouch for it, since one opened before it vouches for nothing. */
+  private listen(w: FSWatcher): void {
+    this.native = w
+    if (process.platform !== 'darwin') return
+    const before = this.probe
+    this.probe = before === null ? probeStream() : closeProbe(before).then(probeStream)
+    // A probe that cannot run (no temp folder) is reported, and the watch goes on unvouched.
+    this.listening = this.probe.then((p) => p.heard).catch((err: unknown) => void this.emit('error', err))
+  }
+
   private watchDir(): void {
     const base = path.basename(this.dir)
-    this.native = fsWatch(this.dir, { recursive: true }, (_type, name) => {
+    const w = fsWatch(this.dir, { recursive: true }, (_type, name) => {
       if (this.closed) return
       // `null` = the OS dropped the detail (an overflowed buffer): look at everything again.
       if (name === null) return this.queue(this.dir)
@@ -219,7 +242,8 @@ class Engine extends EventEmitter implements TreeWatcher {
       if (rel === base) this.queue(this.dir)
       this.queue(path.join(this.dir, rel))
     })
-    this.native.on('error', (err) => this.emit('error', err))
+    w.on('error', (err) => this.emit('error', err))
+    this.listen(w)
   }
 
   /**
@@ -228,32 +252,37 @@ class Engine extends EventEmitter implements TreeWatcher {
    */
   private awaitDir(): void {
     const anchor = nearestExisting(path.dirname(this.dir))
-    const w = fsWatch(anchor, () => {
-      if (this.closed) return
-      try {
-        if (existsSync(this.dir)) this.arrived(w)
-        else if (nearestExisting(path.dirname(this.dir)) !== anchor) {
-          w.close()
-          this.awaitDir()
-        }
-      } catch {
-        // The next folder down cannot be watched (EACCES, say): poll instead, as `start` would have,
-        // and announce what the folder already holds, as the native path would have.
-        this.poll()
-          .then(() => (this.closed ? undefined : this.walk(this.dir, true)))
-          .catch((err: unknown) => void this.emit('error', err))
-      }
-    })
+    const w = fsWatch(anchor, () => this.fillIn(w, anchor))
     w.on('error', (err) => this.emit('error', err))
-    this.native = w
-    // It may have appeared between the check and the watch.
-    if (existsSync(this.dir)) this.arrived(w)
+    this.listen(w)
+    // It may have appeared between the check and the watch, or before the stream heard.
+    if (existsSync(this.dir)) return this.arrived(w)
+    void this.listening.then(() => this.fillIn(w, anchor))
   }
 
+  /** The awaited path may have filled in below `anchor`: watch the folder once it exists, else move the anchor down. */
+  private fillIn(w: FSWatcher, anchor: string): void {
+    if (this.closed || this.native !== w) return
+    try {
+      if (existsSync(this.dir)) this.arrived(w)
+      else if (nearestExisting(path.dirname(this.dir)) !== anchor) {
+        w.close()
+        this.awaitDir()
+      }
+    } catch {
+      // The next folder down cannot be watched (EACCES, say): poll instead, as `start` would have,
+      // and announce what the folder already holds, as the native path would have.
+      this.poll()
+        .then(() => (this.closed ? undefined : this.walk(this.dir, true)))
+        .catch((err: unknown) => void this.emit('error', err))
+    }
+  }
+
+  /** Once the folder's own watch hears, what it holds is looked at: what came before that is announced from there. */
   private arrived(anchor: FSWatcher): void {
     anchor.close()
     this.watchDir()
-    this.queue(this.dir)
+    void this.listening.then(() => this.queue(this.dir))
   }
 
   private skip(p: string): boolean {
