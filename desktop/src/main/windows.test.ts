@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import path from 'node:path'
+import path, { win32 } from 'node:path'
 import type { RecentRoots, WindowBounds, WindowEntry } from '@shared/types'
 import { CH } from '../channels'
 import { createStore, type Store } from './store'
@@ -547,6 +547,13 @@ describe('resolveLinkTarget (pure)', () => {
   it('a rootOverride that does not contain the path is ignored', () => {
     expect(resolveLinkTarget('/v/a.excalidraw', [win('w1', '/v')], [], '/w')).toEqual({ kind: 'existing', id: 'w1' })
     expect(resolveLinkTarget('/v/a.excalidraw', [], [], null)).toEqual({ kind: 'new', root: '/v', file: '/v/a.excalidraw' })
+  })
+  it('Windows paths (YAZ-2073 2D): an Explorer double-click lands in the vault holding it, else its parent folder', () => {
+    const board = win32.join('C:\\', 'Users', 'me', 'Vault', 'sub', 'a.excalidraw')
+    const windows = [win('w1', 'C:\\Users\\me\\Vault'), win('w2', 'C:\\Users\\me\\Vaul')]
+    expect(resolveLinkTarget(board, windows, [])).toEqual({ kind: 'existing', id: 'w1' })
+    expect(resolveLinkTarget(board, [], recents('C:\\Users\\me\\Vault'))).toEqual({ kind: 'new', root: 'C:\\Users\\me\\Vault', file: board })
+    expect(resolveLinkTarget(board, [win('w2', 'C:\\Users\\me\\Vaul')], [])).toEqual({ kind: 'new', root: win32.dirname(board), file: board })
   })
 })
 

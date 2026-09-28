@@ -9,6 +9,7 @@ import type { DiagramLoadRequest, DiagramLoadResponse, DiagramSaveRequest, Diagr
 import { MAX_DIAGRAM_BYTES } from '@shared/types'
 import { isDiagram } from '@shared/fileKind'
 import { diagramDocumentError, stampDiagramMeta } from '@shared/diagramFile'
+import { isWithin } from '@shared/paths'
 import { readBoardHead } from './boardHead'
 import { readBoundedRegularFile } from './boundedRead'
 import { atomicWrite, BridgeFailure, fsCall, requireAbsPath, requireDir } from './fsUtils'
@@ -19,7 +20,7 @@ const TOO_LARGE = `diagram exceeds ${MAX_DIAGRAM_BYTES} bytes`
 export function resolveDiagram(dir: string, rel: unknown): string {
   if (typeof rel !== 'string' || rel.trim() === '' || rel.includes('\0')) throw new BridgeFailure('BAD_REQUEST', "missing 'path'")
   const file = path.resolve(dir, rel)
-  if (!file.startsWith(dir + path.sep)) throw new BridgeFailure('BAD_REQUEST', 'path escapes the vault root', { path: rel })
+  if (!isWithin(dir, file, true)) throw new BridgeFailure('BAD_REQUEST', 'path escapes the vault root', { path: rel })
   if (!isDiagram(file)) throw new BridgeFailure('UNSUPPORTED_EXTENSION', 'only .drawio files open as diagrams', { path: file })
   return file
 }

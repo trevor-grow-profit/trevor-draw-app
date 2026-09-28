@@ -1,5 +1,5 @@
 import { randomBytes } from 'node:crypto'
-import { readdir, rename, stat, unlink, writeFile } from 'node:fs/promises'
+import { open, readdir, rename, stat, unlink } from 'node:fs/promises'
 import path from 'node:path'
 import type { BoardMeta, BridgeError, TreeNode } from '@shared/types'
 import { fileKind, isBoard, isDrawing } from '@shared/fileKind'
@@ -158,14 +158,27 @@ export async function buildTree(dir: string): Promise<TreeNode[]> {
 }
 
 /**
- * Writes `content` to `<file>.tmp-<rand>` then renames over `file`. Parent dir must exist.
+ * Writes `content` and fsyncs it before closing (YAZ-2073 D12; libuv issues F_FULLFSYNC on macOS): the
+ * bytes are on disk before anything — a rename, a board naming an asset — points at them, so a power
+ * loss can't surface an empty or stale file under the real name. `mode` applies from creation.
  * A string lands as UTF-8; bytes (a scene's images through `drawing:save`, 🔒 YAZ-1775 D3) land verbatim —
  * `writeFile` ignores the encoding for a view, so one call serves both.
  */
-export async function atomicWrite(file: string, content: string | Uint8Array): Promise<{ mtime: number; size: number }> {
+export async function writeDurable(file: string, content: string | Uint8Array, flag: 'w' | 'wx', mode?: number): Promise<void> {
+  const fh = await open(file, flag, mode)
+  try {
+    await fh.writeFile(content, 'utf8')
+    await fh.sync()
+  } finally {
+    await fh.close()
+  }
+}
+
+/** Writes `content` durably to `<file>.tmp-<rand>` then renames over `file`. Parent dir must exist. */
+export async function atomicWrite(file: string, content: string | Uint8Array, mode?: number): Promise<{ mtime: number; size: number }> {
   const tmp = `${file}.tmp-${randomBytes(6).toString('hex')}`
   try {
-    await writeFile(tmp, content, 'utf8')
+    await writeDurable(tmp, content, 'w', mode)
     await rename(tmp, file)
   } catch (err) {
     await unlink(tmp).catch(() => undefined)

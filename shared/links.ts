@@ -14,9 +14,20 @@ const SCHEME = 'yaseendraw://'
  */
 const encodePath = (path: string): string => encodeURI(path).replace(/#/g, '%23').replace(/\?/g, '%3F')
 
+/**
+ * A Windows drive path rides the link the way `file:///C:/…` does (YAZ-2073 2D): `C:\Vault\a` →
+ * `/C:/Vault/a`, which `parseFileLink` turns back into `C:\Vault\a`. A POSIX path is untouched.
+ */
+const DRIVE_PATH = /^[A-Za-z]:[\\/]/
+const DRIVE_IN_LINK = /^\/[A-Za-z]:\//
+const toLinkPath = (path: string): string => (DRIVE_PATH.test(path) ? `/${path.replace(/\\/g, '/')}` : path)
+/** The absolute path a decoded link path names — a drive path back in its own `\` — or null. */
+const fromLinkPath = (path: string): string | null =>
+  DRIVE_IN_LINK.test(path) ? path.slice(1).replace(/\//g, '\\') : path.startsWith('/') ? path : null
+
 /** The `yaseendraw://` link that opens `path` (absolute). */
 export function fileLink(path: string): string {
-  return SCHEME + encodePath(path)
+  return SCHEME + encodePath(toLinkPath(path))
 }
 
 /** `decodeURIComponent` that answers null for malformed percent-encoding instead of throwing. */
@@ -47,11 +58,12 @@ export function parseFileLink(url: string): { path: string; root: string | null 
       const decoded = decode(pair.slice(eq + 1))
       if (decoded === null) return null
       // A non-absolute override could never contain the (absolute) path: no override at all.
-      if (decoded.startsWith('/')) root = decoded
+      root = fromLinkPath(decoded) ?? root
     }
     rest = rest.slice(0, q)
   }
-  const path = decode(rest)
-  if (path === null || !path.startsWith('/')) return null
+  const decoded = decode(rest)
+  const path = decoded === null ? null : fromLinkPath(decoded)
+  if (path === null) return null
   return { path, root }
 }

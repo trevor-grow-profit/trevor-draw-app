@@ -6,6 +6,7 @@
  */
 import { stat } from 'node:fs/promises'
 import { boardBaseName, isDiagram } from '@shared/fileKind'
+import { isWithin } from '@shared/paths'
 import { MAX_SHARE_BYTES, type ShareEntry, type ShareListEntry, type ShareSync } from '@shared/types'
 import { BridgeFailure, requireAbsPath } from '../fs/fsUtils'
 import { uploadTimeoutMs } from './cloudflare'
@@ -17,10 +18,8 @@ const mb = (bytes: number): string => `${(bytes / 1_000_000).toFixed(1)} MB`
 const stripName = (p: string): string => boardBaseName(p.split('/').pop()!)
 /** 🔒 YAZ-1802 D11: a share Worker deployed before diagrams could be shared (it answers a diagram's upload without `x-board-kind`). */
 export const WORKER_OUTDATED = "Your share Worker is from before diagrams could be shared, so it can't show this one. Open Settings › Sharing and run Set up sharing again: it updates the Worker, and every link keeps working."
-/** `abs` is `base` or inside it. */
-const within = (abs: string, base: string) => abs === base || abs.startsWith(`${base}/`)
 /** The open vault holding `abs` — the deepest one, if vaults nest. */
-const rootOf = (roots: readonly string[], abs: string) => [...roots].filter((r) => within(abs, r) && abs !== r).sort((a, b) => b.length - a.length)[0] ?? null
+const rootOf = (roots: readonly string[], abs: string) => [...roots].filter((r) => isWithin(r, abs, true)).sort((a, b) => b.length - a.length)[0] ?? null
 
 export function createBoards(ctx: ShareContext) {
   const { now, readConfig, linkOrigin, ready, worker } = ctx
@@ -214,7 +213,7 @@ export function createBoards(ctx: ShareContext) {
         let changed = false
         for (const [key, rec] of Object.entries(shares)) {
           const fromAbs = absFromKey(root, key)
-          if (!within(fromAbs, oldPath)) continue
+          if (!isWithin(oldPath, fromAbs)) continue
           const toAbs = newPath + fromAbs.slice(oldPath.length)
           const target = rootOf(roots, toAbs)
           delete shares[key]
@@ -242,7 +241,7 @@ export function createBoards(ctx: ShareContext) {
       const shares = await readShares(root)
       for (const key of Object.keys(shares)) {
         const abs = absFromKey(root, key)
-        if (!within(abs, path)) continue
+        if (!isWithin(path, abs)) continue
         try {
           await stop(root, abs)
         } catch (err) {

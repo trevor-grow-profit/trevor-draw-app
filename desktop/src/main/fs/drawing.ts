@@ -48,15 +48,16 @@
  * Pure rules (`referencedFileIds`, `stripEmbeddedFiles`, `stampBoardMeta`, …) live in
  * `shared/drawingAssets.ts`; this file is the fs around them.
  */
-import { mkdir, readdir, readFile, writeFile } from 'node:fs/promises'
+import { mkdir, readdir, readFile } from 'node:fs/promises'
 import path from 'node:path'
 import type { DrawingFileEntry, DrawingLoadRequest, DrawingLoadResponse, DrawingSaveRequest, DrawingSaveResponse } from '@shared/types'
 import { MAX_DRAWING_BYTES } from '@shared/types'
 import { isDrawing } from '@shared/fileKind'
+import { isWithin } from '@shared/paths'
 import { ASSETS_DIR, assetFileName, extForMime, fileIdOfAssetName, isValidFileId, mimeForAssetExt, parseDataUrl, referencedFileIds, stampBoardMeta, stripEmbeddedFiles } from '@shared/drawingAssets'
 import { readBoardHead } from './boardHead'
 import { readBoundedRegularFile } from './boundedRead'
-import { atomicWrite, BridgeFailure, fsCall, requireAbsPath, requireDir } from './fsUtils'
+import { atomicWrite, BridgeFailure, fsCall, requireAbsPath, requireDir, writeDurable } from './fsUtils'
 
 const TOO_LARGE = `drawing exceeds ${MAX_DRAWING_BYTES} bytes`
 
@@ -64,7 +65,7 @@ const TOO_LARGE = `drawing exceeds ${MAX_DRAWING_BYTES} bytes`
 export function resolveDocument(dir: string, rel: unknown): string {
   if (typeof rel !== 'string' || rel.trim() === '' || rel.includes('\0')) throw new BridgeFailure('BAD_REQUEST', "missing 'path'")
   const file = path.resolve(dir, rel)
-  if (!file.startsWith(dir + path.sep)) throw new BridgeFailure('BAD_REQUEST', 'path escapes the vault root', { path: rel })
+  if (!isWithin(dir, file, true)) throw new BridgeFailure('BAD_REQUEST', 'path escapes the vault root', { path: rel })
   if (!isDrawing(file)) throw new BridgeFailure('UNSUPPORTED_EXTENSION', 'only .excalidraw files open as drawings', { path: file })
   return file
 }
@@ -184,7 +185,7 @@ export function liftEmbedded(json: string, elements: readonly unknown[], exclude
 }
 
 /**
- * Write each asset into `<dir>/assets/` — `wx`, EEXIST is success (content-addressed: an existing
+ * Write each asset durably into `<dir>/assets/` — `wx`, EEXIST is success (content-addressed: an existing
  * file IS these bytes) — and answer the ids now in the store. The other half of the one door
  * `liftEmbedded` opens; a failure rejects as a `BridgeFailure` naming the path.
  */
@@ -197,7 +198,7 @@ export async function landAssets(dir: string, pending: readonly PendingAsset[]):
     const to = path.join(store, asset.name)
     await fsCall(to, async () => {
       try {
-        await writeFile(to, asset.bytes, { flag: 'wx' })
+        await writeDurable(to, asset.bytes, 'wx')
       } catch (err) {
         if ((err as NodeJS.ErrnoException).code !== 'EEXIST') throw err
       }

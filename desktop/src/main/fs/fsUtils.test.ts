@@ -1,8 +1,34 @@
-import { describe, expect, it } from 'vitest'
-import { mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises'
+import { describe, expect, it, vi } from 'vitest'
+import { mkdir, mkdtemp, open, readdir, readFile, rename, rm, stat, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
-import { BridgeFailure, buildTree, isSkipped, requireAbsPath, requireDrawingFile, toBridgeFailure } from './fsUtils'
+import { atomicWrite, BridgeFailure, buildTree, isSkipped, requireAbsPath, requireDrawingFile, toBridgeFailure, writeDurable } from './fsUtils'
+
+// Pass-through spies: the durability tests watch the handle's `sync` and the rename that follows it.
+vi.mock('node:fs/promises', async (importOriginal) => {
+  const m = await importOriginal<typeof import('node:fs/promises')>()
+  return { ...m, open: vi.fn(m.open), rename: vi.fn(m.rename) }
+})
+
+/** Records, in order, every fsync of a handle `open` hands out and every rename, with the renamed file's mode. */
+async function traceDurability(): Promise<string[]> {
+  const log: string[] = []
+  const { open: realOpen, rename: realRename } = await vi.importActual<typeof import('node:fs/promises')>('node:fs/promises')
+  vi.mocked(open).mockImplementation(async (...args) => {
+    const fh = await realOpen(...args)
+    const sync = fh.sync.bind(fh)
+    fh.sync = async () => {
+      log.push(`sync ${path.basename(String(args[0])).replace(/\.tmp-.*/, '.tmp')}`)
+      return sync()
+    }
+    return fh
+  })
+  vi.mocked(rename).mockImplementation(async (from, to) => {
+    log.push(`rename mode ${((await stat(from)).mode & 0o777).toString(8)}`)
+    return realRename(from, to)
+  })
+  return log
+}
 
 /** The rules every fs handler is built on; until now each was covered only incidentally. */
 
@@ -113,4 +139,77 @@ describe('buildTree', () => {
       await rm(root, { recursive: true, force: true })
     }
   })
+})
+
+describe('durable writes (YAZ-2073 D12)', () => {
+  const withDir = async (fn: (dir: string) => Promise<void>) => {
+    const dir = await mkdtemp(path.join(tmpdir(), 'yaseendraw-durable-'))
+    try {
+      await fn(dir)
+    } finally {
+      vi.mocked(open).mockRestore()
+      vi.mocked(rename).mockRestore()
+      await rm(dir, { recursive: true, force: true })
+    }
+  }
+
+  it('atomicWrite fsyncs the tmp file before renaming it over the target', () =>
+    withDir(async (dir) => {
+      const log = await traceDurability()
+      const file = path.join(dir, 'a.excalidraw')
+      await writeFile(file, 'old')
+      const res = await atomicWrite(file, 'new ✓')
+      expect(log).toEqual(['sync a.excalidraw.tmp', 'rename mode 644'])
+      expect(await readFile(file, 'utf8')).toBe('new ✓')
+      expect(res.size).toBe(Buffer.byteLength('new ✓'))
+      expect(await readdir(dir)).toEqual(['a.excalidraw'])
+    }))
+
+  it('atomicWrite lands bytes verbatim, and a mode applies to the tmp file from its creation', () =>
+    withDir(async (dir) => {
+      const log = await traceDurability()
+      const file = path.join(dir, 'secret.json')
+      await atomicWrite(file, new Uint8Array([0, 255, 7]), 0o600)
+      expect(log).toEqual(['sync secret.json.tmp', 'rename mode 600'])
+      expect([...(await readFile(file))]).toEqual([0, 255, 7])
+    }))
+
+  it('a failed write leaves neither the tmp file nor a touched target', () =>
+    withDir(async (dir) => {
+      const file = path.join(dir, 'a.excalidraw')
+      await writeFile(file, 'old')
+      vi.mocked(rename).mockRejectedValueOnce(new Error('EXDEV'))
+      await expect(atomicWrite(file, 'new')).rejects.toThrow('EXDEV')
+      expect(await readdir(dir)).toEqual(['a.excalidraw'])
+      expect(await readFile(file, 'utf8')).toBe('old')
+    }))
+
+  it('a write that fails mid-way closes its handle and leaves no tmp file behind', () =>
+    withDir(async (dir) => {
+      const { open: realOpen } = await vi.importActual<typeof import('node:fs/promises')>('node:fs/promises')
+      let closed = false
+      vi.mocked(open).mockImplementationOnce(async (...args) => {
+        const fh = await realOpen(...args)
+        const close = fh.close.bind(fh)
+        fh.writeFile = async () => Promise.reject(new Error('ENOSPC'))
+        fh.close = () => ((closed = true), close())
+        return fh
+      })
+      const file = path.join(dir, 'a.excalidraw')
+      await writeFile(file, 'old')
+      await expect(atomicWrite(file, 'new')).rejects.toThrow('ENOSPC')
+      expect(closed).toBe(true)
+      expect(await readdir(dir)).toEqual(['a.excalidraw'])
+      expect(await readFile(file, 'utf8')).toBe('old')
+    }))
+
+  it('writeDurable fsyncs before closing, and `wx` refuses an existing file', () =>
+    withDir(async (dir) => {
+      const log = await traceDurability()
+      const file = path.join(dir, 'x.png')
+      await writeDurable(file, new Uint8Array([1, 2]), 'wx')
+      expect(log).toEqual(['sync x.png'])
+      await expect(writeDurable(file, new Uint8Array([3]), 'wx')).rejects.toMatchObject({ code: 'EEXIST' })
+      expect([...(await readFile(file))]).toEqual([1, 2])
+    }))
 })

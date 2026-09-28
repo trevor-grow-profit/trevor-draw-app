@@ -192,7 +192,9 @@ Rules that hold across the whole surface:
 - **Main owns the disk and the state file.** The renderer never touches either directly.
 - **Never overwrite.** Create and rename use `wx` / exclusive semantics; a collision is
   `ALREADY_EXISTS`, not a silent clobber.
-- **Atomic writes.** Every write is tmp-file + rename, so a crash cannot truncate a drawing.
+- **Atomic, durable writes.** Every write is tmp-file + fsync + rename, and a new asset is fsynced
+  before the scene naming it lands, so neither a crash nor a power loss can truncate a drawing
+  (YAZ-2073 D12).
 - **Echo suppression by mtime.** A write's own watcher event is recognised by the mtime the write
   returned and ignored; a genuine external change while the buffer is dirty raises the conflict bar.
 - **One door per direction, per kind.** Where a kind has a dedicated pair (`drawing:load` /
@@ -638,7 +640,7 @@ app's first sync on open meets every case).
 ### Secrets (🔒 YAZ-1775 D4, ⚡ YAZ-1842 D1)
 
 `<userData>/secrets.json` = `{ version: 2, values: Record<name, value> }`, plain text, file mode
-`0600`, owned by `desktop/src/main/secrets.ts`. It is NOT part of the app state file and never rides
+`0600` from the tmp file's creation on, owned by `desktop/src/main/secrets.ts`. It is NOT part of the app state file and never rides
 `state:changed`; the renderer can write and ask, never read. It is plain text on purpose: version 1
 encrypted values with Electron's `safeStorage`, which on macOS binds a Keychain item to the app's
 code identity — and an ad-hoc-signed app (locked: no Developer ID) is a new identity on every
@@ -1197,7 +1199,11 @@ an unpackaged (dev) build — a shipped app always sends the real token to the r
 `yaseendraw:///Users/me/vault/Board.excalidraw`, with an optional `?root=` (also a percent-encoded
 absolute path) naming the vault the link should open under. `shared/links.ts` owns the one
 encoding, so main's parser and the renderer's generator cannot drift; `#` and `?` are encoded on
-top of `encodeURI` because either would truncate the path on parse.
+top of `encodeURI` because either would truncate the path on parse. A Windows drive path rides the
+link the way `file:///C:/…` does — `C:\Vault\Board.excalidraw` ⇄ `yaseendraw:///C:/Vault/Board.excalidraw`
+— and parses back to its native `\` form, so an Explorer double-click routes like a Finder one
+(YAZ-2073 2D). Path containment everywhere ("is this inside that vault or folder") goes through
+`shared/paths.ts` `isWithin`, which compares by whole segment in the base path's own separator.
 
 Main routes a link to the best window — one already on that vault, else the focused one, else a
 new one — and the renderer then treats it exactly like a sidebar click (activate the tab if the

@@ -30,6 +30,7 @@ import {
   type WindowEntry,
 } from '@shared/types'
 import { isCanvasPrefs, sanitizeCanvasPrefs } from '@shared/canvasPrefs'
+import { isWithin } from '@shared/paths'
 import { atomicWrite } from './fs/fsUtils'
 import { isFiniteNumber, isRecord } from '@shared/guards'
 
@@ -353,9 +354,8 @@ export function createStore(filePath: string): Store {
       // file path), so ONE mapping serves both kinds — and it is still one commit, one
       // notify, a no-op when nothing references the path.
       let changed = false
-      const prefix = `${oldPath}/`
       const remap = (p: string): string => {
-        if (p !== oldPath && !p.startsWith(prefix)) return p
+        if (!isWithin(oldPath, p)) return p
         changed = true
         return newPath + p.slice(oldPath.length)
       }
@@ -393,9 +393,8 @@ export function createStore(filePath: string): Store {
       // only the mapping differs (drop instead of remap). A FILE's prefix branch is inert
       // (nothing is ever stored under a file path), so one pass serves both kinds.
       let changed = false
-      const prefix = `${deleted}/`
       /** Is this stored path the deleted entry, or inside it? */
-      const gone = (p: string): boolean => p === deleted || p.startsWith(prefix)
+      const gone = (p: string): boolean => isWithin(deleted, p)
       const drop = (paths: readonly string[]): string[] => {
         const kept = paths.filter((p) => !gone(p))
         if (kept.length !== paths.length) changed = true

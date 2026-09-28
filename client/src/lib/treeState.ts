@@ -1,4 +1,5 @@
 import type { TreeNode } from '@shared/types'
+import { isWithin, sepOf, trimSep } from '@shared/paths'
 
 /** Expanded-directory set for the sidebar tree (persisted per root; see storage.ts). */
 export type TreeAction =
@@ -20,14 +21,18 @@ export function treeReducer(expanded: string[], action: TreeAction): string[] {
   }
 }
 
-/** Directories strictly between `root` and `file` (root excluded), outermost first. */
+/**
+ * Directories strictly between `root` and `file` (root excluded), outermost first, in the root's own
+ * separator. Windows takes `/` as a separator too, so the `${dir}/x` synthetic child opens a folder there.
+ */
 export function ancestorDirs(root: string, file: string): string[] {
-  let cur = root.replace(/\/+$/, '')
-  if (!file.startsWith(`${cur}/`)) return []
-  const parts = file.slice(cur.length + 1).split('/')
+  if (!isWithin(root, file, true)) return []
+  const sep = sepOf(root)
+  let cur = trimSep(root)
+  const parts = file.slice(cur.length + 1).split(sep === '/' ? '/' : /[\\/]/)
   const dirs: string[] = []
   for (const part of parts.slice(0, -1)) {
-    cur = `${cur}/${part}`
+    cur = `${cur}${sep}${part}`
     dirs.push(cur)
   }
   return dirs
@@ -53,7 +58,7 @@ export function findDirNode(tree: readonly TreeNode[], path: string): TreeNode |
   for (const n of tree) {
     if (n.type !== 'dir') continue
     if (n.path === path) return n
-    if (path.startsWith(`${n.path}/`)) return findDirNode(n.children, path)
+    if (isWithin(n.path, path, true)) return findDirNode(n.children, path)
   }
   return null
 }
@@ -62,7 +67,7 @@ export function findDirNode(tree: readonly TreeNode[], path: string): TreeNode |
 export function findNode(tree: readonly TreeNode[], path: string): TreeNode | null {
   for (const n of tree) {
     if (n.path === path) return n
-    if (n.type === 'dir' && path.startsWith(`${n.path}/`)) return findNode(n.children, path)
+    if (n.type === 'dir' && isWithin(n.path, path, true)) return findNode(n.children, path)
   }
   return null
 }
