@@ -42,6 +42,11 @@ function syncHash(path: string | null): void {
   history.replaceState(null, '', fileHash(path) || location.pathname + location.search)
 }
 
+/** Paint the sidebar's width into `<html>`'s `--side-w`, where the layout reads it. */
+function paintSideW(px: number): void {
+  document.documentElement.style.setProperty('--side-w', `${px}px`)
+}
+
 export function App() {
   const [root, setRoot] = useState<string | null>(storage.getRoot)
   // Workspace (Tabs I2 + YAZ-966): one renderer-owned model, seeded from the boot identity snapshot
@@ -139,7 +144,7 @@ export function App() {
         width = Math.min(SIDEBAR_MAX_W, Math.max(SIDEBAR_MIN_W, raw))
         // Paint-only while dragging: the CSS var, not React state — App renders when the drag starts
         // and when it lands, never per pixel (YAZ-2073 5D).
-        document.documentElement.style.setProperty('--side-w', `${width}px`)
+        paintSideW(width)
       }
       const up = () => {
         window.removeEventListener('mousemove', move)
@@ -147,7 +152,7 @@ export function App() {
         document.body.style.cursor = ''
         setResizing(false)
         if (raw < SIDEBAR_MIN_W * 0.6) {
-          document.documentElement.style.setProperty('--side-w', `${start}px`)
+          paintSideW(start)
           toggleSidebar()
         } else if (width !== start) {
           setSidebarWidth(width)
@@ -210,7 +215,7 @@ export function App() {
   // The sidebar's width rides on <html> beside `data-theme` rather than through a React style
   // prop: it is one custom property, and this keeps the app root free of an inline style object.
   useLayoutEffect(() => {
-    document.documentElement.style.setProperty('--side-w', `${sidebarWidth}px`)
+    paintSideW(sidebarWidth)
   }, [sidebarWidth])
 
   // The URL hash mirrors the ACTIVE tab (GRO-2069; rule 17: on boot the hash already won as

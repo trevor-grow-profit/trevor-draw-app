@@ -156,7 +156,8 @@ const ShareMark = ({ badge }: { badge: ShareBadge | undefined }) =>
 /**
  * One level of the tree, and through `recurse` every open level below it. Memoized as `Tree` (YAZ-2073 5D,
  * 🔒 D16): the Sidebar hands it stable props, so a Sidebar render that changes nothing a row shows
- * re-renders no row — and a level whose props did not move skips its whole subtree.
+ * re-renders no row. Every level shares those props, so a move in one of them (a fold, the selection,
+ * the active file) re-renders every open level.
  */
 function TreeLevel({
   nodes,

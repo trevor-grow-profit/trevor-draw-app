@@ -47,8 +47,8 @@ export function useSidebarSearch(root: string, tree: TreeResponse | null, pendin
       else e.currentTarget.blur()
       return
     }
-    // The bar keeps focus while the list is driven from it (YAZ-803). ↑/↓ WRAP (YAZ-1814,
-    // YAZ-1814): the list is capped at 50 and read top-down, so falling off the end is a
+    // The bar keeps focus while the list is driven from it (YAZ-803). ↑/↓ WRAP (YAZ-1814):
+    // the list is capped at 50 and read top-down, so falling off the end is a
     // request for the other end — and ↑ from the top row is the cheapest way to the
     // bottom of a full list. Opening leaves the list up.
     if (results.length === 0) return
