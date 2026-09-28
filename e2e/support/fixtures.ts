@@ -147,7 +147,13 @@ export class DrawApp {
     return log
   }
 
+  /**
+   * Brings `page`'s window to the front the way a click on it does: the app is activated first —
+   * with several test apps running side by side, a window focused inside an inactive app gets no
+   * `focus` event, and main rebuilds the menu's enablement on that event.
+   */
   async focus(page: Page): Promise<void> {
+    await this.electron.evaluate(({ app }) => app.focus({ steal: true }))
     const win = await this.electron.browserWindow(page)
     await win.evaluate((w) => w.focus())
   }
