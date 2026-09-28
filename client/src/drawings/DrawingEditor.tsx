@@ -35,12 +35,11 @@
  * image is never shipped twice in one session.
  */
 import { useCallback, useRef, type KeyboardEvent as ReactKeyboardEvent } from 'react'
-import type { CanvasPanelState, CanvasPrefs, DrawingLoadResponse, GithubSyncStatus } from '@shared/types'
+import type { CanvasPanelState, CanvasPrefs, DrawingLoadResponse } from '@shared/types'
 import { unpersistedFiles } from '@shared/drawingAssets'
 import { api } from '../api'
 import { BoardDocumentShell } from '../documents/BoardDocumentShell'
-import { BoardChips, exportWithNotice, useBoardDocument } from '../documents/useBoardDocument'
-import type { WatchSource } from '../hooks/useWatch'
+import { BoardChips, exportWithNotice, useBoardDocument, type BoardDocumentProps } from '../documents/useBoardDocument'
 import type { NoticeKind } from '../lib/notice'
 import { basename } from '../lib/paths'
 import { useAppliedTheme } from '../lib/theme'
@@ -55,14 +54,7 @@ export const BROKEN_DRAWING_DOCUMENT = "This Excalidraw drawing can't be opened:
 /** What File › Export Drawing… says when the save sheet or the write refused (🔒 YAZ-1775 D3, YAZ-1821). */
 const EXPORT_FAILED = "The Excalidraw drawing couldn't be exported."
 
-export interface DrawingEditorProps {
-  root: string
-  path: string
-  /** The window's one watcher subscription; the conflict rule listens on it. */
-  watch: WatchSource
-  /** The vault's sync status (YAZ-1081), App-owned; null while fetching, undefined = no chip. */
-  sync?: GithubSyncStatus | null
-  onSyncNow?: () => void
+export interface DrawingEditorProps extends BoardDocumentProps {
   /**
    * The user-level canvas preferences (🔒 YAZ-1775 D9), App's copy of `SettingsState.canvas`: seeded into
    * the scene at mount and kept in step with the engine both ways. Omitted = the engine's defaults.
@@ -125,6 +117,7 @@ function DrawingHost({ root, path, loaded, watch, sync, onSyncNow, canvasPrefs, 
   /** Ids the store holds: load's `stored`, grown by every save's `persisted` (🔒 YAZ-1775 D3). */
   const persisted = useRef(new Set(loaded.stored))
 
+  // Fresh closures every render are fine: the hook reads them through its `engine` ref, never stale.
   const board = useBoardDocument({
     root,
     path,

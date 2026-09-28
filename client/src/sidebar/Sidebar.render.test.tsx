@@ -11,7 +11,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { DEFAULT_SETTINGS, defaultAppState, type TreeNode, type WindowIdentity } from '@shared/types'
-import { BOARD_PREVIEW_DWELL_MS, Sidebar } from './Sidebar'
+import { BOARD_PREVIEW_DWELL_MS } from './HoverPreviewHost'
+import { Sidebar } from './Sidebar'
 
 const renders = vi.hoisted(() => ({ sidebar: 0, tree: 0, rows: 0 }))
 

@@ -166,27 +166,27 @@ describe('SavedComponents — the library', () => {
   })
 })
 
+/** jsdom's IntersectionObserver is a no-op (`test-setup.ts`); this one hands back its callback. */
+function captureObserver() {
+  let fire: () => void = () => {}
+  class Capturing {
+    constructor(private callback: (entries: { isIntersecting: boolean }[]) => void) {
+      fire = () => this.callback([{ isIntersecting: true }])
+    }
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+    takeRecords() {
+      return []
+    }
+  }
+  const original = globalThis.IntersectionObserver
+  ;(globalThis as unknown as Record<string, unknown>).IntersectionObserver = Capturing
+  return { scrollToEnd: () => act(async () => fire()), restore: () => ((globalThis as unknown as Record<string, unknown>).IntersectionObserver = original) }
+}
+
 describe('SavedComponents — search and paging', () => {
   const many = Array.from({ length: PAGE_SIZE + 5 }, (_, n) => item({ slug: `c-${n + 1}`, name: `Card ${n + 1}` }))
-
-  /** jsdom's IntersectionObserver is a no-op (`test-setup.ts`); this one hands back its callback. */
-  function captureObserver() {
-    let fire: () => void = () => {}
-    class Capturing {
-      constructor(private callback: (entries: { isIntersecting: boolean }[]) => void) {
-        fire = () => this.callback([{ isIntersecting: true }])
-      }
-      observe() {}
-      unobserve() {}
-      disconnect() {}
-      takeRecords() {
-        return []
-      }
-    }
-    const original = globalThis.IntersectionObserver
-    ;(globalThis as unknown as Record<string, unknown>).IntersectionObserver = Capturing
-    return { scrollToEnd: () => act(async () => fire()), restore: () => ((globalThis as unknown as Record<string, unknown>).IntersectionObserver = original) }
-  }
 
   it('shows one page of 24 and grows by another when the end of the grid comes into view', async () => {
     const observer = captureObserver()
@@ -226,6 +226,26 @@ describe('SavedComponents — search and paging', () => {
       await observer.scrollToEnd()
       await type(el.querySelector<HTMLInputElement>('input[type="search"]')!, 'card')
       expect(el.querySelectorAll('.saved-components__card')).toHaveLength(PAGE_SIZE)
+    } finally {
+      observer.restore()
+    }
+  })
+})
+
+describe('SavedComponents — the picture cache', () => {
+  it('keeps at most 300 card pictures: past that the least recently seen goes, and re-showing it asks again (YAZ-2073 8B)', async () => {
+    const observer = captureObserver()
+    try {
+      components.list.mockResolvedValue(Array.from({ length: 301 }, (_, n) => item({ slug: `c-${n}`, name: `Card ${n}` })))
+      const { el } = await mount()
+      while (el.querySelector('.saved-components__sentinel') !== null) await observer.scrollToEnd()
+      expect(components.preview).toHaveBeenCalledTimes(301)
+      const search = el.querySelector<HTMLInputElement>('input[type="search"]')!
+      await type(search, 'zzz')
+      await type(search, '')
+      // The first card's picture was evicted by the 301st: that one card, and only it, is asked for again.
+      expect(components.preview).toHaveBeenCalledTimes(302)
+      expect(components.preview).toHaveBeenLastCalledWith({ slug: 'c-0' })
     } finally {
       observer.restore()
     }

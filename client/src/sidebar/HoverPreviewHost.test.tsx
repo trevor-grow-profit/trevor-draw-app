@@ -32,7 +32,7 @@ afterEach(() => {
 })
 
 describe('useHoverPreview', () => {
-  it('a row is pending until the dwell ends, then shown; the same row again keeps its dwell', () => {
+  it('the same row again (focus after the pointer, or back) keeps its dwell rather than restarting it', () => {
     render()
     act(() => hook.hoverFile(board('a')))
     expect(state()).toEqual({ path: '/v/a.excalidraw', shown: false })

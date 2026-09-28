@@ -42,6 +42,15 @@ describe('buildBoardCatalog — the file rows', () => {
     expect(buildBoardCatalog('/vault/', deep).find((r) => r.kind === 'file')?.folder).toBe('A/B')
   })
 
+  it('reads a Windows vault in its own separator (YAZ-2073 8B)', () => {
+    const tree: TreeNode[] = [
+      { type: 'dir', name: 'A', path: 'C:\\v\\A', children: [{ type: 'file', name: 'Deep.excalidraw', path: 'C:\\v\\A\\Deep.excalidraw', size: 1, mtime: 1, kind: 'drawing' }] },
+      { type: 'file', name: 'Top.excalidraw', path: 'C:\\v\\Top.excalidraw', size: 1, mtime: 1, kind: 'drawing' },
+    ]
+    expect(buildBoardCatalog('C:\\v', tree).map((r) => [r.name, r.folder])).toEqual([['A', ''], ['Deep', 'A'], ['Top', '']])
+    expect(buildBoardCatalog('C:\\v\\', tree).map((r) => r.folder)).toEqual(['', 'A', ''])
+  })
+
   it('a drawing matches and reads WITHOUT its extension — the name the tree shows', () => {
     const rows = buildBoardCatalog('/vault', [file('/vault/Customer Acquisition Cost.excalidraw')])
     expect(rows.map((c) => [c.name, c.label, c.lower])).toEqual([['Customer Acquisition Cost', 'Customer Acquisition Cost', 'customer acquisition cost']])

@@ -1,16 +1,8 @@
 import { describe, expect, it, vi } from 'vitest'
-import { applyToolbarMode, DESKTOP_UI_MODE_STORAGE_KEY, loadExcalidraw, warmEngineFor, YASEEN_FULL_TOOLBAR_MODE } from './engine'
+import { applyToolbarMode, DESKTOP_UI_MODE_STORAGE_KEY, YASEEN_FULL_TOOLBAR_MODE } from './engine'
 
 /** How often each engine module was actually imported (a factory runs once, on the first import). */
-const imported = vi.hoisted(() => ({ engine: 0, css: 0 }))
-vi.mock('@excalidraw/excalidraw', () => {
-  imported.engine++
-  return {}
-})
-vi.mock('@excalidraw/excalidraw/index.css', () => {
-  imported.css++
-  return {}
-})
+const imported = { engine: 0, css: 0 }
 
 /** A stand-in for the engine's localStorage; the real one is jsdom's and shared between tests. */
 function fakeStorage(initial: string | null = null) {
@@ -57,9 +49,37 @@ describe('applyToolbarMode (⚡ YAZ-1775 R4/R5)', () => {
   })
 })
 
-// One engine per renderer: these two run in order, the first proving nothing was loaded yet.
+/** A renderer that has loaded nothing yet — a fresh registry and fresh counting stubs, no pins — so no test leans on another's order. */
+async function freshEngine(): Promise<typeof import('./engine')> {
+  vi.resetModules()
+  imported.engine = 0
+  imported.css = 0
+  vi.doMock('@excalidraw/excalidraw', () => {
+    imported.engine++
+    return {}
+  })
+  vi.doMock('@excalidraw/excalidraw/index.css', () => {
+    imported.css++
+    return {}
+  })
+  delete window.EXCALIDRAW_ASSET_PATH
+  return import('./engine')
+}
+
+describe('loadExcalidraw', () => {
+  it('pins the fonts offline BEFORE the import, and brings the stylesheet — once, on ONE promise, however many callers', async () => {
+    const { loadExcalidraw } = await freshEngine()
+    const first = loadExcalidraw()
+    expect(window.EXCALIDRAW_ASSET_PATH).toBe(new URL('excalidraw-assets/', window.location.href).toString())
+    expect(loadExcalidraw()).toBe(first)
+    await first
+    await vi.waitFor(() => expect(imported).toEqual({ engine: 1, css: 1 }))
+  })
+})
+
 describe('warmEngineFor (YAZ-2073 4B)', () => {
   it('loads nothing for a window with no file open or with a draw.io diagram in front', async () => {
+    const { warmEngineFor } = await freshEngine()
     warmEngineFor(null)
     warmEngineFor('/vault/flow.drawio')
     await new Promise((r) => setTimeout(r, 0))
@@ -67,12 +87,11 @@ describe('warmEngineFor (YAZ-2073 4B)', () => {
     expect(window.EXCALIDRAW_ASSET_PATH).toBeUndefined()
   })
 
-  it('starts the engine and its stylesheet for a drawing — pinned offline first, on the ONE promise the canvas awaits', async () => {
+  it('starts the engine and its stylesheet for a drawing — on the ONE promise the canvas awaits', async () => {
+    const { loadExcalidraw, warmEngineFor } = await freshEngine()
     warmEngineFor('/vault/Board.EXCALIDRAW')
-    expect(window.EXCALIDRAW_ASSET_PATH).toBe(new URL('excalidraw-assets/', window.location.href).toString())
-    const first = loadExcalidraw()
-    expect(loadExcalidraw()).toBe(first)
-    await first
+    expect(window.EXCALIDRAW_ASSET_PATH).toBeDefined()
+    await loadExcalidraw()
     await vi.waitFor(() => expect(imported).toEqual({ engine: 1, css: 1 }))
   })
 })

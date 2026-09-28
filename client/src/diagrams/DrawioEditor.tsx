@@ -6,17 +6,15 @@
  * 🔒 D4: draw.io runs in an iframe on its own origin and is talked to by postMessage only
  * (`drawioProtocol.ts`). The XML is loaded BEFORE the iframe mounts, so a file main refuses is the
  * error pane and draw.io can never autosave over it. Autosave counts draw.io's changes and leaves
- * the rules to the board document. Theme (D12) and
- * the dark-mode colour setting (D16) apply live by message. Keys, export and share: docs/CONTRACTS.md
- * › draw.io diagrams.
+ * the rules to the board document. Theme (D12) and the dark-mode colour setting (D16) apply live
+ * by message. Keys, export and share: docs/CONTRACTS.md › draw.io diagrams.
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { DRAWIO_ORIGIN } from '@shared/drawio'
-import type { DiagramDarkColors, GithubSyncStatus } from '@shared/types'
+import type { DiagramDarkColors } from '@shared/types'
 import { api, BridgeRequestError } from '../api'
 import { BoardDocumentShell } from '../documents/BoardDocumentShell'
-import { BoardChips, exportWithNotice, useBoardDocument } from '../documents/useBoardDocument'
-import type { WatchSource } from '../hooks/useWatch'
+import { BoardChips, exportWithNotice, useBoardDocument, type BoardDocumentProps } from '../documents/useBoardDocument'
 import type { NoticeKind } from '../lib/notice'
 import { basename, stripExt } from '../lib/paths'
 import { useAppliedTheme } from '../lib/theme'
@@ -36,14 +34,7 @@ const EXPORT_EMPTY = 'This draw.io diagram is empty, so there is no image to exp
  */
 const READY_FALLBACK_MS = 3000
 
-export interface DrawioEditorProps {
-  root: string
-  path: string
-  /** The window's one watcher subscription; the conflict rule listens on it. */
-  watch: WatchSource
-  /** The vault's sync status (YAZ-1081), App-owned; null while fetching, undefined = no chip. */
-  sync?: GithubSyncStatus | null
-  onSyncNow?: () => void
+export interface DrawioEditorProps extends BoardDocumentProps {
   /** 🔒 YAZ-1802 D16: the app's dark-mode colour setting, applied live (see the module doc). */
   darkColors: DiagramDarkColors
   /** The window's ONE passive notice: where an exported image landed, or why it did not. */
@@ -150,6 +141,7 @@ function DiagramHost({ root, path, loaded, watch, sync, onSyncNow, darkColors, o
       onNotice,
     )
 
+  // Fresh closures every render are fine: the hook reads them through its `engine` ref, never stale.
   const board = useBoardDocument({
     root,
     path,

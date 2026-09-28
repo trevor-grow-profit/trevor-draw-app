@@ -50,7 +50,7 @@ export function onLiveShareChange(listener: () => void): () => void {
   return () => listeners.delete(listener)
 }
 
-/** Called by `DrawingEditor` and `DrawioEditor` after every successful save. Cheap: it only (re)arms a timer. */
+/** Called by `useBoardDocument` after every successful save, for both kinds of board. Cheap: it only (re)arms a timer. */
 export function noteBoardSaved(root: string, path: string, settleMs = SETTLE_MS): void {
   const b = boards.get(path) ?? { root, path, timer: null, inFlight: false, again: false }
   b.root = root

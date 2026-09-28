@@ -1,5 +1,5 @@
-import type { FileClipState } from '@shared/types'
-import type { MenuTargets } from './Sidebar'
+import type { FileClipState, SidebarLens, TreeNode, TreeResponse } from '@shared/types'
+import { findDirNode, findNode } from '../lib/treeState'
 
 /**
  * The sidebar context menu's items AS DATA (🔒 D8, YAZ-1674). Every gating rule that used to be a
@@ -50,6 +50,142 @@ export interface MenuParent extends MenuItemBase {
 export type MenuItem = MenuAction | MenuParent
 
 export type MenuSection = MenuItem[]
+
+/**
+ * What the open context menu targets (GRO-2296). Every item has its OWN field: no item
+ * derives its target — or its visibility — from another item's value.
+ *
+ * This split exists because the items are about to diverge. `copyPath` gains a blank-space
+ * fallback to the vault ROOT (GRO-2273) and `revealPath` will want the same (GRO-2274),
+ * while `renamePath` must NOT: main refuses to rename a window's own vault root
+ * (`BAD_REQUEST`, E1b GRO-2241), so offering it would be an item that can only ever fail.
+ * Before the split, `renamePath` was literally `menu.copyPath` and the two would have moved
+ * together silently.
+ */
+export interface MenuTargets {
+  x: number
+  y: number
+  /** Where "New …" creates: a dir row → itself, a file row → its parent, blank space → the root. */
+  targetDir: string
+  /** The right-clicked row's kind; null for blank space. Drives the Rename input's mode. */
+  rowKind: 'file' | 'dir' | null
+  /** "Copy path" — the right-clicked row (file or folder), or the vault ROOT for blank space (GRO-2273). */
+  copyPath: string | null
+  /**
+   * "Copy N paths" — the MULTI-SELECT target (🔒 D5, YAZ-1337): the WHOLE selection, ordered by
+   * the panel (on-screen rows first, hidden ones after — `orderedSelection`, ⚡ YAZ-1338), or null
+   * when there is no plural gesture to offer (a right-click outside the selection, on blank
+   * space, or on a selection of one — where the singular items already ARE this menu).
+   *
+   * Its OWN field per this split's whole point, and emphatically NOT `copyPath` in a list: that
+   * one falls back to the vault ROOT on blank space, which is precisely a target this item must
+   * never have — "Copy 1 paths" over the root is an item that means nothing. The two are free to
+   * diverge again (a selection may one day hold folders, which the singular item already allows).
+   */
+  copyPaths: string[] | null
+  /**
+   * "Open N in new tabs" — the same multi-select target asked SEPARATELY (🔒 D5, YAZ-1337), and
+   * `newWindowPath`'s plural sibling in spirit only: that one opens ONE file in a whole new
+   * window (D2, GRO-2168), this one appends N background tabs to THIS window (I3's opener,
+   * GRO-2235). Equal today, independent by construction — the doctrine above is exactly about
+   * fields that happen to agree.
+   */
+  openTabPaths: string[] | null
+  /**
+   * "Cut" / "Copy" — the file-clipboard target (🔒 D5, YAZ-1674): the ORDERED 2+ selection when the
+   * right-clicked row is in one (`copyPaths`' plural rule — labels "Cut 3 items"), else the one
+   * row, file or dir; null on blank space, which has nothing to clip. Its OWN field, per this
+   * split's doctrine: `copyPaths` is null outside a plural gesture and `copyPath` falls back to
+   * the vault root, and neither is what a Cut may name.
+   */
+  clipPaths: string[] | null
+  /** "Open in new window" — FILE rows only (D2, GRO-2168). */
+  newWindowPath: string | null
+  /** "Rename" — a concrete row only, NEVER blank space: the vault root is not renameable (E1b, GRO-2241). */
+  renamePath: string | null
+  /** "Delete" — a concrete row only, NEVER blank space: there is no target, and main refuses the vault root (GRO-2272). */
+  deletePath: string | null
+  /** "Reveal in Finder" — the row, or the vault ROOT for blank space (GRO-2274); same target as `copyPath`. */
+  revealPath: string | null
+  /** "Open in VS Code" — the same target rule again (YAZ-963); its OWN field, per this split's whole point. */
+  openVsCodePath: string | null
+  /** "Open in default app" — the same target rule a third time (YAZ-1577); its OWN field, same doctrine. */
+  openDefaultPath: string | null
+  /**
+   * "Focus on folder" / "Focus on N folders" (YAZ-1605): the DIRS the menu's `lens` narrows to.
+   * Inside a 2+ selection that holds the right-clicked row it is the selection's eligible rows,
+   * in panel order — `copyPaths`' plural rule, counting only what can be focused, as
+   * `openTabPaths` counts only files. Otherwise the one row, or null on file rows and blank
+   * space. Its OWN field, per this split's doctrine.
+   */
+  focusPaths: string[] | null
+  /**
+   * "Add to favorites" / "Remove from favorites" (YAZ-1766 D3): the row, or the ordered 2+
+   * selection holding it — files and folders alike, every lens; null on blank space. Its OWN field.
+   */
+  favoritePaths: string[] | null
+  /** True only when EVERY `favoritePaths` entry is already a favorite — a mixed selection reads as Add. */
+  favoriteIsOn: boolean
+  /**
+   * "Info" (🔒 YAZ-1835 D6): the ONE board row under the pointer; null on blank space, a folder, or a 2+
+   * selection. "Share" (🔒 YAZ-1802 D11) and "Version history" (🔒 YAZ-1802 D10) take it too. Its OWN field.
+   */
+  infoPath: string | null
+  /**
+   * The lens the items act in (Docs YAZ-2050 D1, YAZ-2056 D5): the active one, or FILES for a search
+   * row — a search row is a disk row, whichever tab sits under the query. Every lens read in the
+   * menu path reads this.
+   */
+  lens: SidebarLens
+  /**
+   * A search row's path (Docs YAZ-2050 D2, YAZ-2056 D6), null for every tree row and blank space: the
+   * items that draw INTO the tree (a name box, Focus) reveal it in Files first, since the tree is hidden.
+   */
+  leaveSearchTo: string | null
+}
+
+/**
+ * Files and subfolders inside `dir`, counted RECURSIVELY from the already-loaded tree
+ * (GRO-2272 `C3-`) — a delete takes the whole subtree, so a shallow count would understate
+ * what the user is about to lose. No fetch: the sidebar already holds this tree.
+ */
+export function countChildren(nodes: readonly TreeNode[], dir: string): { files: number; folders: number } {
+  const found = findDirNode(nodes, dir)
+  if (found === null || found.type !== 'dir') return { files: 0, folders: 0 }
+  let files = 0
+  let folders = 0
+  const walk = (children: readonly TreeNode[]): void => {
+    for (const child of children) {
+      if (child.type === 'dir') {
+        folders++
+        walk(child.children)
+      } else files++
+    }
+  }
+  walk(found.children)
+  return { files, folders }
+}
+
+/**
+ * The rows a "Focus on …" may narrow to, out of the right-clicked row or its 2+ selection
+ * (YAZ-1605): DIRS, on both lenses — a shift-selection may hold files, which are simply not
+ * focusable, as a folder is not openable for `openTabPaths`. Null, not `[]`, hides the item.
+ */
+export function focusable(paths: readonly string[], tree: TreeResponse | null): string[] | null {
+  const kept = paths.filter((p) => tree !== null && findDirNode(tree.tree, p) !== null)
+  return kept.length > 0 ? kept : null
+}
+
+/** "Focus on folder" / "Focus on 3 folders" — the plural items' own labelling rule (YAZ-1337). */
+export function focusLabel(count: number): string {
+  return count > 1 ? `Focus on ${count} folders` : 'Focus on folder'
+}
+
+/** A board row — a drawing or a diagram (🔒 YAZ-1802 D2) — by the live tree's word (🔒 YAZ-1835 D6): Info describes boards, not `notes.txt`. */
+export function isBoardRow(tree: readonly TreeNode[], path: string): boolean {
+  const node = findNode(tree, path)
+  return node !== null && node.type === 'file' && node.kind !== null
+}
 
 /**
  * Sidebar's pinned `MenuTargets` plus the app-wide clipboard's LIVE state — the one field read at

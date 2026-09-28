@@ -126,12 +126,17 @@ export function loadExcalidrawElement(): Promise<ExcalidrawElementModule> {
 /** The in-flight (then settled) module load; one per renderer, never re-imported. */
 let loading: Promise<ExcalidrawModule> | null = null
 
-/** The engine, loaded lazily and pinned offline; every consumer waits on this ONE promise. */
+/**
+ * The engine, loaded lazily and pinned offline; every consumer waits on this ONE promise. Its
+ * stylesheet rides the same first load (YAZ-2073 8B) — every rule in it is scoped to the engine's
+ * own classes, so a caller that never mounts a canvas is styled no differently.
+ */
 export function loadExcalidraw(): Promise<ExcalidrawModule> {
   if (loading === null) {
     window.EXCALIDRAW_ASSET_PATH = new URL(EXCALIDRAW_ASSET_DIR, window.location.href).toString()
     window.EXCALIDRAW_EXPORT_SOURCE = DRAWING_SOURCE
     loading = import('@excalidraw/excalidraw')
+    void import('@excalidraw/excalidraw/index.css')
   }
   return loading
 }
@@ -145,5 +150,4 @@ export function loadExcalidraw(): Promise<ExcalidrawModule> {
 export function warmEngineFor(file: string | null): void {
   if (file === null || !isDrawing(file)) return
   loadExcalidraw().catch(() => {}) // the canvas reports a failure itself, awaiting this same promise
-  void import('@excalidraw/excalidraw/index.css')
 }

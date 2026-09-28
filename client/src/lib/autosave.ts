@@ -87,7 +87,7 @@ export class Autosave<C> {
    * Save pending content now (awaits any in-flight save first).
    *
    * Guards on `disposed` (GRO-2272 `B1a-`): a disposed controller must never write, whatever
-   * its caller does. `DrawingEditor` also checks its own `retired` ref at every call site, but
+   * its caller does. `useBoardDocument` also checks its own `retired` ref at every call site, but
    * that puts the guard one layer ABOVE the object owning the state — a call site added later
    * would not be protected, and the failure mode is silent file resurrection after a delete.
    * Cheap to make the object defend itself.

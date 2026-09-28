@@ -36,14 +36,15 @@ import { basename } from '../lib/paths'
 import { registerRenameContinuity } from '../lib/renameContinuity'
 import { createStore, type Store } from '../lib/store'
 import { noteBoardSaved } from '../share/liveShare'
-import { BOARD_COMMAND_EVENT, type BoardCommand } from '../drawings/boardCommand'
-import { ConflictBar } from '../drawings/ConflictBar'
-import { mayTakeFocus } from '../drawings/focusHandoff'
-import { SaveIndicator } from '../drawings/SaveIndicator'
-import { SyncIndicator } from '../drawings/SyncIndicator'
-import '../drawings/statusChips.css'
+import { BOARD_COMMAND_EVENT, type BoardCommand } from './boardCommand'
+import { ConflictBar } from './ConflictBar'
+import { mayTakeFocus } from './focusHandoff'
+import { SaveIndicator } from './SaveIndicator'
+import { SyncIndicator } from './SyncIndicator'
+import './statusChips.css'
 
-export interface BoardDocumentOptions {
+/** What every board editor is handed for its document, and hands on to `useBoardDocument` as is. */
+export interface BoardDocumentProps {
   root: string
   path: string
   /** The window's one watcher subscription; the conflict rule listens on it. */
@@ -51,6 +52,9 @@ export interface BoardDocumentOptions {
   /** The vault's sync status (YAZ-1081), App-owned; null while fetching, undefined = no chip. */
   sync?: GithubSyncStatus | null
   onSyncNow?: () => void
+}
+
+export interface BoardDocumentOptions extends BoardDocumentProps {
   write: (expectedMtime: number) => Promise<{ mtime: number }>
   /** Disk truth into the engine, and `autosave` reset to it; throws when the file cannot be read. */
   reload: (autosave: Autosave<number>) => Promise<void>
@@ -206,7 +210,7 @@ export function useBoardDocument(options: BoardDocumentOptions) {
 }
 
 /** What the chips show: the save status (the autosave reports it) and the vault's sync, App's. */
-export interface ChipState {
+interface ChipState {
   status: SaveStatus
   sync: GithubSyncStatus | null | undefined
   onSyncNow: (() => void) | undefined

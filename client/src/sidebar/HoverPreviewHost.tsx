@@ -5,6 +5,8 @@
  * tree closes it. Every close bumps `hoverRequest`, so an earlier row's dwell never fires late.
  * Isolated (YAZ-2073 5D, 🔒 D16): the row lives in a tiny store the Sidebar writes and only the panel
  * reads, so a pointer crossing rows re-renders the panel and nothing else — never the Sidebar or the Tree.
+ * The Sidebar's half, `useHoverPreview`, lives here rather than in `hooks/`: it writes the store this
+ * panel reads, and the two halves only make sense side by side.
  */
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type RefObject } from 'react'
 import type { DiagramDarkColors, TreeResponse } from '@shared/types'
@@ -87,11 +89,12 @@ export function HoverPreviewHost({ hover, tree, root, enabled, diagramDarkColors
   useEffect(() => {
     if (path !== null && tree !== null && node === null) onClose()
   }, [path, tree, node, onClose])
-  // Escape closes the preview — and ONLY while there is one, so the key is otherwise untouched for the
-  // selection, the menus and the canvas. Capture phase, so it wins before the body's own Escape.
-  const active = path !== null
+  // Escape closes the preview — and ONLY while one shows, so the key is otherwise untouched for the
+  // selection, the menus and the canvas; a dwell still pending has no panel to close (YAZ-2073 8B).
+  // Capture phase, so it wins before the body's own Escape.
+  const visible = shown && node !== null && enabled
   useEffect(() => {
-    if (!active) return
+    if (!visible) return
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return
       e.preventDefault()
@@ -101,7 +104,7 @@ export function HoverPreviewHost({ hover, tree, root, enabled, diagramDarkColors
     }
     document.addEventListener('keydown', onKey, true)
     return () => document.removeEventListener('keydown', onKey, true)
-  }, [active, onClose])
-  if (!shown || node === null || !enabled) return null
+  }, [visible, onClose])
+  if (!visible) return null
   return <BoardPreview key={node.path} root={root} node={node} cacheKey={boardPreviewKey(root, node, theme, diagramDarkColors)} anchor={anchor} />
 }
