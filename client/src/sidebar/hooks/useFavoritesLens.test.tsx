@@ -2,7 +2,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
-import { useFavoritesLens } from './useFavoritesLens'
+import { useFavoritesLens } from './useVaultTree'
 
 const PATHS = ['/v/a', '/v/b', '/v/c']
 

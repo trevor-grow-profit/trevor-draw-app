@@ -1,12 +1,16 @@
 /**
- * THE HOVER PREVIEW'S PANEL (YAZ-1800), isolated (YAZ-2073 5D, 🔒 D16). The hovered row lives in a
- * tiny store the Sidebar writes and only this component reads, so a pointer crossing rows re-renders
- * this and nothing else — never the Sidebar, never the Tree.
+ * THE HOVER PREVIEW (YAZ-1800): a board row rested on for the dwell opens a picture of the whole
+ * board beside the sidebar. The row is pending until the dwell ends, then shown. A save to it is
+ * only a new picture key, which the panel swaps in place (🔒 D5 amendment); only the row leaving the
+ * tree closes it. Every close bumps `hoverRequest`, so an earlier row's dwell never fires late.
+ * Isolated (YAZ-2073 5D, 🔒 D16): the row lives in a tiny store the Sidebar writes and only the panel
+ * reads, so a pointer crossing rows re-renders the panel and nothing else — never the Sidebar or the Tree.
  */
-import { useEffect, useMemo, useSyncExternalStore, type RefObject } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type RefObject } from 'react'
 import type { DiagramDarkColors, TreeResponse } from '@shared/types'
+import type { FileNode } from '@shared/treeSort'
 import { findNode } from '../lib/treeState'
-import type { Store } from '../lib/store'
+import { createStore, type Store } from '../lib/store'
 import { useAppliedTheme } from '../lib/theme'
 import { BoardPreview } from './BoardPreview'
 import { boardPreviewKey } from './boardPreviewCache'
@@ -15,6 +19,47 @@ import { boardPreviewKey } from './boardPreviewCache'
 export interface HoverState {
   path: string | null
   shown: boolean
+}
+
+/** How long the pointer (or focus) rests on a board row before its preview opens (YAZ-1800). */
+export const BOARD_PREVIEW_DWELL_MS = 400
+
+export function useHoverPreview(blocked: boolean, enabled: boolean, activeFile: string | null) {
+  const [hover] = useState(() => createStore<HoverState>({ path: null, shown: false }))
+  const hoverTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const hoverRequest = useRef(0)
+  const blockedRef = useRef(blocked)
+  blockedRef.current = blocked
+  const closePreview = useCallback(() => {
+    hoverRequest.current++
+    if (hoverTimer.current !== null) clearTimeout(hoverTimer.current)
+    hoverTimer.current = null
+    hover.set({ path: null, shown: false })
+  }, [hover])
+  const hoverFile = useCallback(
+    (node: FileNode | null) => {
+      // The same row again (focus after the pointer, or back) keeps its dwell or its panel.
+      if (node !== null && hover.getState().path === node.path) return
+      closePreview()
+      if (node === null || blockedRef.current) return
+      const id = hoverRequest.current
+      const { path } = node
+      hover.set({ path, shown: false })
+      hoverTimer.current = setTimeout(() => {
+        hoverTimer.current = null
+        if (id === hoverRequest.current) hover.set({ shown: true })
+      }, BOARD_PREVIEW_DWELL_MS)
+    },
+    [hover, closePreview],
+  )
+  // Everything else that ends a glance: the toggle, a search, a menu opening, another board opening.
+  useEffect(() => {
+    if (!enabled || blocked) closePreview()
+  }, [enabled, blocked, closePreview])
+  useEffect(() => closePreview(), [activeFile, closePreview])
+  useEffect(() => closePreview, [closePreview]) // unmount: no dwell timer outlives the sidebar
+
+  return { hover, hoverFile, closePreview }
 }
 
 interface HoverPreviewHostProps {

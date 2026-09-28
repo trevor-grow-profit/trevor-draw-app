@@ -1,23 +1,10 @@
-/**
- * The persistent search bar (YAZ-739, YAZ-801, YAZ-803): its query, the ranked results, the
- * keyboard's highlighted row, and the one activation rule shared by Enter and a click.
- */
+/** The persistent search bar (YAZ-739, YAZ-801, YAZ-803): the query, its ranked results and the keyboard's row. */
 import { useEffect, useRef, useState, type ChangeEvent, type KeyboardEvent } from 'react'
 import type { TreeResponse } from '@shared/types'
 import type { SearchCandidate } from '../../search/searchCandidates'
 import { useSearchResults } from '../../search/useSearchResults'
 
-interface SidebarSearchOptions {
-  root: string
-  tree: TreeResponse | null
-  pendingSearchFocus: boolean
-  onSearchFocusHandled: () => void
-  onRevealInFiles: (path: string) => void
-  onOpenFile: (path: string) => void
-  onOpenFileBackground: (path: string) => void
-}
-
-export function useSidebarSearch({ root, tree, pendingSearchFocus, onSearchFocusHandled, onRevealInFiles, onOpenFile, onOpenFileBackground }: SidebarSearchOptions) {
+export function useSidebarSearch(root: string, tree: TreeResponse | null, pendingSearchFocus: boolean, onSearchFocusHandled: () => void, activate: (hit: SearchCandidate, background: boolean) => void) {
   // The persistent search bar's query (YAZ-801). It lives in the Sidebar rather than in the bar because
   // YAZ-803 swaps the BODY while it is non-empty; Sidebar is mounted `key={root}`, so it resets
   // on unmount and on a root switch without any clearing code.
@@ -36,14 +23,6 @@ export function useSidebarSearch({ root, tree, pendingSearchFocus, onSearchFocus
   // A tree refresh can shrink the list under the keyboard's index (F1 finding 2, YAZ-808), so
   // every reader of the selection clamps: the highlight lands on the last row, not on nowhere.
   const sel = Math.min(selected, results.length - 1)
-
-  // One activation rule for keyboard AND click (🔒 D3, YAZ-1491): a folder reveals, a file opens.
-  // Enter PREVIEWS — focus stays in the bar, so ↑/↓ carry on walking the results.
-  const activate = (hit: SearchCandidate, background: boolean) => {
-    if (hit.kind === 'dir') onRevealInFiles(hit.path)
-    else if (background) onOpenFileBackground(hit.path)
-    else onOpenFile(hit.path)
-  }
 
   // ⌘K's focus handshake (YAZ-801). Firing on MOUNT is deliberate, not a side effect to guard
   // against: ⌘K with the sidebar collapsed un-collapses it, so the sidebar mounts with the flag
@@ -87,5 +66,5 @@ export function useSidebarSearch({ root, tree, pendingSearchFocus, onSearchFocus
     }
   }
 
-  return { query, setQuery, searching, results, sel, setSelected, activate, searchInput, changeQuery, searchKeyDown }
+  return { query, setQuery, searching, results, sel, setSelected, searchInput, changeQuery, searchKeyDown }
 }

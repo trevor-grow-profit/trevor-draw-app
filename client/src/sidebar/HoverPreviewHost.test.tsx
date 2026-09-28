@@ -1,20 +1,24 @@
-/** The hover preview's dwell, driven directly (YAZ-1800; a hook since YAZ-2073 6C). */
+/** The hover preview's dwell, driven directly on the Sidebar's half (YAZ-1800; a hook since YAZ-2073 6C). */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import type { FileNode } from '@shared/treeSort'
-import { BOARD_PREVIEW_DWELL_MS, useHoverPreview } from './useHoverPreview'
+import { BOARD_PREVIEW_DWELL_MS, useHoverPreview } from './HoverPreviewHost'
 
 const board = (name: string): FileNode => ({ type: 'file', name: `${name}.excalidraw`, path: `/v/${name}.excalidraw`, size: 1, mtime: 1, kind: 'drawing' })
 
 let root: Root | null = null
 let hook: ReturnType<typeof useHoverPreview>
-function Probe(props: Parameters<typeof useHoverPreview>[0]) {
-  hook = useHoverPreview(props)
+interface ProbeProps {
+  blocked: boolean
+  enabled: boolean
+  activeFile: string | null
+}
+function Probe({ blocked, enabled, activeFile }: ProbeProps) {
+  hook = useHoverPreview(blocked, enabled, activeFile)
   return null
 }
-const render = (props: Partial<Parameters<typeof useHoverPreview>[0]> = {}) =>
-  act(() => root?.render(<Probe blocked={false} enabled activeFile={null} {...props} />))
+const render = (props: Partial<ProbeProps> = {}) => act(() => root?.render(<Probe blocked={false} enabled activeFile={null} {...props} />))
 const state = () => hook.hover.getState()
 const wait = (ms: number) => act(() => void vi.advanceTimersByTime(ms))
 

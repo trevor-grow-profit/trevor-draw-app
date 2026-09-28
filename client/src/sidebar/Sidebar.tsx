@@ -1,44 +1,32 @@
-import { useCallback, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { SIDEBAR_LENSES, SORT_ORDERS, type SettingsState, type SidebarLens, type SortOrder, type TreeNode, type TreeResponse } from '@shared/types'
+import { isWithin } from '@shared/paths'
+import { api, BridgeRequestError } from '../api'
 import { ContextMenuSurface } from '../components/ContextMenuSurface'
 import { ChevronsIcon, EyeIcon, HeartIcon, PreviewIcon, SearchIcon, SidebarPanelIcon, SortIcon } from '../components/icons'
 import type { WatchSource } from '../hooks/useWatch'
-import { allDirs, findDirNode, findNode, treeHasFile } from '../lib/treeState'
+import { basename } from '../lib/paths'
+import { allDirs, ancestorDirs, findDirNode, findNode, treeHasFile } from '../lib/treeState'
 import { sortTree } from '@shared/treeSort'
 import { BoardInfo } from './BoardInfo'
 import { useShareBadges } from '../share/useShareBadges'
-import { HoverPreviewHost } from './HoverPreviewHost'
+import { HoverPreviewHost, useHoverPreview } from './HoverPreviewHost'
 import { SearchResults } from '../search/SearchResults'
-import { ConfirmDelete } from './ConfirmDelete'
+import type { SearchCandidate } from '../search/searchCandidates'
+import { ConfirmDelete, type DeleteTarget } from './ConfirmDelete'
 import { ContextMenu } from './ContextMenu'
-import { datedSeed, targetDirFor, type MenuRow } from './createEntry'
+import { datedSeed, targetDirFor, type EntryKind, type MenuRow } from './createEntry'
 import { SettingsButton } from '../settings/SettingsButton'
 import { buildMenuSections } from './menuSections'
 import type { NoticeKind } from '../lib/notice'
 import { Tree, type TreeFileMove } from './Tree'
 import { VaultSwitcher } from './VaultSwitcher'
-import { useDeleteConfirm } from './hooks/useDeleteConfirm'
-import { useExpansion } from './hooks/useExpansion'
-import { useFavoritesLens } from './hooks/useFavoritesLens'
-import { useFileClipboard } from './hooks/useFileClipboard'
-import { useFocusMode } from './hooks/useFocusMode'
-import { useHoverPreview } from './hooks/useHoverPreview'
-import { useInfoPopover } from './hooks/useInfoPopover'
-import { useInlineCreate } from './hooks/useInlineCreate'
-import { useInlineRename } from './hooks/useInlineRename'
-import { useMissingFileChecks } from './hooks/useMissingFileChecks'
-import { useRevealRequest } from './hooks/useRevealRequest'
-import { useSelection } from './hooks/useSelection'
+import { useFileClipboard, useInlineEdits, useSelection, useTreeDrag } from './hooks/rowGestures'
 import { useSidebarSearch } from './hooks/useSidebarSearch'
-import { useShellActions } from './hooks/useShellActions'
-import { useSortOrder } from './hooks/useSortOrder'
-import { useTreeDrag } from './hooks/useTreeDrag'
-import { useVaultTree } from './hooks/useVaultTree'
+import { useFavoritesLens, useFocusMode, useVaultTree } from './hooks/useVaultTree'
+import { flashTreeRows, revealMissingMessage, type SidebarRevealRequest } from './revealRow'
 
-import type { SidebarRevealRequest } from './revealRow'
-
-export { countChildren } from './hooks/useDeleteConfirm'
-export { BOARD_PREVIEW_DWELL_MS } from './hooks/useHoverPreview'
+export { BOARD_PREVIEW_DWELL_MS } from './HoverPreviewHost'
 export { WATCH_REFRESH_MS } from './hooks/useVaultTree'
 
 interface SidebarProps {
@@ -236,6 +224,28 @@ export interface MenuTargets {
 }
 
 /**
+ * Files and subfolders inside `dir`, counted RECURSIVELY from the already-loaded tree
+ * (GRO-2272 `C3-`) — a delete takes the whole subtree, so a shallow count would understate
+ * what the user is about to lose. No fetch: the sidebar already holds this tree.
+ */
+export function countChildren(nodes: readonly TreeNode[], dir: string): { files: number; folders: number } {
+  const found = findDirNode(nodes, dir)
+  if (found === null || found.type !== 'dir') return { files: 0, folders: 0 }
+  let files = 0
+  let folders = 0
+  const walk = (children: readonly TreeNode[]): void => {
+    for (const child of children) {
+      if (child.type === 'dir') {
+        folders++
+        walk(child.children)
+      } else files++
+    }
+  }
+  walk(found.children)
+  return { files, folders }
+}
+
+/**
  * The rows a "Focus on …" may narrow to, out of the right-clicked row or its 2+ selection
  * (YAZ-1605): DIRS, on both lenses — a shift-selection may hold files, which are simply not
  * focusable, as a folder is not openable for `openTabPaths`. Null, not `[]`, hides the item.
@@ -297,28 +307,33 @@ export function Sidebar({
 }: SidebarProps) {
   const asideRef = useRef<HTMLElement>(null)
   const bodyRef = useRef<HTMLDivElement>(null)
-  // The tree and the ways it is read: expansion, Focus Mode, the Favorites lens, the Files order.
-  const { tree, error, refresh } = useVaultTree(root, watch, onRootMissing)
-  useMissingFileChecks(root, tree, activeFile, onFileMissing)
-  const { expanded, dispatch, expandedSet, toggleDir } = useExpansion(root, activeFile)
+  const { tree, error, refresh, expanded, dispatch, expandedSet, toggleDir, sortOrder, setSortOrder } = useVaultTree(root, watch, activeFile, onRootMissing, onFileMissing)
   const { focusDirs, setFocusDirs, focusFavorites, focusNodes, focused, focusOn, exitFocus } = useFocusMode(root, tree, lens, dispatch)
   const { favorites, favoriteNodes, favoriteDirs, toggleFavorite, favoriteReorder } = useFavoritesLens(root, tree, focusFavorites, onNotice)
-  const [sortOrder, setSortOrder] = useSortOrder(root)
-  // What stands over the tree: the row menu, the sort menu, the Info popover.
   const [menu, setMenu] = useState<MenuTargets | null>(null)
-  const closeMenu = useCallback(() => setMenu(null), [])
   const [sortMenu, setSortMenu] = useState<{ x: number; y: number } | null>(null)
-  const { infoPopover, setInfoPopover, infoNode } = useInfoPopover(tree)
-  const { query, setQuery, searching, results, sel, setSelected, activate, searchInput, changeQuery, searchKeyDown } = useSidebarSearch({
-    root,
-    tree,
-    pendingSearchFocus,
-    onSearchFocusHandled,
-    onRevealInFiles,
-    onOpenFile,
-    onOpenFileBackground,
-  })
-  const { selectedPaths, dispatchSelection, selection, orderedSelectedPaths, clearOnEscape, clearOnBlankClick } = useSelection({ lens, searching, tree, bodyRef, menuOpen: menu !== null })
+  // The "Info" popover (🔒 YAZ-1835 D6): the board's PATH, resolved against the live tree at render;
+  // `now` is pinned at open, like the vault switcher's, so a relative time never shifts on a re-render.
+  const [infoPopover, setInfoPopover] = useState<{ x: number; y: number; path: string; now: number } | null>(null)
+  // The Info popover's board, off the LIVE tree (🔒 YAZ-1835 D7): a refresh moves its dates; a deletion closes it.
+  const infoNode = useMemo(() => {
+    if (infoPopover === null || tree === null) return null
+    const n = findNode(tree.tree, infoPopover.path)
+    return n !== null && n.type === 'file' ? n : null
+  }, [infoPopover, tree])
+  // The board went (deleted, moved): close for good, so a path that comes back does not reopen it.
+  useEffect(() => {
+    if (infoPopover !== null && tree !== null && infoNode === null) setInfoPopover(null)
+  }, [infoPopover, tree, infoNode])
+  // One activation rule for keyboard AND click (🔒 D3, YAZ-1491): a folder reveals, a file opens.
+  // Enter PREVIEWS — focus stays in the bar, so ↑/↓ carry on walking the results.
+  const activate = (hit: SearchCandidate, background: boolean) => {
+    if (hit.kind === 'dir') onRevealInFiles(hit.path)
+    else if (background) onOpenFileBackground(hit.path)
+    else onOpenFile(hit.path)
+  }
+  const { query, setQuery, searching, results, sel, setSelected, searchInput, changeQuery, searchKeyDown } = useSidebarSearch(root, tree, pendingSearchFocus, onSearchFocusHandled, activate)
+  const { selectedPaths, dispatchSelection, selection, orderedSelectedPaths, clearOnEscape, clearOnBlankClick } = useSelection(lens, searching, tree, bodyRef, menu !== null)
 
   // Every directory of the CURRENT tree, outer before inner (`allDirs`): the expand-all set
   // (⚡ YAZ-862) and, since YAZ-1491, the search list's folder rows (🔒 D1) — one memo, no second
@@ -332,22 +347,61 @@ export function Sidebar({
   const bodyDirs = lens === 'favorites' ? favoriteDirs : shownDirs
   const previewsOn = settings.hoverPreview && !searching
   // A menu or the Info popover owns the pointer while it stands: nothing opens under it.
-  const { hover, hoverFile, closePreview } = useHoverPreview({ blocked: menu !== null || sortMenu !== null || infoPopover !== null, enabled: previewsOn, activeFile })
+  const { hover, hoverFile, closePreview } = useHoverPreview(menu !== null || sortMenu !== null || infoPopover !== null, previewsOn, activeFile)
   // YAZ-1799: a link mark on shared boards (red when the last update failed or the link is stale).
   const shareBadges = useShareBadges(root)
-  useRevealRequest({ root, lens, revealRequest, onRevealConsumed, tree, dirs, expanded, dispatch, focusDirs, setFocusDirs, setQuery, onNotice, bodyRef })
-  // The row verbs: clipboard, create, rename, delete, the OS doors, drag-to-move.
-  const { clip, clipTo, pasteInto } = useFileClipboard({ root, refresh, dispatch, dirs, selectionSize: selectedPaths.size, orderedSelectedPaths, menuOpen: menu !== null, clipboardRef, onNotice })
-  const { startCreate, pending } = useInlineCreate({ root, menu, closeMenu, dispatch, favoriteNodes, onLensChange, refresh, onOpenFile })
-  const { renaming, startRename } = useInlineRename(onRenameFile)
-  const { confirmingDelete, askDelete, confirmDelete, cancelDelete } = useDeleteConfirm({ tree, menu, settings, onChangeSettings, onDeleteFile })
-  const { openFilesInTabs, openFileNewWindow, reveal, openVsCode, openDefault } = useShellActions(root, onOpenFileBackground, onNotice)
+
+  const seenRevealId = useRef<number | null>(null)
+  const handledFilesRevealId = useRef<number | null>(null)
+  const [pendingReveal, setPendingReveal] = useState<SidebarRevealRequest | null>(null)
+
+  useEffect(() => {
+    if (revealRequest === null || seenRevealId.current === revealRequest.id) return
+    seenRevealId.current = revealRequest.id
+    onRevealConsumed(revealRequest.id)
+    if (revealRequest.lens !== lens) {
+      setPendingReveal(null)
+      return
+    }
+    setQuery('')
+    setPendingReveal(revealRequest)
+  }, [lens, onRevealConsumed, revealRequest])
+
+  useEffect(() => {
+    if (pendingReveal !== null && pendingReveal.lens !== lens) setPendingReveal(null)
+  }, [lens, pendingReveal])
+
+  // A Files reveal targets a file — or, since a folder search row (🔒 D3, YAZ-1491), a DIR of the
+  // tree. Both questions are asked once here and read by the two steps below.
+  const revealIsDir = pendingReveal?.lens === 'files' && dirs.includes(pendingReveal.path)
+  const revealTargetPresent = tree !== null && pendingReveal?.lens === 'files' && (revealIsDir || treeHasFile(tree.tree, pendingReveal.path))
+
+  useEffect(() => {
+    if (tree === null || pendingReveal?.lens !== 'files' || handledFilesRevealId.current === pendingReveal.id) return
+    handledFilesRevealId.current = pendingReveal.id
+    if (!revealTargetPresent) {
+      onNotice(revealMissingMessage(pendingReveal.path, 'files'), 'error')
+      return
+    }
+    // A reveal is "show me THIS" (YAZ-1605): a target outside every focused folder ends the focus first.
+    if (focusDirs.length > 0 && !focusDirs.some((dir) => isWithin(dir, pendingReveal.path))) setFocusDirs([])
+    // A folder opens ITSELF too — the synthetic-child idiom the create menu already uses.
+    dispatch({ type: 'expandTo', root, file: revealIsDir ? `${pendingReveal.path}/x` : pendingReveal.path })
+  }, [focusDirs, onNotice, pendingReveal, revealIsDir, revealTargetPresent, root, tree])
+
+  const filesRevealReady = revealTargetPresent && ancestorDirs(root, pendingReveal.path).every((dir) => expanded.includes(dir))
+
+  useEffect(() => {
+    if (!filesRevealReady || pendingReveal === null || bodyRef.current === null) return
+    return flashTreeRows(bodyRef.current, pendingReveal.path) ?? undefined
+  }, [filesRevealReady, pendingReveal])
+  const { clip, clipTo, pasteInto } = useFileClipboard(root, refresh, dispatch, onNotice)
+  const { startCreate: startCreateBox, pending, startRename, renaming } = useInlineEdits(refresh, onOpenFile, onRenameFile)
   const { fileMove, header } = useTreeDrag(root, onRenameFile)
 
   // Expand / collapse the whole tree (⚡ YAZ-862). "Any open" is measured against what the CURRENT
   // tree can actually unfold (`dirs`, above), never the raw persisted list, which would leave the
   // button offering to collapse nothing.
-  const foldable = bodyDirs
   const anyExpanded = bodyDirs.some((d) => expanded.includes(d))
   const allLabel = anyExpanded ? 'Collapse all' : 'Expand all'
 
@@ -410,6 +464,131 @@ export function Sidebar({
       })
     },
     [root, tree, selectedPaths, orderedSelectedPaths, favorites, lens, searching],
+  )
+
+  /**
+   * ⌘V's target (D6, YAZ-1674): beside the FIRST ordered selected row — a dir → into it, a file →
+   * its parent (the "New drawing" rule, `targetDirFor`) — or the vault root with no selection at all.
+   */
+  const pasteTargetDir = useCallback((): string => {
+    const first = orderedSelectedPaths()[0]
+    if (first === undefined) return root
+    return targetDirFor({ type: dirs.includes(first) ? 'dir' : 'file', path: first }, root)
+  }, [orderedSelectedPaths, dirs, root])
+
+  /**
+   * The chords' handle (D6 amended, YAZ-1674): App's window listener asks these two verbs; the
+   * rules stay HERE. Cut / Copy need a selection ≥1 (since D9 a plain click is one); Paste needs
+   * a non-empty clipboard; an open context menu owns the verbs outright (its items ARE them).
+   * Rewritten whenever a rule input changes and emptied on unmount — a collapsed sidebar has no
+   * tree to paste into or read an order from.
+   */
+  useEffect(() => {
+    clipboardRef.current = {
+      cutOrCopy: (op) => {
+        if (menu !== null || selectedPaths.size === 0) return false
+        clipTo(orderedSelectedPaths(), op)
+        return true
+      },
+      paste: () => {
+        if (menu !== null || clip === null) return false
+        void pasteInto(pasteTargetDir())
+        return true
+      },
+    }
+    return () => {
+      clipboardRef.current = null
+    }
+  }, [clipboardRef, menu, selectedPaths, clip, clipTo, orderedSelectedPaths, pasteInto, pasteTargetDir])
+
+  const startCreate = useCallback(
+    (kind: EntryKind, seed = '') => {
+      if (menu === null) return
+      // The input renders inside the target dir's children, so that dir must be open;
+      // expandTo opens every dir ABOVE the given path, so a synthetic child opens targetDir itself.
+      if (menu.targetDir !== root) dispatch({ type: 'expandTo', root, file: `${menu.targetDir}/x` })
+      // Favorites shows a SUBSET of the vault (YAZ-1766, 3B1): a target dir it does not hold would give
+      // the input nowhere to mount, so the create moves to Files — where the `expandTo` above has
+      // already opened that dir. The reveal hop's rule (D10), applied to the other gesture that needs a row.
+      if (menu.lens === 'favorites' && menu.targetDir !== root && findDirNode(favoriteNodes, menu.targetDir) === null) onLensChange('files')
+      startCreateBox({ kind, seed, parentDir: menu.targetDir })
+      setMenu(null)
+    },
+    [menu, root, favoriteNodes, onLensChange, startCreateBox],
+  )
+
+  /**
+   * Context menu "Open N in new tabs" (🔒 D5, YAZ-1337): the SAME background opener ⌘-click
+   * already uses (I3, GRO-2235), once per selected path. The loop needs no guard of its own —
+   * the workspace ignores a path that is already open and appends without stealing activation
+   * (`open-background`, useWorkspace.ts) — so N tabs land in tree order and the caret stays put.
+   */
+  const openFilesInTabs = useCallback(
+    (paths: string[]) => {
+      for (const path of paths) onOpenFileBackground(path)
+    },
+    [onOpenFileBackground],
+  )
+
+  /** Context menu "Open in new window" (D2, GRO-2168): a fresh window on {root, file}; this one untouched. (⌘-click opens a background tab instead since I3.) */
+  const openFileNewWindow = useCallback(
+    (path: string) => {
+      window.yaseenDraw.window.open({ root, file: path }).catch((err: unknown) => console.error('[sidebar] window.open failed:', err))
+    },
+    [root],
+  )
+
+  /**
+   * The OS doors — Reveal in Finder (GRO-2274), Open in VS Code (YAZ-963), Open in default app (YAZ-1577).
+   * Read-only, so no confirm and nothing to repair — but a STALE row (deleted or moved externally)
+   * rejects `NOT_FOUND`, and that has to be visible: `showItemInFolder` is silent on a missing path and a
+   * dead `vscode://` URL opens an empty editor. Any other refusal (e.g. `IO_ERROR`, no app registered
+   * for the type) is shown verbatim. A row with no viewer's click lands on the third one too.
+   */
+  const osDoor = useCallback(
+    (open: (req: { path: string }) => Promise<unknown>, gone: (name: string) => string, refused: (name: string) => string) => (path: string) => {
+      open({ path }).catch((err: unknown) => {
+        onNotice(err instanceof BridgeRequestError && err.code === 'NOT_FOUND' ? `Can't ${gone(basename(path))} — it is no longer there` : `Can't ${refused(basename(path))}: ${err instanceof Error ? err.message : String(err)}`, 'error')
+      })
+    },
+    [onNotice],
+  )
+  const reveal = useMemo(() => osDoor(api.reveal, (name) => `reveal "${name}"`, () => 'reveal'), [osDoor])
+  const openVsCode = useMemo(() => osDoor(api.openVsCode, (name) => `open "${name}" in VS Code`, () => 'open in VS Code'), [osDoor])
+  const openDefault = useMemo(() => osDoor(api.openDefault, (name) => `open "${name}"`, (name) => `open "${name}"`), [osDoor])
+
+  // ---- Delete (GRO-2272): context menu "Delete" → confirm sheet → App trashes the entry ----
+
+  // The delete confirm sheet's target (GRO-2272 `C3-`); null when the sheet is closed.
+  const [confirmingDelete, setConfirmingDelete] = useState<DeleteTarget | null>(null)
+
+  /** Counts for the sheet, computed ONCE when it opens rather than on every render, off the loaded tree. */
+  const askDelete = useCallback(
+    (path: string) => {
+      // The setting finally gates the sheet (YAZ-857 — it existed end-to-end but nothing read
+      // it): off → delete directly, exactly what "Don't ask me again" promised.
+      if (!settings.confirmDelete) {
+        void onDeleteFile(path)
+        return
+      }
+      const kind: 'file' | 'dir' = menu?.rowKind === 'file' ? 'file' : 'dir'
+      const target: DeleteTarget = { path, kind }
+      if (kind === 'dir') target.children = countChildren(tree?.tree ?? [], path)
+      setConfirmingDelete(target)
+    },
+    [menu, tree, settings.confirmDelete, onDeleteFile],
+  )
+
+  const confirmDelete = useCallback(
+    (dontAskAgain: boolean) => {
+      const target = confirmingDelete
+      setConfirmingDelete(null)
+      if (target === null) return
+      if (dontAskAgain) onChangeSettings({ ...settings, confirmDelete: false })
+      // Fire and forget: App owns the result and routes every failure to the passive notice.
+      void onDeleteFile(target.path)
+    },
+    [confirmingDelete, onDeleteFile, onChangeSettings, settings],
   )
 
   // ONE gate for both disk-folder births (YAZ-948 rule; YAZ-1604 adds the dated twin).
@@ -511,7 +690,7 @@ export function Sidebar({
               <EyeIcon />
             </button>
           )}
-          {!searching && foldable.length > 0 && (
+          {!searching && bodyDirs.length > 0 && (
             <button
               type="button"
               className="sidebar__expand-all"
@@ -665,7 +844,7 @@ export function Sidebar({
               onDelete: askDelete,
             },
           )}
-          onClose={closeMenu}
+          onClose={() => setMenu(null)}
         />
       )}
       {sortMenu !== null && (
@@ -682,7 +861,7 @@ export function Sidebar({
         </ContextMenuSurface>
       )}
       <HoverPreviewHost hover={hover} tree={tree} root={root} enabled={previewsOn} diagramDarkColors={settings.diagramDarkColors} anchor={asideRef} onClose={closePreview} />
-      {confirmingDelete !== null && <ConfirmDelete target={confirmingDelete} onConfirm={confirmDelete} onCancel={cancelDelete} />}
+      {confirmingDelete !== null && <ConfirmDelete target={confirmingDelete} onConfirm={confirmDelete} onCancel={() => setConfirmingDelete(null)} />}
     </aside>
   )
 }
