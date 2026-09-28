@@ -3,11 +3,9 @@
  * folder never replaces a vault (YAZ-1913, YAZ-1941, YAZ-2056).
  */
 import type { Page } from '@playwright/test'
-import { test, expect } from './support/fixtures'
+import { test, expect, identity } from './support/fixtures'
 import { menuItem, row, treeReady } from './support/sidebar'
 import { readProfile, scene } from './support/vault'
-
-const identity = (page: Page) => page.evaluate(() => window.yaseenDraw.window.identity())
 const switcherInput = (page: Page) => page.getByRole('textbox', { name: 'Switch vault' })
 /** The switcher's vault rows — not its last row, "Open folder…". */
 const vaultRows = (page: Page) => page.locator('button.vault-switcher__row:not(.vault-switcher__open)')
@@ -122,15 +120,11 @@ test('Open folder… on the Welcome window opens the picked folder there; on a v
   sandbox.writeProfile({ windows: [{ root: null }] })
   const app = await launch()
   const page = await app.window()
-  const answerPicker = (path: string) =>
-    app.electron.evaluate(({ dialog }, filePath) => {
-      dialog.showOpenDialog = (async () => ({ canceled: false, filePaths: [filePath] })) as typeof dialog.showOpenDialog
-    }, path)
-  await answerPicker(picked)
+  await app.answerOpenDialog(picked)
   await page.getByRole('button', { name: 'Open folder…' }).click()
   await expect(row(page, 'P')).toBeVisible()
   expect(app.electron.windows()).toHaveLength(1)
-  await answerPicker(second)
+  await app.answerOpenDialog(second)
   await app.menu('menu.file.open-folder', page)
   const pages = await app.windows(2)
   expect((await Promise.all(pages.map(async (p) => (await identity(p)).root))).sort()).toEqual([picked, second].sort())

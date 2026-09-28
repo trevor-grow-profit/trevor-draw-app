@@ -3,12 +3,10 @@
  * close-forgets vs quit-restores, windows brought back on screen, and two windows on one board.
  */
 import type { Page } from '@playwright/test'
-import { test, expect, type DrawApp } from './support/fixtures'
-import { canvasChanged, canvasReady, drawRect, staticCanvasShot } from './support/canvas'
+import { test, expect, identity, type DrawApp } from './support/fixtures'
+import { canvasChanged, canvasReady, conflictBar, drawRect, staticCanvasShot } from './support/canvas'
 import { contextMenu, treeReady } from './support/sidebar'
 import { liveElements, readProfile, rect, scene, writesSettled } from './support/vault'
-
-const identity = (page: Page) => page.evaluate(() => window.yaseenDraw.window.identity())
 
 /** The window whose identity is not `known`'s — the one that just opened. */
 async function newest(app: DrawApp, count: number, known: Page): Promise<Page> {
@@ -103,7 +101,7 @@ test('the same board in two windows: a save in one reloads the other', async ({ 
   await expect.poll(() => liveElements(board)?.length).toBe(2)
   await writesSettled(board)
   await canvasChanged(two, before)
-  await expect(two.getByRole('alert').filter({ hasText: 'File changed on disk.' })).toHaveCount(0)
+  await expect(conflictBar(two)).toHaveCount(0)
   // …and the other window, having reloaded, saves on top of it rather than over it.
   await app.focus(two) // a user clicks into the other window first
   await drawRect(two, 450, 420)

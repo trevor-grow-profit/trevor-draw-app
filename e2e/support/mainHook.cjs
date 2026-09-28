@@ -8,7 +8,9 @@
  *    `yaseendraw://` on every launch; a test run leaves LaunchServices alone.
  *  - `shell.trashItem` moves into `<sandbox>/Trash` instead of the user's Trash, and the other
  *    hand-offs (Finder reveal, default app, browser / VS Code URLs) are recorded one JSON line each
- *    in `<sandbox>/os-calls.jsonl` instead of opening anything — a spec asserts on that file.
+ *    in `<sandbox>/os-calls.jsonl` instead of opening anything — a spec asserts on that file. A path
+ *    outside the sandbox throws instead: an app bug must not move a real file into a folder the
+ *    run then deletes.
  *  - `<sandbox>/quit.marker` is written when the app's own quit sequence reaches `app.exit` —
  *    its flushes are done by then — so a spec can tell "quit finished" from "the process is gone"
  *    (Electron's teardown after `app.exit` can take many seconds on a loaded Mac).
@@ -21,24 +23,35 @@
  * `yaseendraw://` registration, which the bundle has already made by then (as any launch of it does).
  */
 const { app, BrowserWindow, shell } = require('electron')
-const { appendFileSync, mkdirSync, renameSync, writeFileSync } = require('node:fs')
-const { basename, join } = require('node:path')
+const { appendFileSync, mkdirSync, realpathSync, renameSync, writeFileSync } = require('node:fs')
+const { basename, dirname, join, sep } = require('node:path')
 
 const sandbox = process.env.E2E_SANDBOX
 if (!sandbox) throw new Error('mainHook: E2E_SANDBOX is not set')
+const REAL_SANDBOX = realpathSync(sandbox)
 
+/** `path` itself, resolved through symlinks (/var → /private/var) via its folder, which exists. */
+const real = (path) => join(realpathSync(dirname(path)), basename(path))
+function inSandbox(call, path) {
+  if (!real(path).startsWith(REAL_SANDBOX + sep)) throw new Error(`mainHook: ${call} outside the test sandbox: ${path}`)
+}
 const record = (call, arg) => appendFileSync(join(sandbox, 'os-calls.jsonl'), `${JSON.stringify({ call, arg })}\n`)
 
 app.setAsDefaultProtocolClient = () => true
 app.on('quit', () => writeFileSync(join(sandbox, 'quit.marker'), ''))
 
 shell.trashItem = async (path) => {
+  inSandbox('trashItem', path)
   const trash = join(sandbox, 'Trash')
   mkdirSync(trash, { recursive: true })
   renameSync(path, join(trash, `${Date.now()}-${basename(path)}`))
 }
-shell.showItemInFolder = (path) => record('showItemInFolder', path)
+shell.showItemInFolder = (path) => {
+  inSandbox('showItemInFolder', path)
+  record('showItemInFolder', path)
+}
 shell.openPath = async (path) => {
+  inSandbox('openPath', path)
   record('openPath', path)
   return ''
 }

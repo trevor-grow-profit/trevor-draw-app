@@ -5,15 +5,11 @@
  */
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import type { Page } from '@playwright/test'
-import { test, expect, type DrawApp } from './support/fixtures'
-import { activeCanvas, canvasChanged, canvasReady, staticCanvasShot } from './support/canvas'
-import { fileIdOf, frame, imageElement, liveElements, png, readScene, rect, scene, writeVault } from './support/vault'
-
-/** Makes the next native Save sheet answer `path`, as if the user typed it and pressed Save. */
-const answerSaveSheet = (app: DrawApp, path: string) =>
-  app.electron.evaluate(({ dialog }, filePath) => {
-    dialog.showSaveDialog = (async () => ({ canceled: false, filePath })) as typeof dialog.showSaveDialog
-  }, path)
+import { test, expect } from './support/fixtures'
+import { canvasBox, canvasChanged, canvasReady, clickEmpty, savedChip, staticCanvasShot } from './support/canvas'
+import { diagramReady } from './support/drawio'
+import { notice } from './support/sidebar'
+import { diagram, diagramBox, fileIdFor, frame, imageElement, liveElements, readScene, rect, scene, solidPNG, unchangedFor } from './support/vault'
 
 const panel = (page: Page) => page.locator('.excalidraw')
 const openPanelTab = async (page: Page, tab: 'Image Studio' | 'Components' | 'Presentation') => {
@@ -21,61 +17,34 @@ const openPanelTab = async (page: Page, tab: 'Image Studio' | 'Components' | 'Pr
   await panel(page).getByRole('tab', { name: tab }).click()
 }
 
-test('Export Excalidraw Drawing writes a standalone file with its pictures inside, leaving the board alone', async ({ sandbox, launch }) => {
-  const bytes = png(12, 12, [200, 30, 30])
-  const id = fileIdOf(bytes)
-  const vault = sandbox.vault('V', { 'Board.excalidraw': scene([rect('a'), imageElement('img', id, 300, 0)]), [`assets/${id}.png`]: bytes })
-  const board = `${vault}/Board.excalidraw`
+test('Export Excalidraw Drawing writes a standalone file with its pictures inside, leaving the board alone', async ({ sandbox, openBoard }) => {
+  const bytes = solidPNG(12, 12, [200, 30, 30])
+  const id = fileIdFor(bytes)
+  const { app, page, board } = await openBoard({ 'Board.excalidraw': scene([rect('a'), imageElement('img', id, 300, 0)]), [`assets/${id}.png`]: bytes })
   const before = statSync(board).mtimeMs
-  sandbox.writeProfile({ windows: [{ root: vault, file: board }] })
-  const app = await launch()
-  const page = await app.window()
-  await canvasReady(page)
   const out = sandbox.path('Exported copy.excalidraw')
-  await answerSaveSheet(app, out)
+  await app.answerSaveDialog(out)
   await app.menu('menu.file.export-drawing', page)
-  await expect(page.locator('.link-notice')).toContainText('Exported to Exported copy.excalidraw')
+  await expect(notice(page)).toContainText('Exported to Exported copy.excalidraw')
   const exported = readScene(out)
   expect(exported.elements.map((el) => el.id).sort()).toEqual(['a', 'img'])
   expect(exported.files?.[id]).toMatchObject({ mimeType: 'image/png', dataURL: `data:image/png;base64,${bytes.toString('base64')}` })
   expect(statSync(board).mtimeMs).toBe(before)
 })
 
-test('Export Image… opens the engine’s image export for a drawing', async ({ sandbox, launch }) => {
-  const vault = sandbox.vault('V', { 'Board.excalidraw': scene([rect('a')]) })
-  sandbox.writeProfile({ windows: [{ root: vault, file: `${vault}/Board.excalidraw` }] })
-  const app = await launch()
-  const page = await app.window()
-  await canvasReady(page)
-  await app.menu('menu.file.export-image', page)
-  const modal = page.locator('.ImageExportModal')
-  await expect(modal).toBeVisible()
-  await expect(modal.locator('canvas, svg').first()).toBeVisible() // the preview rendered
-})
-
-test('Export Image… on a diagram writes the PNG the user named', async ({ sandbox, launch }) => {
-  const vault = writeVault(sandbox.path('V'), {
-    'Flow.drawio': '<mxfile><diagram id="p" name="P"><mxGraphModel><root><mxCell id="0"/><mxCell id="1" parent="0"/><mxCell id="c" value="Export me" style="rounded=0;" vertex="1" parent="1"><mxGeometry x="10" y="10" width="120" height="60" as="geometry"/></mxCell></root></mxGraphModel></diagram></mxfile>\n',
-  })
-  sandbox.writeProfile({ windows: [{ root: vault, file: `${vault}/Flow.drawio` }] })
-  const app = await launch()
-  const page = await app.window()
-  await expect(page.frameLocator('iframe.drawio-editor__frame').getByText('Export me')).toBeVisible({ timeout: 30_000 })
+test('Export Image… on a diagram writes the PNG the user named', async ({ sandbox, openBoard }) => {
+  const { app, page } = await openBoard({ 'Flow.drawio': diagram(diagramBox('c', 'Export me')) })
+  await diagramReady(page, 'Export me')
   const out = sandbox.path('Flow picture.png')
-  await answerSaveSheet(app, out)
+  await app.answerSaveDialog(out)
   await app.menu('menu.file.export-image', page)
   await expect.poll(() => existsSync(out), { timeout: 30_000 }).toBe(true)
   expect(readFileSync(out).subarray(0, 8)).toEqual(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))
 })
 
-test('View › Canvas Background changes the canvas and saves the colour into the board', async ({ sandbox, launch }) => {
+test('View › Canvas Background changes the canvas and saves the colour into the board', async ({ openBoard }) => {
   // Found by this suite (YAZ-2073 1C), fixed by 2E: an appState-only edit is an edit (`boardAppState.ts`).
-  const vault = sandbox.vault('V', { 'Board.excalidraw': scene([rect('a')]) })
-  const board = `${vault}/Board.excalidraw`
-  sandbox.writeProfile({ windows: [{ root: vault, file: board }] })
-  const app = await launch()
-  const page = await app.window()
-  await canvasReady(page)
+  const { app, page, board } = await openBoard({ 'Board.excalidraw': scene([rect('a')]) })
   const before = await staticCanvasShot(page)
   await app.menu('menu.view.canvas-background.3', page) // Yellow
   await canvasChanged(page, before)
@@ -83,23 +52,18 @@ test('View › Canvas Background changes the canvas and saves the colour into th
   expect(readScene(board).appState?.viewBackgroundColor).toBe('#fffce8')
 })
 
-test('panning and zooming the canvas is not an edit: the board is never written', async ({ sandbox, launch }) => {
-  const vault = sandbox.vault('V', { 'Board.excalidraw': scene([rect('a')]) })
-  const board = `${vault}/Board.excalidraw`
+test('opening a board, then panning and zooming it, is not an edit: the board is never written', async ({ openBoard }) => {
+  const { app, page, board } = await openBoard({ 'Board.excalidraw': scene([rect('a')]) })
   const before = statSync(board).mtimeMs
-  sandbox.writeProfile({ windows: [{ root: vault, file: board }] })
-  const app = await launch()
-  const page = await app.window()
-  await canvasReady(page)
-  const box = await activeCanvas(page).boundingBox()
-  if (box === null) throw new Error('no canvas')
+  await expect(savedChip(page)).toBeVisible()
+  const box = await canvasBox(page)
   await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
   await page.mouse.wheel(300, 200) // pan
   await page.keyboard.down('Meta')
   await page.mouse.wheel(0, -400) // zoom in
   await page.keyboard.up('Meta')
-  await page.waitForTimeout(2_000) // several autosave debounces
-  await app.quit()
+  await unchangedFor(2_000, () => statSync(board).mtimeMs) // several autosave debounces (500 ms)
+  await app.quit() // …and the quit flush writes nothing either
   expect(statSync(board).mtimeMs).toBe(before)
 })
 
@@ -118,37 +82,26 @@ test('View › zoom in / out / actual size change the window’s zoom', async ({
   await expect.poll(level).toBe(0)
 })
 
-test('the laser pointer draws a trail that is never saved into the board', async ({ sandbox, launch }) => {
-  const vault = sandbox.vault('V', { 'Board.excalidraw': scene([rect('a')]) })
-  const board = `${vault}/Board.excalidraw`
+test('the laser pointer draws a trail that is never saved into the board', async ({ openBoard }) => {
+  const { app, page, board } = await openBoard({ 'Board.excalidraw': scene([rect('a')]) })
   const before = statSync(board).mtimeMs
-  sandbox.writeProfile({ windows: [{ root: vault, file: board }] })
-  const app = await launch()
-  const page = await app.window()
-  await canvasReady(page)
   const laser = page.getByRole('region', { name: 'Shapes' }).getByTestId('toolbar-laser')
   await laser.click()
   await expect(laser).toHaveAttribute('aria-pressed', 'true')
-  const box = await activeCanvas(page).boundingBox()
-  if (box === null) throw new Error('no canvas')
+  const box = await canvasBox(page)
   await page.mouse.move(box.x + 300, box.y + 300)
   await page.mouse.down()
   await page.mouse.move(box.x + 500, box.y + 400, { steps: 10 })
   await page.mouse.up()
-  await page.waitForTimeout(1_500) // longer than the autosave debounce: a saved stroke would be on disk
+  await unchangedFor(1_500, () => statSync(board).mtimeMs) // past the autosave debounce: a saved stroke would be on disk
+  await app.quit() // …and the quit flush saves nothing either
   expect(statSync(board).mtimeMs).toBe(before)
 })
 
-test('tool keys work on the canvas: R then a drag draws a rectangle', async ({ sandbox, launch }) => {
-  const vault = sandbox.vault('V', { 'Board.excalidraw': scene([rect('a')]) })
-  const board = `${vault}/Board.excalidraw`
-  sandbox.writeProfile({ windows: [{ root: vault, file: board }] })
-  const app = await launch()
-  const page = await app.window()
-  await canvasReady(page)
-  const box = await activeCanvas(page).boundingBox()
-  if (box === null) throw new Error('no canvas')
-  await page.mouse.click(box.x + 600, box.y + 500) // focus the canvas on empty space
+test('tool keys work on the canvas: R then a drag draws a rectangle', async ({ openBoard }) => {
+  const { page, board } = await openBoard({ 'Board.excalidraw': scene([rect('a')]) })
+  const box = await canvasBox(page)
+  await clickEmpty(page) // focus the canvas
   await page.keyboard.press('r')
   await expect(page.getByTestId('toolbar-rectangle').filter({ visible: true })).toHaveAttribute('aria-pressed', 'true')
   await page.mouse.move(box.x + 250, box.y + 250)
@@ -158,13 +111,8 @@ test('tool keys work on the canvas: R then a drag draws a rectangle', async ({ s
   await expect.poll(() => liveElements(board)?.map((el) => el.type)).toEqual(['rectangle', 'rectangle'])
 })
 
-test('Mermaid to Excalidraw loads its lazy engine and inserts a flowchart', async ({ sandbox, launch }) => {
-  const vault = sandbox.vault('V', { 'Board.excalidraw': scene() })
-  const board = `${vault}/Board.excalidraw`
-  sandbox.writeProfile({ windows: [{ root: vault, file: board }] })
-  const app = await launch()
-  const page = await app.window()
-  await canvasReady(page)
+test('Mermaid to Excalidraw loads its lazy engine and inserts a flowchart', async ({ openBoard }) => {
+  const { page, board } = await openBoard({ 'Board.excalidraw': scene() })
   await page.getByTestId('dropdown-menu-button').filter({ visible: true }).click()
   await page.getByRole('menuitem', { name: 'Mermaid to Excalidraw' }).click()
   const dialog = page.getByRole('dialog').filter({ hasText: 'Mermaid to Excalidraw' })
@@ -176,12 +124,8 @@ test('Mermaid to Excalidraw loads its lazy engine and inserts a flowchart', asyn
   expect(liveElements(board)?.filter((el) => el.type === 'text').map((el) => el.text).sort()).toEqual(['Finish', 'Start'])
 })
 
-test('Present: frames become slides and the player walks them with the keys', async ({ sandbox, launch }) => {
-  const vault = sandbox.vault('V', { 'Deck.excalidraw': scene([frame('f1', 'Intro', 0, 0), rect('a', 50, 50, 100, 60, { frameId: 'f1' }), frame('f2', 'Plan', 600, 0)]) })
-  sandbox.writeProfile({ windows: [{ root: vault, file: `${vault}/Deck.excalidraw` }] })
-  const app = await launch()
-  const page = await app.window()
-  await canvasReady(page)
+test('Present: frames become slides and the player walks them with the keys', async ({ openBoard }) => {
+  const { page } = await openBoard({ 'Deck.excalidraw': scene([frame('f1', 'Intro', 0, 0), rect('a', 50, 50, 100, 60, { frameId: 'f1' }), frame('f2', 'Plan', 600, 0)]) })
   await openPanelTab(page, 'Presentation')
   const slides = panel(page).getByRole('region', { name: 'Presentation' })
   await expect(slides.getByText('2 slides')).toBeVisible()
@@ -208,9 +152,7 @@ test('Components: save a selection to the Library folder, insert a copy into ano
   const app = await launch()
   const page = await app.window()
   await canvasReady(page)
-  const box = await activeCanvas(page).boundingBox()
-  if (box === null) throw new Error('no canvas')
-  await page.mouse.click(box.x + box.width - 60, box.y + box.height - 120)
+  await clickEmpty(page)
   await page.keyboard.press('Meta+a')
   await openPanelTab(page, 'Components')
   await panel(page).getByRole('button', { name: 'Save selection' }).click()
@@ -241,27 +183,17 @@ test('Components: save a selection to the Library folder, insert a copy into ano
   expect(sandbox.trashed().sort()).toEqual(['two-boxes.excalidraw', 'two-boxes.png'])
 })
 
-test('Images › Shapes inserts a shape without any network', async ({ sandbox, launch }) => {
-  const vault = sandbox.vault('V', { 'Board.excalidraw': scene() })
-  const board = `${vault}/Board.excalidraw`
-  sandbox.writeProfile({ windows: [{ root: vault, file: board }] })
-  const app = await launch()
-  const network = app.outsideRequests()
-  const page = await app.window()
-  await canvasReady(page)
+test('Images › Shapes inserts a shape without any network', async ({ openBoard }) => {
+  const { app, page, board } = await openBoard({ 'Board.excalidraw': scene() })
   await openPanelTab(page, 'Image Studio')
   await panel(page).getByRole('navigation', { name: 'Image Studio sections' }).getByRole('button', { name: 'Shapes' }).click()
   await panel(page).getByRole('button', { name: 'Add Hexagon', exact: true }).click()
   await expect.poll(() => liveElements(board)?.length ?? 0).toBeGreaterThan(0)
-  expect(network.attempted).toEqual([])
+  expect(app.outsideRequests().attempted).toEqual([])
 })
 
-test('the launcher rail’s Writing mode and Show frames are global canvas preferences', async ({ sandbox, launch }) => {
-  const vault = sandbox.vault('V', { 'Board.excalidraw': scene() })
-  sandbox.writeProfile({ windows: [{ root: vault, file: `${vault}/Board.excalidraw` }] })
-  const app = await launch()
-  const page = await app.window()
-  await canvasReady(page)
+test('the launcher rail’s Writing mode and Show frames are global canvas preferences', async ({ openBoard }) => {
+  const { page } = await openBoard({ 'Board.excalidraw': scene() })
   const rail = page.getByRole('navigation', { name: 'Workspace panel and canvas modes' })
   await rail.getByRole('button', { name: 'Writing mode' }).click()
   await rail.getByRole('button', { name: 'Show frames' }).click()
