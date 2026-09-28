@@ -13,12 +13,12 @@
     "chromiumLocaleCount": { "max": 8 },
     "asarNodeModulesFiles": { "max": 0, "target": 0 },
     "duplicateBytes": { "max": 81144, "target": 0 },
-    "rendererEagerJsBytes": { "max": 413536 },
+    "rendererEagerJsBytes": { "max": 414444, "$comment": "Raised from 413536 with YAZ-1989: the laser's three canvas prefs (lists, validators, mapping) in shared/canvasPrefs + shared/types, which the renderer loads eagerly." },
     "rendererEagerCssBytes": { "max": 53426 },
     "rendererReachableChunks": { "max": 125 },
     "rendererTotalBytes": { "max": 23026234 },
     "rendererMapBytes": { "max": 0 },
-    "mainBundleBytes": { "max": 357727, "$comment": "Raised from 285442 (v0.1.11) with YAZ-2073, pending Yasin's OK: chokidar is bundled into main instead of shipped as asar node_modules (asarNodeModulesFiles 12 → 0), plus the IPC CONTRACT table (6A) and the FSEvents ready probe (5F1)." }
+    "mainBundleBytes": { "max": 358372, "$comment": "Raised from 357727 with YAZ-1989: main validates the laser's three canvas prefs (shared/canvasPrefs). Raised from 285442 (v0.1.11) with YAZ-2073, pending Yasin's OK: chokidar is bundled into main instead of shipped as asar node_modules (asarNodeModulesFiles 12 → 0), plus the IPC CONTRACT table (6A) and the FSEvents ready probe (5F1)." }
   },
   "perfTolerance": 0.15,
   "perf": {

@@ -42,7 +42,8 @@ Afterwards, confirm the engine you think you installed is the one you got:
 grep -c writingMode "$(npm ls @excalidraw/excalidraw -w client --parseable | tail -1)/dist/prod/index.js"
 ```
 
-Greater than 0 means Writing mode is in the build. Note the `npm ls` detour — npm hoists the
+Greater than 0 means Writing mode is in the build. The same check with `laserTrailMode` in place of
+`writingMode` confirms the laser's modes (YAZ-1989) are in it. Note the `npm ls` detour — npm hoists the
 engine to the workspace root, so it lands in `./node_modules/@excalidraw/excalidraw`, not
 under `client/`.
 

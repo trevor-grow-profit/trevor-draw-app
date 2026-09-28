@@ -16,7 +16,9 @@
  * NOT HERE, ON PURPOSE: the properties-toolbar pref, removed by the round-4 amendment — the
  * toolbar mode is a constant (`YASEEN_FULL_TOOLBAR_MODE`), not a choice. Canvas background is not
  * here either: it is per BOARD, written into the file by the engine, so it lives in View ›
- * Canvas Background (🔒 YAZ-1775 D10). Theme is Appearance's only row.
+ * Canvas Background (🔒 YAZ-1775 D10). Theme is Appearance's only row. Nor are the laser's trail,
+ * colour and size (🔒 YAZ-1989 D1): they are `CanvasPrefs` so they are remembered and follow every
+ * window, but the laser's own toolbar in the engine is the one place they are changed.
  */
 import type { ReactNode } from 'react'
 import { DEFAULT_CANVAS_PREFS, FONT_FAMILY_OPTIONS, type CanvasPrefs, type Roughness, type SelectOn, type SettingsState, type TextAlign } from '@shared/types'

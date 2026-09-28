@@ -22,6 +22,18 @@ export const TEXT_ALIGNS = ['left', 'center', 'right'] as const
 export type TextAlign = (typeof TEXT_ALIGNS)[number]
 
 /**
+ * The laser's own settings (🔒 YAZ-1989 D1), in the fork's spelling so the mapping is a straight
+ * copy; the first of each list is the stock laser and the default. `canvasPrefsEngine.test.ts`
+ * pins the lists and defaults to the vendored engine's exports.
+ */
+export const LASER_TRAIL_MODES = ['fade', 'hold', 'sticky'] as const
+export type LaserTrailMode = (typeof LASER_TRAIL_MODES)[number]
+export const LASER_COLORS = ['#ff0000', '#ffd400', '#00c853', '#2979ff', '#d500f9'] as const
+export type LaserColor = (typeof LASER_COLORS)[number]
+export const LASER_SIZES = ['S', 'M', 'L'] as const
+export type LaserSize = (typeof LASER_SIZES)[number]
+
+/**
  * The fork's `FONT_FAMILY` ids the Default font row offers (`packages/common/src/constants.ts`),
  * Assistant first because it is the value the web app forced through a one-shot localStorage
  * migration — carried here as a plain preference instead, with no migration stamp (🔒 YAZ-1775 D9).
@@ -72,6 +84,12 @@ export interface CanvasPrefs {
   defaultRoughness: Roughness
   /** New text's alignment (`currentItemTextAlign`): the engine's `DEFAULT_NEW_TEXT_ALIGN`. */
   defaultTextAlign: TextAlign
+  /** The laser's trail (`laserTrailMode`): `fade` (🔒 YAZ-1989 D1). */
+  laserTrailMode: LaserTrailMode
+  /** The laser's colour (`laserColor`, a `LASER_COLORS` swatch): red (🔒 YAZ-1989 D1). */
+  laserColor: LaserColor
+  /** The laser's size (`laserSize`): `S` (🔒 YAZ-1989 D1). */
+  laserSize: LaserSize
 }
 
 /** The engine's own defaults (`appState.ts` `getDefaultAppState()` + `constants.ts`). */
@@ -90,6 +108,9 @@ export const DEFAULT_CANVAS_PREFS: CanvasPrefs = {
   defaultFontFamily: 10,
   defaultRoughness: 0,
   defaultTextAlign: 'center',
+  laserTrailMode: 'fade',
+  laserColor: '#ff0000',
+  laserSize: 'S',
 }
 
 /**

@@ -4,11 +4,11 @@
   "version": "0.1.0",
   "type": "module",
   "dependencies": {
-    "@excalidraw/common": "file:vendor/yaseendraw-common-0.18.0-759e7dfd.tgz",
-    "@excalidraw/element": "file:vendor/yaseendraw-element-0.18.0-759e7dfd.tgz",
-    "@excalidraw/excalidraw": "file:vendor/yaseendraw-excalidraw-0.18.0-759e7dfd.tgz",
-    "@excalidraw/fractional-indexing": "file:vendor/yaseendraw-fractional-indexing-3.3.0-759e7dfd.tgz",
-    "@excalidraw/math": "file:vendor/yaseendraw-math-0.18.0-759e7dfd.tgz",
+    "@excalidraw/common": "file:vendor/yaseendraw-common-0.18.0-aaba056e.tgz",
+    "@excalidraw/element": "file:vendor/yaseendraw-element-0.18.0-aaba056e.tgz",
+    "@excalidraw/excalidraw": "file:vendor/yaseendraw-excalidraw-0.18.0-aaba056e.tgz",
+    "@excalidraw/fractional-indexing": "file:vendor/yaseendraw-fractional-indexing-3.3.0-aaba056e.tgz",
+    "@excalidraw/math": "file:vendor/yaseendraw-math-0.18.0-aaba056e.tgz",
     "react": "^19.2.8",
     "react-dom": "^19.2.8"
   },

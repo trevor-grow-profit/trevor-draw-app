@@ -25,7 +25,8 @@ by hand; `M` = hand only. Only the e2e suite counts as A here — unit tests are
 `YASEEN_DRAW_USER_DATA_DIR=<scratch profile>` against seeded vaults under a scratch folder — the
 `LAUNCH.md` › Verify recipe. Never Yasin's real profile or vault. Seeds: `tools/seedDemoVault.mjs`
 (stress vault), `seedDrawioDemoVault.mjs`, `seedMergeDemoVault.mjs`, `seedPreviewDemoVault.mjs`,
-`seedShareDemoVault.mjs` + `fakeCloudflare.mjs`, `seedSortDemoVault.mjs`, `seedStorageDemoVault.mjs`.
+`seedShareDemoVault.mjs` + `fakeCloudflare.mjs`, `seedSortDemoVault.mjs`, `seedStorageDemoVault.mjs`,
+`seedLaserDemoVault.mjs`.
 
 ## PR checklist (YAZ-2073 children)
 
@@ -127,7 +128,7 @@ packaged e2e run for the same reason.)
 
 | ID | Scenario | E2E (A) / hand only (M) |
 |---|---|---|
-| T1 | Each of the 14 canvas preferences applies across boards and windows and survives relaunch. | A (part): `settings`, `canvas` — Grid, Writing mode, Show frames; the other 11 and the relaunch by hand |
+| T1 | Each of the 14 canvas preferences applies across boards and windows and survives relaunch (the laser's own 3 are 1989-19). | A (part): `settings`, `canvas` — Grid, Writing mode, Show frames; the other 11 and the relaunch by hand |
 | T2 | Change the Library folder (native picker). | A (part): `settings` — the default only; the picker by hand |
 | T3 | Pixabay key set / clear. | A: `settings` |
 | T4 | draw.io dark colours adapt / keep, live. | A: `settings` |
@@ -167,9 +168,9 @@ Every line of [feature-safety-net](../thoughts/yaz-2073-scope/research/feature-s
 | ID | Feature | Coverage | By hand |
 |---|---|---|---|
 | F12 | Engine mount, one full toolbar, never the tablet form factor | A (part): `canvas`, `engine` — it mounts and works; toolbar layout by hand | 1775-12 |
-| F13 | Engine tools as lazy chunks (shapes … Mermaid, SVG subset, image resize) | A (part): `canvas`, `engine` — rectangle, laser, Mermaid, eraser, frame, stats, link, SVG subset | ★C7 |
+| F13 | Engine tools as lazy chunks (shapes … Mermaid, SVG subset, image resize) | A (part): `canvas`, `engine` — rectangle, laser, Mermaid, eraser, frame, stats, link, SVG subset | ★C7; the laser's modes, bar and undo: 1989-1…25 |
 | F14 | Paste / drop an OS-clipboard image → one asset, small JSON | A: `images`, `launch` (secure context) | ★C3 ★C4 |
-| F15 | 14 canvas prefs, global and live across windows | A (part): `settings`, `canvas` — 3 of 14 | T1 |
+| F15 | 14 canvas prefs (+ the laser's 3, 1989-19), global and live across windows | A (part): `settings`, `canvas` — 3 of 14 | T1 |
 | F16 | Canvas background (View menu) | A: `canvas` — the colour is saved (YAZ-2073 2E); panning and zooming never write | — |
 | F17 | Export Image… ⌘⇧E (engine PNG / SVG dialog) | A (part): `canvas`, `engine` — dialog + SVG; drawing PNG by hand | ★C5 |
 | F18 | Export Excalidraw Drawing… ⌘⇧S, images embedded | A: `canvas` | ★C6 |
@@ -493,3 +494,38 @@ S10 is left out: the issue marks it impossible (the app quits with its last wind
 | 2056-S46 | From Favorites, New… or Focus on a non-favorite result works in Files. | M |
 | 2056-S47 | Other result actions work in place; query and results stay. | M |
 | 2056-S48 | YAZ-1767 / 1941 / 1913 behaviour and ⌘K keys unchanged. | A (part): `vaults`, `sidebar` — see those lists |
+
+### YAZ-1989 — laser pointer (`seedLaserDemoVault.mjs`)
+
+The 🔒 FINAL scenario list on YAZ-1989; the vault's `00 READ ME` board repeats it. Rows 1–16 and
+23 are also proven in the fork by `packages/excalidraw/tests/laserTrailModes.test.tsx` (jsdom);
+17–22, 24 and 25 are hand-only. All are M here because only the e2e suite counts as A in this
+file, and the laser has no e2e run (Yasin's rule for YAZ-1989: no Playwright).
+
+| ID | Scenario | Coverage |
+|---|---|---|
+| 1989-1 | Fade: a short comet, gone in about 2 s. | M |
+| 1989-2 | Hold: three strokes with short pauses all stay; about 5 s after the last one they fade together. | M |
+| 1989-3 | Hold: one long scribble stays whole — no tail eaten. | M |
+| 1989-4 | Sticky: stays until cleared. | M |
+| 1989-5 | Red, then yellow: the red marks stay red; S / M / L mix the same way. | M |
+| 1989-6 | Fade + ↵ right after drawing: the mark sticks (Keep). | M |
+| 1989-7 | Hold + the bar's Keep within 5 s: it sticks. | M |
+| 1989-8 | Clear → gone; ⌘Z → back; ⇧⌘Z → gone again. | M |
+| 1989-9 | Esc with marks: gone and the tool is V; K, ⌘Z → back. | M |
+| 1989-10 | V (or any tool) with sticky marks: they stay; shapes under them still click. | M |
+| 1989-11 | Fade / Hold marks, then V: they still fade. | M |
+| 1989-12 | Clear → V → K → ↶: back. | M |
+| 1989-13 | Move a shape, K, ⌘Z: only the laser marks undo; on V, ⌘Z undoes the shape. | M |
+| 1989-14 | The footer ↶ ↷ and the bar ↶ ↷ do exactly what ⌘Z / ⇧⌘Z do while the laser is out. | M |
+| 1989-15 | ⇧↵ / Make permanent: grouped, selected pen strokes in the same colours and on-screen thickness, draggable; one ⌘Z on V removes them; laser ⌘Z does not bring the marks back. | M |
+| 1989-16 | Sticky marks, then pan and zoom: pinned to the drawing, same thickness on screen. | M |
+| 1989-17 | Marks belong to the open tab: sticky marks on 01 stay while 01's tab stays open (switch to another tab and back — still there); open 08 in that tab or close it, and they are gone with their laser history. | M |
+| 1989-18 | Laser marks never make a board unsaved; reopen → no marks; the board JSON has no `laser*` keys. | M |
+| 1989-19 | Sticky + blue + L, ⌘Q, relaunch: still Sticky / blue / L, on every board. | M |
+| 1989-20 | Presentation: play 05, press K and mark (the bar hides in view mode; the settings still apply). | M |
+| 1989-21 | The laser over the linked box in 03 still opens the link. | M |
+| 1989-22 | Dark theme and 04: every swatch reads clearly; the bar looks native in light and dark. | M |
+| 1989-23 | Sticky marks left alone: no constant CPU in Activity Monitor (the render loop idles). | M |
+| 1989-24 | 10 (400 shapes): marking stays smooth. | M |
+| 1989-25 | With the laser out, ⌘Z / ⇧⌘Z / ↵ / Esc reach the engine (the Edit menu never takes them); Edit › Undo clicked in the menu bar behaves as it does for the board. | M |

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { DEFAULT_CANVAS_PREFS, type CanvasPrefs } from './types'
+import { DEFAULT_CANVAS_PREFS, LASER_COLORS, LASER_SIZES, LASER_TRAIL_MODES, type CanvasPrefs } from './types'
 import { appStateToPrefs, CANVAS_PREF_KEYS, changedPrefKeys, isCanvasPrefs, prefsEqual, prefsToAppState, sanitizeCanvasPrefs, type EngineAppStateSlice } from './canvasPrefs'
 
 const prefs = (over: Partial<CanvasPrefs> = {}): CanvasPrefs => ({ ...DEFAULT_CANVAS_PREFS, ...over })
@@ -21,11 +21,16 @@ describe('DEFAULT_CANVAS_PREFS', () => {
       defaultFontFamily: 10,
       defaultRoughness: 0,
       defaultTextAlign: 'center',
+      // 🔒 YAZ-1989 D1: the stock laser — a red fading trail, small.
+      laserTrailMode: 'fade',
+      laserColor: '#ff0000',
+      laserSize: 'S',
     })
   })
 
-  it('is the FOURTEEN keys D9 names, and no more', () => {
-    expect(CANVAS_PREF_KEYS).toHaveLength(14)
+  it('is the FOURTEEN keys D9 names plus the three laser keys 🔒 YAZ-1989 D1 adds, and no more', () => {
+    expect(CANVAS_PREF_KEYS).toHaveLength(17)
+    expect(CANVAS_PREF_KEYS.slice(-3)).toEqual(['laserTrailMode', 'laserColor', 'laserSize'])
     // The round-4 amendment removed the properties-toolbar pref: the toolbar mode is a constant.
     expect(CANVAS_PREF_KEYS).not.toContain('propertiesToolbar')
   })
@@ -53,6 +58,21 @@ describe('isCanvasPrefs (strict — the IPC boundary)', () => {
     expect(isCanvasPrefs({ ...prefs(), writingStrokeWidth: 0 })).toBe(false)
     expect(isCanvasPrefs({ ...prefs(), vectorStrokeWidth: Number.NaN })).toBe(false)
     expect(isCanvasPrefs({ ...prefs(), defaultFontFamily: 10.5 })).toBe(false)
+    expect(isCanvasPrefs({ ...prefs(), laserTrailMode: 'forever' })).toBe(false)
+    expect(isCanvasPrefs({ ...prefs(), laserColor: '#123456' })).toBe(false) // not one of the five swatches
+    expect(isCanvasPrefs({ ...prefs(), laserColor: '#FF0000' })).toBe(false) // the toolbar's exact spelling only
+    expect(isCanvasPrefs({ ...prefs(), laserSize: 'XL' })).toBe(false)
+  })
+
+  it('accepts every laser value the toolbar can write (🔒 YAZ-1989 D1)', () => {
+    for (const laserTrailMode of LASER_TRAIL_MODES) expect(isCanvasPrefs(prefs({ laserTrailMode }))).toBe(true)
+    for (const laserColor of LASER_COLORS) expect(isCanvasPrefs(prefs({ laserColor }))).toBe(true)
+    for (const laserSize of LASER_SIZES) expect(isCanvasPrefs(prefs({ laserSize }))).toBe(true)
+  })
+
+  it('rejects a store from before 🔒 YAZ-1989 D1 at the BRIDGE — the renderer always has all three', () => {
+    const { laserTrailMode: _t, laserColor: _c, laserSize: _s, ...before } = prefs()
+    expect(isCanvasPrefs(before)).toBe(false)
   })
 })
 
@@ -61,6 +81,12 @@ describe('sanitizeCanvasPrefs (lenient — the state file)', () => {
     expect(sanitizeCanvasPrefs({ gridModeEnabled: true, selectOn: 'overlap', defaultRoughness: 7, zenModeEnabled: 'no' })).toEqual(
       prefs({ gridModeEnabled: true, selectOn: 'overlap' }),
     )
+  })
+
+  it('loads a state file from before 🔒 YAZ-1989 D1 whole, the laser at its defaults', () => {
+    const { laserTrailMode: _t, laserColor: _c, laserSize: _s, ...before } = prefs({ gridModeEnabled: true })
+    expect(sanitizeCanvasPrefs(before)).toEqual(prefs({ gridModeEnabled: true }))
+    expect(sanitizeCanvasPrefs({ ...before, laserTrailMode: 'sticky', laserColor: 'blue', laserSize: 'L' })).toEqual(prefs({ gridModeEnabled: true, laserTrailMode: 'sticky', laserSize: 'L' }))
   })
 
   it('answers the defaults for junk — a store from before a key existed still loads whole', () => {
@@ -88,6 +114,9 @@ describe('prefsToAppState', () => {
       currentItemFontFamily: 10,
       currentItemRoughness: 0,
       currentItemTextAlign: 'center',
+      laserTrailMode: 'fade',
+      laserColor: '#ff0000',
+      laserSize: 'S',
     })
   })
 
@@ -127,6 +156,9 @@ describe('appStateToPrefs', () => {
     currentItemFontFamily: 5,
     currentItemRoughness: 2,
     currentItemTextAlign: 'left',
+    laserTrailMode: 'sticky',
+    laserColor: '#2979ff',
+    laserSize: 'L',
   }
 
   it('reads every key back off the engine', () => {
@@ -145,11 +177,14 @@ describe('appStateToPrefs', () => {
       defaultFontFamily: 5,
       defaultRoughness: 2,
       defaultTextAlign: 'left',
+      laserTrailMode: 'sticky',
+      laserColor: '#2979ff',
+      laserSize: 'L',
     })
   })
 
   it('round-trips through prefsToAppState', () => {
-    const start = prefs({ gridModeEnabled: true, selectOn: 'overlap', toolLock: true, writingStrokeWidth: 0.75, defaultFontFamily: 5, defaultRoughness: 1, defaultTextAlign: 'right' })
+    const start = prefs({ gridModeEnabled: true, selectOn: 'overlap', toolLock: true, writingStrokeWidth: 0.75, defaultFontFamily: 5, defaultRoughness: 1, defaultTextAlign: 'right', laserTrailMode: 'hold', laserColor: '#d500f9', laserSize: 'M' })
     const back = appStateToPrefs({ ...(prefsToAppState(start) as EngineAppStateSlice), frameRendering: { outline: start.framesVisible, name: start.framesVisible } }, DEFAULT_CANVAS_PREFS)
     expect(back).toEqual(start)
   })
@@ -157,6 +192,12 @@ describe('appStateToPrefs', () => {
   it('falls back per field: an appState missing a key never overwrites the stored value', () => {
     const stored = prefs({ writingMode: true, gridModeEnabled: true, framesVisible: false })
     expect(appStateToPrefs({}, stored)).toEqual(stored)
+  })
+
+  it('an engine without the laser keys (built before 🔒 YAZ-1989 D1) keeps the stored laser', () => {
+    const stored = prefs({ laserTrailMode: 'hold', laserColor: '#00c853', laserSize: 'M' })
+    const { laserTrailMode: _t, laserColor: _c, laserSize: _s, ...olderEngine } = full
+    expect(appStateToPrefs(olderEngine, stored)).toMatchObject({ laserTrailMode: 'hold', laserColor: '#00c853', laserSize: 'M' })
   })
 
   it('treats a half-applied frameRendering as "no answer" rather than as a preference', () => {
@@ -168,7 +209,7 @@ describe('appStateToPrefs', () => {
 
   it('ignores a value the engine could not have meant', () => {
     const stored = prefs({ defaultRoughness: 1, vectorStrokeWidth: 3 })
-    expect(appStateToPrefs({ currentItemRoughness: 9, currentItemVectorStrokeWidth: -1, boxSelectionMode: undefined }, stored)).toEqual(stored)
+    expect(appStateToPrefs({ currentItemRoughness: 9, currentItemVectorStrokeWidth: -1, boxSelectionMode: undefined, laserTrailMode: 'forever', laserColor: '#123456', laserSize: 'XL' }, stored)).toEqual(stored)
   })
 })
 

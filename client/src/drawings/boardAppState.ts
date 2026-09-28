@@ -4,8 +4,9 @@
  * change, and was never saved. What counts now is every field the engine's own serializer writes
  * (`serializeAsJSON(…, 'local')`, read off it rather than listed here, so the two cannot drift),
  * minus the user-level canvas prefs (🔒 YAZ-1775 D9): those belong to the app, are pushed into
- * every open board at once, and a grid toggle must not rewrite every tab. Pan and zoom are never
- * written, so they never count.
+ * every open board at once, and a grid toggle must not rewrite every tab. The set is whatever
+ * `prefsToAppState` emits, so a pref added there (the laser's three, 🔒 YAZ-1989 D1) is dropped here
+ * with no second list. Pan and zoom are never written, so they never count.
  *
  * The engine arrives as an argument (a type-only import), so this file never pulls the package in.
  */

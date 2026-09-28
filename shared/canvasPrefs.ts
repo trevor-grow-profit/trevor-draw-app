@@ -3,9 +3,9 @@
  *
  * `SettingsState.canvas` holds the engine's `browser: true, export: false` appState — grid,
  * snapping, binding, selection mode, tool lock, zen, writing mode, the two pen widths, the three
- * "new element is born with" defaults — plus frame visibility. The engine package persists none
- * of it (the web app used browser localStorage), so the shell's one state file does, and this
- * module is the PURE translation between the two vocabularies, in both directions, plus the
+ * "new element is born with" defaults, the laser's trail / colour / size (🔒 YAZ-1989 D1) — plus
+ * frame visibility. The engine package persists none of it (the web app used browser
+ * localStorage), so the shell's one state file does, and this module is the PURE translation between the two vocabularies, in both directions, plus the
  * equality the anti-ping-pong rule needs.
  *
  * NO ENGINE IMPORT. The appState slice is a structural type, so `canvasPrefs.test.ts` pins every
@@ -29,7 +29,7 @@
  */
 
 import { isRecord } from './guards'
-import { DEFAULT_CANVAS_PREFS, ROUGHNESS_LEVELS, SELECT_ON_MODES, TEXT_ALIGNS, type CanvasPrefs, type Roughness, type SelectOn, type TextAlign } from './types'
+import { DEFAULT_CANVAS_PREFS, LASER_COLORS, LASER_SIZES, LASER_TRAIL_MODES, ROUGHNESS_LEVELS, SELECT_ON_MODES, TEXT_ALIGNS, type CanvasPrefs, type LaserColor, type LaserSize, type LaserTrailMode, type Roughness, type SelectOn, type TextAlign } from './types'
 
 /** Every pref key, in declaration order — the order `changedPrefKeys` reports in. */
 export const CANVAS_PREF_KEYS = Object.keys(DEFAULT_CANVAS_PREFS) as ReadonlyArray<keyof CanvasPrefs>
@@ -55,6 +55,11 @@ const FIELD_OK: { [K in keyof CanvasPrefs]: (v: unknown) => v is CanvasPrefs[K] 
   // ported as validation rather than as a migration — nothing here ever wrote a bad one.
   defaultRoughness: (v): v is Roughness => typeof v === 'number' && (ROUGHNESS_LEVELS as readonly number[]).includes(v),
   defaultTextAlign: (v): v is TextAlign => typeof v === 'string' && (TEXT_ALIGNS as readonly string[]).includes(v),
+  // 🔒 YAZ-1989 D1: the laser toolbar's own vocabularies, exact spellings only — a colour outside
+  // the five swatches (or `#FF0000`) is not one the toolbar could have written.
+  laserTrailMode: (v): v is LaserTrailMode => typeof v === 'string' && (LASER_TRAIL_MODES as readonly string[]).includes(v),
+  laserColor: (v): v is LaserColor => typeof v === 'string' && (LASER_COLORS as readonly string[]).includes(v),
+  laserSize: (v): v is LaserSize => typeof v === 'string' && (LASER_SIZES as readonly string[]).includes(v),
 }
 
 /** Strict: every field present and valid — the IPC boundary's check. */
@@ -89,6 +94,9 @@ export interface EngineAppStateSlice {
   currentItemFontFamily?: number
   currentItemRoughness?: number
   currentItemTextAlign?: string
+  laserTrailMode?: string
+  laserColor?: string
+  laserSize?: string
 }
 
 /** The engine's own default `activeTool`, for MOUNT only (see the module doc). */
@@ -143,6 +151,12 @@ export function prefsToAppState(prefs: CanvasPrefs, keys: ReadonlyArray<keyof Ca
       case 'defaultTextAlign':
         out.currentItemTextAlign = prefs.defaultTextAlign
         break
+      // 🔒 YAZ-1989 D1: the same key names on both sides, so these three are straight copies.
+      case 'laserTrailMode':
+      case 'laserColor':
+      case 'laserSize':
+        out[k] = prefs[k]
+        break
     }
   }
   return out
@@ -172,6 +186,10 @@ export function appStateToPrefs(appState: EngineAppStateSlice, fallback: CanvasP
     defaultFontFamily: FIELD_OK.defaultFontFamily(appState.currentItemFontFamily) ? appState.currentItemFontFamily : fallback.defaultFontFamily,
     defaultRoughness: FIELD_OK.defaultRoughness(appState.currentItemRoughness) ? appState.currentItemRoughness : fallback.defaultRoughness,
     defaultTextAlign: FIELD_OK.defaultTextAlign(appState.currentItemTextAlign) ? appState.currentItemTextAlign : fallback.defaultTextAlign,
+    // An engine built before 🔒 YAZ-1989 D1 has none of the three, and so keeps the stored ones.
+    laserTrailMode: FIELD_OK.laserTrailMode(appState.laserTrailMode) ? appState.laserTrailMode : fallback.laserTrailMode,
+    laserColor: FIELD_OK.laserColor(appState.laserColor) ? appState.laserColor : fallback.laserColor,
+    laserSize: FIELD_OK.laserSize(appState.laserSize) ? appState.laserSize : fallback.laserSize,
   }
 }
 
