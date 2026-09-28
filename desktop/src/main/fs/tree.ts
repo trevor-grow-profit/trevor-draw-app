@@ -12,7 +12,7 @@ import { requireAbsPath } from './validate'
  * hiding it by name anywhere would be the app deciding what the user may see in their own vault.
  * Hidden from the TREE, not from disk: the sweep and the loader address it directly.
  */
-export async function tree(root: string): Promise<TreeResponse> {
+export async function tree(root: unknown): Promise<TreeResponse> {
   const dir = requireAbsPath(root, 'root')
   const flight = flights.get(dir)
   if (flight === undefined) return walkOnce(dir)

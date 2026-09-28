@@ -4,13 +4,13 @@
  * outline check, so the editor never mounts on it and never autosaves over it. The save follows
  * `drawing:save`'s rules and stamps the D7 dates. Long form: docs/CONTRACTS.md › draw.io diagrams.
  */
-import type { DiagramLoadRequest, DiagramLoadResponse, DiagramSaveRequest, DiagramSaveResponse } from '@shared/types'
+import type { DiagramLoadResponse, DiagramSaveResponse } from '@shared/types'
 import { diagramDocumentError, stampDiagramMeta } from '@shared/diagramFile'
 import { BOARDS, boardTarget, guardedStamp } from './boardDocument'
 import { readBoundedRegularFile } from './boundedRead'
 import { atomicWrite, BridgeFailure, fsCall, requireDir } from './fsUtils'
 
-export async function loadDiagram(req: DiagramLoadRequest): Promise<DiagramLoadResponse> {
+export async function loadDiagram(req: unknown): Promise<DiagramLoadResponse> {
   const { dir, file } = boardTarget(req, 'diagram')
   await requireDir(dir)
   const snapshot = await readBoundedRegularFile(file, BOARDS.diagram.max, BOARDS.diagram.tooLarge)
@@ -20,7 +20,7 @@ export async function loadDiagram(req: DiagramLoadRequest): Promise<DiagramLoadR
   return { path: file, xml, mtime: snapshot.mtime, size: snapshot.size }
 }
 
-export async function saveDiagram(req: DiagramSaveRequest): Promise<DiagramSaveResponse> {
+export async function saveDiagram(req: unknown): Promise<DiagramSaveResponse> {
   const { dir, file, body } = boardTarget(req, 'diagram')
   const { xml, expectedMtime } = body
   if (typeof xml !== 'string') throw new BridgeFailure('BAD_REQUEST', "'xml' must be a string", { path: file })

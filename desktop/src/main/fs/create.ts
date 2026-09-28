@@ -1,5 +1,5 @@
 import { mkdir, stat, writeFile } from 'node:fs/promises'
-import type { CreateDirResponse, CreateFileRequest, CreateFileResponse } from '@shared/types'
+import type { CreateDirResponse, CreateFileResponse } from '@shared/types'
 import { isDiagram, isDrawing } from '@shared/fileKind'
 import { stampBoardMeta } from '@shared/drawingAssets'
 import { diagramDocumentError, diagramRoot, stampDiagramMeta } from '@shared/diagramFile'
@@ -11,7 +11,7 @@ import { requireAbsPath, requireObject } from './validate'
  * resolve at the fs layer: mkdir and `wx` writes throw EEXIST, which `toBridgeFailure` maps to
  * ALREADY_EXISTS — nothing is ever overwritten.
  */
-export async function createDir(path: string): Promise<CreateDirResponse> {
+export async function createDir(path: unknown): Promise<CreateDirResponse> {
   const p = requireAbsPath(path, 'path')
   await fsCall(p, () => mkdir(p))
   return { path: p }
@@ -29,7 +29,7 @@ export async function createDir(path: string): Promise<CreateDirResponse> {
  * check (an `<mxfile>` document, whole — never a zero-byte file) and its own stamp, the two
  * `yaseendraw-*` attributes on the root (D7). Every other extension is still refused.
  */
-export async function createFile(req: CreateFileRequest): Promise<CreateFileResponse> {
+export async function createFile(req: unknown): Promise<CreateFileResponse> {
   // Crosses IPC from a sandboxed renderer: shape-checked like a request body.
   const { path, content } = requireObject(req)
   const p = requireAbsPath(path, 'path')

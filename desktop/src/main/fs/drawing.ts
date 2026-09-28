@@ -52,7 +52,7 @@
  */
 import { link, mkdir, readdir, readFile, rename, unlink } from 'node:fs/promises'
 import path from 'node:path'
-import type { DrawingFileEntry, DrawingLoadRequest, DrawingLoadResponse, DrawingSaveRequest, DrawingSaveResponse } from '@shared/types'
+import type { DrawingFileEntry, DrawingLoadResponse, DrawingSaveResponse } from '@shared/types'
 import { ASSETS_DIR, assetFileName, extForMime, fileIdOfAssetName, isValidFileId, mimeForAssetExt, parseDataUrl, referencedFileIds, serializeBoard, stampBoardMetaScene, stripEmbeddedFiles, stripEmbeddedScene } from '@shared/drawingAssets'
 import type { Thumbs } from '../drawings/thumbs'
 import { BOARDS, boardTarget, guardedStamp } from './boardDocument'
@@ -102,7 +102,7 @@ async function listStore(dir: string): Promise<Map<string, string>> {
  * `thumbs` is the preview cache (`ipc/drawing.ts` binds it to userData); only a request carrying
  * `imageMaxPx` — a picture of the scene, never an editor — uses it (🔒 YAZ-2073 D6).
  */
-export async function loadDrawing(req: DrawingLoadRequest, thumbs?: Thumbs): Promise<DrawingLoadResponse> {
+export async function loadDrawing(req: unknown, thumbs?: Thumbs): Promise<DrawingLoadResponse> {
   const { dir, file, body } = boardTarget(req, 'drawing')
   const { imageMaxPx } = body
   if (imageMaxPx !== undefined && (typeof imageMaxPx !== 'number' || !Number.isInteger(imageMaxPx) || imageMaxPx <= 0)) throw new BridgeFailure('BAD_REQUEST', "'imageMaxPx' must be a positive integer", { path: file })
@@ -234,7 +234,7 @@ function checkAsset(entry: unknown, file: string): PendingAsset {
   return { fileId, name, bytes: Buffer.from(data.base64, 'base64') }
 }
 
-export async function saveDrawing(req: DrawingSaveRequest): Promise<DrawingSaveResponse> {
+export async function saveDrawing(req: unknown): Promise<DrawingSaveResponse> {
   const { dir, file, body } = boardTarget(req, 'drawing')
   const { json, expectedMtime, newFiles } = body
   if (typeof json !== 'string') throw new BridgeFailure('BAD_REQUEST', "'json' must be a string", { path: file })

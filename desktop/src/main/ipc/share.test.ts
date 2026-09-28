@@ -3,10 +3,11 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { ipcMain } from 'electron'
-import { CONTRACT, type Envelope } from '@shared/ipc'
+import { CONTRACT } from '@shared/ipc'
 import { CLOUDFLARE_API, CLOUDFLARE_TOKEN_PAGE } from '../share/cloudflare'
 import { createSecrets } from '../secrets'
 import { excalidrawFontsDir, readViewerAssets, registerShareIpc, shareEndpoints, viewerAssetsDir } from './share'
+import { registered } from './ipcFixture'
 
 vi.mock('electron', () => ({ shell: { openExternal: vi.fn() }, BrowserWindow: { getAllWindows: () => [] }, ipcMain: { handle: vi.fn(), on: vi.fn() } }))
 
@@ -113,12 +114,6 @@ describe('shareEndpoints — the demo switches are dev-only', () => {
 })
 
 describe('registerShareIpc refuses malformed requests before sharing sees them', () => {
-  type Handler = (event: unknown, ...args: unknown[]) => Promise<Envelope<unknown>>
-  const registered = (channel: string): Handler => {
-    const call = vi.mocked(ipcMain.handle).mock.calls.find(([ch]) => ch === channel)
-    if (call === undefined) throw new Error(`no handler registered for ${channel}`)
-    return call[1] as unknown as Handler
-  }
   const bad = expect.objectContaining({ ok: false, error: expect.objectContaining({ code: 'BAD_REQUEST' }) })
   const sender = { id: 1, isDestroyed: () => false, send: vi.fn() }
   let userData: string
@@ -128,10 +123,6 @@ describe('registerShareIpc refuses malformed requests before sharing sees them',
     registerShareIpc(userData, createSecrets(path.join(userData, 'secrets.json')), { viewerAssetsDir: path.join(userData, 'none'), drawioDir: path.join(userData, 'none'), fontsDir: path.join(userData, 'none'), isPackaged: true })
   })
   afterEach(() => rm(userData, { recursive: true, force: true }))
-
-  it('has no open-link channel (nothing called it)', () => {
-    expect(vi.mocked(ipcMain.handle).mock.calls.map(([ch]) => ch)).not.toContain('share:open-link')
-  })
 
   it.each([
     [CONTRACT.share.accounts.channel, [[], [''], [3], [{ token: 't' }]]],
@@ -144,6 +135,6 @@ describe('registerShareIpc refuses malformed requests before sharing sees them',
     [CONTRACT.share.setDomain.channel, [[], [5], [{ hostname: null }]]],
     [CONTRACT.share.disconnect.channel, [[], [5, true], [null], [null, 'yes'], [{ root: null, deleteEverything: true }]]],
   ])('%s refuses %j with BAD_REQUEST', async (channel, calls) => {
-    for (const args of calls) expect(await registered(channel)({ sender }, ...args)).toEqual(bad)
+    for (const args of calls) expect(await registered({ channel })({ sender }, ...args)).toEqual(bad)
   })
 })

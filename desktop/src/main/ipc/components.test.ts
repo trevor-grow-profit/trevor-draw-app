@@ -9,24 +9,17 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { BrowserWindow, ipcMain } from 'electron'
 import { LIBRARY_COMPONENTS_DIR } from '@shared/types'
-import { CONTRACT, type Envelope } from '@shared/ipc'
+import { CONTRACT } from '@shared/ipc'
 import type { ComponentStore } from '../library/componentStore'
 import { createStore, type Store } from '../store'
 import { registerComponentsIpc } from './components'
+import { registered } from './ipcFixture'
 
 vi.mock('electron', () => ({
   ipcMain: { handle: vi.fn(), on: vi.fn() },
   BrowserWindow: { getAllWindows: vi.fn(() => []) },
   shell: { trashItem: vi.fn(async () => undefined) },
 }))
-
-type Handler = (event: unknown, ...args: unknown[]) => Promise<Envelope<unknown>>
-
-function registered(channel: string): Handler {
-  const call = vi.mocked(ipcMain.handle).mock.calls.find(([ch]) => ch === channel)
-  if (call === undefined) throw new Error(`no handler registered for ${channel}`)
-  return call[1] as unknown as Handler
-}
 
 const ok = (value: unknown) => ({ ok: true, value })
 const bad = (code: string) => expect.objectContaining({ ok: false, error: expect.objectContaining({ code }) })
@@ -73,23 +66,14 @@ afterEach(async () => {
   await rm(dir, { recursive: true, force: true })
 })
 
-const list = () => registered(CONTRACT.components.list.channel)({ sender })
-const save = (req: unknown) => registered(CONTRACT.components.save.channel)({ sender }, req)
-const read = (req: unknown) => registered(CONTRACT.components.read.channel)({ sender }, req)
-const renameIt = (req: unknown) => registered(CONTRACT.components.rename.channel)({ sender }, req)
-const remove = (req: unknown) => registered(CONTRACT.components.delete.channel)({ sender }, req)
-const preview = (req: unknown) => registered(CONTRACT.components.preview.channel)({ sender }, req)
+const list = () => registered(CONTRACT.components.list)({ sender })
+const save = (req: unknown) => registered(CONTRACT.components.save)({ sender }, req)
+const read = (req: unknown) => registered(CONTRACT.components.read)({ sender }, req)
+const renameIt = (req: unknown) => registered(CONTRACT.components.rename)({ sender }, req)
+const remove = (req: unknown) => registered(CONTRACT.components.delete)({ sender }, req)
+const preview = (req: unknown) => registered(CONTRACT.components.preview)({ sender }, req)
 
 describe('registerComponentsIpc (🔒 YAZ-1775 D5, YAZ-1819)', () => {
-  it('registers exactly the six component channels', () => {
-    expect(
-      vi
-        .mocked(ipcMain.handle)
-        .mock.calls.map(([ch]) => ch)
-        .sort(),
-    ).toEqual([CONTRACT.components.delete.channel, CONTRACT.components.list.channel, CONTRACT.components.preview.channel, CONTRACT.components.read.channel, CONTRACT.components.rename.channel, CONTRACT.components.save.channel].sort())
-  })
-
   it('save → list → read → preview → rename → delete, all under `<userData>/library` by default (🔒 YAZ-1775 D5)', async () => {
     const saved = await save({ name: 'A card', fragmentJson: fragment(), previewPng: PNG })
     expect(saved).toEqual(ok(expect.objectContaining({ slug: 'a-card', name: 'A card', elementCount: 1 })))

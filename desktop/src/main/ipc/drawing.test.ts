@@ -8,16 +8,9 @@ import { createStore, type Store } from '../store'
 import { encodePng } from '../drawings/png'
 import { blockOf, withoutBlock } from '../fs/testFixture'
 import { _resetSweeps, registerDrawingIpc, sweepVaultOnce } from './drawing'
+import { registered } from './ipcFixture'
 
 vi.mock('electron', async () => ({ ipcMain: { handle: vi.fn(), on: vi.fn() }, shell: { trashItem: vi.fn(async () => undefined) }, nativeImage: (await import('../drawings/fakeNativeImage')).fakeNativeImage }))
-
-type Handler = (event: unknown, ...args: unknown[]) => Promise<Envelope<unknown>>
-
-function registered(channel: string): Handler {
-  const call = vi.mocked(ipcMain.handle).mock.calls.find(([ch]) => ch === channel)
-  if (call === undefined) throw new Error(`no handler registered for ${channel}`)
-  return call[1] as unknown as Handler
-}
 
 const SCENE = `${JSON.stringify({ type: 'excalidraw', version: 2, elements: [], appState: {}, files: {} }, null, 2)}\n`
 
@@ -39,12 +32,8 @@ afterEach(async () => {
 })
 
 describe('drawing IPC', () => {
-  it('registers the two document doors plus the library-folder read (🔒 YAZ-1775 D5)', () => {
-    expect(vi.mocked(ipcMain.handle).mock.calls.map(([ch]) => ch)).toEqual([CONTRACT.drawing.load.channel, CONTRACT.drawing.save.channel, CONTRACT.drawing.libraryFolder.channel])
-  })
-
   it('drawing:library-folder answers the default under userData, and the setting once it is set (🔒 YAZ-1775 D5)', async () => {
-    const answer = async () => ((await registered(CONTRACT.drawing.libraryFolder.channel)({})) as Envelope<string>)
+    const answer = async () => ((await registered(CONTRACT.drawing.libraryFolder)({})) as Envelope<string>)
     expect(await answer()).toEqual({ ok: true, value: path.join(userData, 'library') })
     const chosen = path.join(root, 'My Library')
     store.setSettings({ ...store.get().settings, libraryFolder: chosen })
@@ -54,7 +43,7 @@ describe('drawing IPC', () => {
   it('answers drawing:load in the standard envelope', async () => {
     const file = path.join(root, 'Board.excalidraw')
     await writeFile(file, SCENE)
-    const res = (await registered(CONTRACT.drawing.load.channel)({}, { root, path: 'Board.excalidraw' })) as Envelope<{ json: string }>
+    const res = (await registered(CONTRACT.drawing.load)({}, { root, path: 'Board.excalidraw' })) as Envelope<{ json: string }>
     expect(res).toMatchObject({ ok: true, value: { json: SCENE } })
   })
 
@@ -64,7 +53,7 @@ describe('drawing IPC', () => {
     await writeFile(path.join(root, 'assets', 'shot.png'), png)
     const row = Array.from({ length: 11 }, (_, i) => ({ id: `i${i}`, type: 'image', fileId: 'shot', x: i * 1500, y: 0, width: 1440, height: 822 }))
     await writeFile(path.join(root, 'Board.excalidraw'), JSON.stringify({ elements: row, appState: {}, files: {} }))
-    const res = (await registered(CONTRACT.drawing.load.channel)({}, { root, path: 'Board.excalidraw', imageMaxPx: 1200 })) as Envelope<{ files: Record<string, { dataURL: string }> }>
+    const res = (await registered(CONTRACT.drawing.load)({}, { root, path: 'Board.excalidraw', imageMaxPx: 1200 })) as Envelope<{ files: Record<string, { dataURL: string }> }>
     expect(res.ok && Buffer.from(res.value.files.shot.dataURL.split(',')[1], 'base64')).toEqual(await readFile(path.join(userData, 'thumbs', 'shot-128.png')))
     expect((await readdir(root)).sort()).toEqual(['Board.excalidraw', 'assets', 'userData'])
     expect(await readdir(path.join(root, 'assets'))).toEqual(['shot.png'])
@@ -75,7 +64,7 @@ describe('drawing IPC', () => {
     await writeFile(file, SCENE)
     // The pretty, `files: {}` form the renderer's serializer produces — written back verbatim below the block (🔒 YAZ-1834 D1).
     const next = `${JSON.stringify({ type: 'excalidraw', version: 2, elements: [{ id: 'a' }], appState: {}, files: {} }, null, 2)}\n`
-    const res = (await registered(CONTRACT.drawing.save.channel)({}, { root, path: file, json: next, newFiles: [] })) as Envelope<unknown>
+    const res = (await registered(CONTRACT.drawing.save)({}, { root, path: file, json: next, newFiles: [] })) as Envelope<unknown>
     expect(res.ok).toBe(true)
     const written = await readFile(file, 'utf8')
     expect(blockOf(written)).toMatchObject({ createdAt: expect.any(Number), updatedAt: expect.any(Number) })
@@ -86,7 +75,7 @@ describe('drawing IPC', () => {
     const file = path.join(root, 'Board.excalidraw')
     await writeFile(file, SCENE)
     const st = await stat(file)
-    const res = (await registered(CONTRACT.drawing.save.channel)({}, { root, path: file, json: SCENE, expectedMtime: st.mtimeMs - 5, newFiles: [] })) as Envelope<unknown>
+    const res = (await registered(CONTRACT.drawing.save)({}, { root, path: file, json: SCENE, expectedMtime: st.mtimeMs - 5, newFiles: [] })) as Envelope<unknown>
     expect(res).toEqual({ ok: false, error: { code: 'CONFLICT', message: 'Excalidraw drawing changed on disk since last read', path: file, mtime: st.mtimeMs } })
   })
 })

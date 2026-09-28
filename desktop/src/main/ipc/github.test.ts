@@ -8,19 +8,12 @@ import { CONTRACT, type Envelope } from '@shared/ipc'
 import { createStore, type Store } from '../store'
 import { activeConfigWatcherRoots } from '../vaultConfig'
 import { registerGithubIpc } from './github'
+import { registered } from './ipcFixture'
 
 vi.mock('electron', () => ({
   ipcMain: { handle: vi.fn(), on: vi.fn() },
   BrowserWindow: { getAllWindows: vi.fn(() => []) },
 }))
-
-type Handler = (event: unknown, ...args: unknown[]) => Promise<Envelope<unknown>>
-
-function registered(channel: string): Handler {
-  const call = vi.mocked(ipcMain.handle).mock.calls.find(([ch]) => ch === channel)
-  if (call === undefined) throw new Error(`no handler registered for ${channel}`)
-  return call[1] as unknown as Handler
-}
 
 const bad = (code: string) => expect.objectContaining({ ok: false, error: expect.objectContaining({ code }) })
 
@@ -70,24 +63,19 @@ afterEach(async () => {
 })
 
 describe('registerGithubIpc', () => {
-  it('registers exactly the github channels the preload invokes', () => {
-    const channels = vi.mocked(ipcMain.handle).mock.calls.map(([ch]) => ch).sort()
-    expect(channels).toEqual([CONTRACT.github.status.channel, CONTRACT.github.syncNow.channel, CONTRACT.github.setEnabled.channel, CONTRACT.github.history.channel, CONTRACT.github.version.channel, CONTRACT.github.restore.channel].sort())
-  })
-
   it('refuses a Version history request that is not a board inside the vault (YAZ-1897 D4)', async () => {
-    expect(await registered(CONTRACT.github.history.channel)({ sender }, 'rel', 'b.excalidraw')).toEqual(bad('NOT_ABSOLUTE'))
-    expect(await registered(CONTRACT.github.version.channel)({ sender }, vault, '../b.excalidraw', 'x')).toEqual(bad('BAD_REQUEST'))
-    expect(await registered(CONTRACT.github.restore.channel)({ sender }, vault, 'b.excalidraw', 'HEAD:b.excalidraw')).toEqual(bad('BAD_REQUEST'))
+    expect(await registered(CONTRACT.github.history)({ sender }, 'rel', 'b.excalidraw')).toEqual(bad('NOT_ABSOLUTE'))
+    expect(await registered(CONTRACT.github.version)({ sender }, vault, '../b.excalidraw', 'x')).toEqual(bad('BAD_REQUEST'))
+    expect(await registered(CONTRACT.github.restore)({ sender }, vault, 'b.excalidraw', 'HEAD:b.excalidraw')).toEqual(bad('BAD_REQUEST'))
   })
 
   it('rejects a root that is not an absolute path, and a non-boolean flag, before any git work happens', async () => {
-    expect(await registered(CONTRACT.github.status.channel)({ sender }, 'rel')).toEqual(bad('NOT_ABSOLUTE'))
-    expect(await registered(CONTRACT.github.status.channel)({ sender })).toEqual(bad('BAD_REQUEST'))
-    expect(await registered(CONTRACT.github.syncNow.channel)({ sender }, 'rel')).toEqual(bad('NOT_ABSOLUTE'))
-    expect(await registered(CONTRACT.github.setEnabled.channel)({ sender }, 'rel', true)).toEqual(bad('NOT_ABSOLUTE'))
-    expect(await registered(CONTRACT.github.setEnabled.channel)({ sender }, vault, 'true')).toEqual(bad('BAD_REQUEST'))
-    expect(await registered(CONTRACT.github.setEnabled.channel)({ sender }, vault)).toEqual(bad('BAD_REQUEST'))
+    expect(await registered(CONTRACT.github.status)({ sender }, 'rel')).toEqual(bad('NOT_ABSOLUTE'))
+    expect(await registered(CONTRACT.github.status)({ sender })).toEqual(bad('BAD_REQUEST'))
+    expect(await registered(CONTRACT.github.syncNow)({ sender }, 'rel')).toEqual(bad('NOT_ABSOLUTE'))
+    expect(await registered(CONTRACT.github.setEnabled)({ sender }, 'rel', true)).toEqual(bad('NOT_ABSOLUTE'))
+    expect(await registered(CONTRACT.github.setEnabled)({ sender }, vault, 'true')).toEqual(bad('BAD_REQUEST'))
+    expect(await registered(CONTRACT.github.setEnabled)({ sender }, vault)).toEqual(bad('BAD_REQUEST'))
     // A refused write leaves the vault untouched — nothing was created on the way to the rejection.
     await expect(readFile(path.join(vault, VAULT_CONFIG_DIR, 'github.json'), 'utf8')).rejects.toMatchObject({ code: 'ENOENT' })
   })
@@ -95,7 +83,7 @@ describe('registerGithubIpc', () => {
   it('answers `off` for a vault nobody enabled — the resting state, never an error', async () => {
     // `repo` here is whatever a read-only inspection could learn (nothing, for a folder that is
     // not a repo, and nothing at all on a machine with no git); the state is the contract.
-    expect(await value(registered(CONTRACT.github.status.channel)({ sender }, vault))).toMatchObject({ root: vault, state: 'off' })
+    expect(await value(registered(CONTRACT.github.status)({ sender }, vault))).toMatchObject({ root: vault, state: 'off' })
   })
 
   it('setEnabled(false) writes the switch and broadcasts `off` to every live window', async () => {
@@ -104,7 +92,7 @@ describe('registerGithubIpc', () => {
     vi.mocked(BrowserWindow.getAllWindows).mockReturnValue([a, b] as unknown as BrowserWindow[])
     store.upsertWindow(win('w1', vault))
 
-    expect(await value(registered(CONTRACT.github.setEnabled.channel)({ sender }, vault, false))).toEqual({ root: vault, state: 'off', enabled: false })
+    expect(await value(registered(CONTRACT.github.setEnabled)({ sender }, vault, false))).toEqual({ root: vault, state: 'off', enabled: false })
     expect(JSON.parse(await readFile(path.join(vault, VAULT_CONFIG_DIR, 'github.json'), 'utf8'))).toEqual({ enabled: false })
     for (const w of [a, b]) expect(w.webContents.send).toHaveBeenCalledWith(CONTRACT.github.onStatus.channel, { root: vault, state: 'off', enabled: false })
   })

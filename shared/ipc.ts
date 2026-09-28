@@ -23,7 +23,8 @@ export interface Push<T> {
   readonly payload?: T
 }
 
-const invoke = <A extends unknown[], R>(channel: string): Invoke<A, R> => ({ kind: 'invoke', channel })
+/** A door by its channel — how `CONTRACT` declares every invoke, and how a test makes a door of its own. */
+export const invoke = <A extends unknown[], R>(channel: string): Invoke<A, R> => ({ kind: 'invoke', channel })
 const push = <T = void>(channel: string): Push<T> => ({ kind: 'push', channel })
 
 export const CONTRACT = {

@@ -17,7 +17,6 @@
  */
 import path from 'node:path'
 import { shell, type WebContents } from 'electron'
-import type { DrawingLoadRequest } from '@shared/types'
 import { CONTRACT } from '@shared/ipc'
 import { sweepOrphanAssets } from '../drawings/orphanSweep'
 import { createThumbs, THUMBS_DIR } from '../drawings/thumbs'
@@ -29,7 +28,7 @@ import { handle } from './envelope'
 export function registerDrawingIpc(store: Store, userData: string): void {
   // A preview's pictures come back preview-sized, cached under userData — never in the vault (🔒 YAZ-2073 D6).
   const thumbs = createThumbs(path.join(userData, THUMBS_DIR))
-  handle(CONTRACT.drawing.load, (req: DrawingLoadRequest) => loadDrawing(req, thumbs))
+  handle(CONTRACT.drawing.load, (req) => loadDrawing(req, thumbs))
   handle(CONTRACT.drawing.save, saveDrawing)
   // 🔒 YAZ-1775 D5: read-only and store-backed — the setting is the renderer's to WRITE (through
   // `state:set-settings`, like every other setting); this only says where it points.
