@@ -1,9 +1,9 @@
 import { join } from 'node:path'
+import { PIXABAY_SECRET } from '@shared/types'
 import { CONTRACT } from '@shared/ipc'
 import { BridgeFailure } from '../fs/fsUtils'
 import { requireRequest, str } from '../fs/validate'
 import { createSecrets, SECRETS_FILE, type Secrets } from '../secrets'
-import { PIXABAY_SECRET } from '@shared/types/library'
 import { handle } from './envelope'
 
 /**

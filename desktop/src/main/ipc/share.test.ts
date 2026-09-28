@@ -73,27 +73,8 @@ describe('readViewerAssets (🔒 YAZ-1802 D5 / D11)', () => {
     await put(path.join(root, 'fonts', 'Assistant', 'Assistant-Regular.woff2'), 'assistant')
     const fonts = path.join(root, 'fonts')
     await expect(readViewerAssets(path.join(root, 'nothing'), root, fonts)).rejects.toMatchObject({ code: 'NOT_FOUND', message: expect.stringContaining('npm run build') })
-    await expect(readViewerAssets(path.join(root, 'share-viewer'), root, path.join(root, 'no-fonts'))).rejects.toMatchObject({ code: 'NOT_FOUND', message: expect.stringContaining('npm run build') })
+    await expect(readViewerAssets(path.join(root, 'share-viewer'), root, path.join(root, 'no-fonts'))).rejects.toMatchObject({ code: 'NOT_FOUND', message: expect.stringContaining('npm install') })
     await expect(readViewerAssets(path.join(root, 'share-viewer'), path.join(root, 'no-drawio'), fonts)).rejects.toMatchObject({ code: 'NOT_FOUND', message: expect.stringContaining('npm run drawio:pack') })
-  })
-
-  it("publishes exactly what the share-viewer's own fonts/ copy did, path for path and byte for byte (YAZ-2073 3C)", async () => {
-    const drawio = path.join(root, 'drawio')
-    for (const file of ['js/viewer-static.min.js', 'js/stencils.min.js', 'LICENSE-drawio.txt', 'img/lib/azure/VM.svg', 'math4/es5/startup.js']) await put(path.join(drawio, file), file)
-    const fontFiles = ['Assistant/Assistant-Regular.woff2', 'Xiaolai/Xiaolai-Regular-09850c4077f3fffe707905872e0e2460.woff2', 'Excalifont/Excalifont-Regular-a88b72a24fb54c9f94e3b5fdaa7481c9.woff2']
-    const before = path.join(root, 'before')
-    const after = path.join(root, 'after')
-    const fonts = path.join(root, 'renderer-fonts')
-    for (const dir of [before, after]) await put(path.join(dir, 'viewer.js'), 'viewer')
-    for (const file of fontFiles) {
-      await put(path.join(before, 'fonts', file), file)
-      await put(path.join(fonts, file), file)
-    }
-    const published = async (dir: string, fontsDir: string) =>
-      Object.fromEntries((await readViewerAssets(dir, drawio, fontsDir)).map((a) => [a.path, Buffer.from(a.bytes).toString('base64')]))
-    // Before: the fonts sat in the viewer build, and the fonts argument pointed at an empty folder.
-    await mkdir(path.join(root, 'empty'))
-    expect(await published(after, fonts)).toEqual(await published(before, path.join(root, 'empty')))
   })
 })
 

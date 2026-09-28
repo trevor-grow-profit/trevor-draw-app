@@ -269,3 +269,7 @@ export type YaseenDrawApi = Bridge<typeof CONTRACT> & {
 export type Envelope<T> = { ok: true; value: T } | { ok: false; error: BridgeError }
 
 export const isLeaf = (v: unknown): v is Invoke<unknown[], unknown> | Push<unknown> => typeof (v as { channel?: unknown }).channel === 'string'
+
+/** Every door in `table` with its dotted name (`share.onChanged`), depth first. */
+export const leaves = (table: object, at = ''): Array<[name: string, door: Invoke<unknown[], unknown> | Push<unknown>]> =>
+  Object.entries(table).flatMap(([key, v]) => (isLeaf(v) ? [[`${at}${key}`, v] as [string, typeof v]] : leaves(v as object, `${at}${key}.`)))

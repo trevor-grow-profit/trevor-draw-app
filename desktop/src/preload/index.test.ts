@@ -42,7 +42,7 @@ describe('buildBridge', () => {
 })
 
 describe('the preload bridge', () => {
-  it('exposes window.yaseenDraw with exactly the surface and channels it had before the table (YAZ-2073 🔒 D16)', async () => {
+  it('exposes window.yaseenDraw as the whole surface a renderer can reach: every door on its channel, and the two specials (YAZ-2073 🔒 D16)', async () => {
     expect(exposed.yaseenDraw).toBe(bridge)
     const lines: string[] = []
     const walk = async (o: Record<string, unknown>, at: string): Promise<void> => {
@@ -59,7 +59,7 @@ describe('the preload bridge', () => {
         else await out
         const ipc = [['invoke', ipcRenderer.invoke], ['on', ipcRenderer.on], ['send', ipcRenderer.send], ['off', ipcRenderer.removeListener]] as const
         const calls = ipc.flatMap(([verb, fn]) => vi.mocked(fn).mock.calls.map((c, i) => [vi.mocked(fn).mock.invocationCallOrder[i], `${verb} ${String(c[0])}`] as const))
-        lines.push(`${at}${key} -> ${calls.sort((x, y) => x[0] - y[0]).map(([, s]) => s).join(', ')}`)
+        lines.push(`${at}${key} -> ${calls.length === 0 ? '(no IPC)' : calls.sort((x, y) => x[0] - y[0]).map(([, s]) => s).join(', ')}`)
       }
     }
     await walk(bridge as unknown as Record<string, unknown>, '')

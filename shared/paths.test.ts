@@ -1,6 +1,6 @@
 import { posix, win32 } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { isWithin, sepOf } from './paths'
+import { isWithin, sepOf, trimSep } from './paths'
 
 // YAZ-2073 2D: one containment rule for POSIX and Windows paths. The Windows rows are built with
 // `path.win32`, exactly as main builds them on a Windows machine.
@@ -18,6 +18,17 @@ describe('sepOf', () => {
     ['C:/Users/me', '/'],
     ['/odd\\name', '/'],
   ])('%s → %s', (p, sep) => expect(sepOf(p)).toBe(sep))
+})
+
+describe('trimSep', () => {
+  it.each([
+    [`${P}/`, P],
+    [`${P}//`, P],
+    [P, P],
+    ['/', ''],
+    [`${W}\\`, W],
+    ['C:\\', 'C:'],
+  ])('%s → %s', (p, trimmed) => expect(trimSep(p)).toBe(trimmed))
 })
 
 describe('isWithin', () => {

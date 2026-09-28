@@ -18,9 +18,9 @@ import { isMediaBytesProvider, isMediaSearchSource, PIXABAY_SECRET, type MediaBy
 import { CONTRACT } from '@shared/ipc'
 import { BridgeFailure } from '../fs/fsUtils'
 import { requireRequest, str, strOrNull } from '../fs/validate'
-import { createMediaCache, type MediaCache } from '../media/cache'
+import { createMediaCache } from '../media/cache'
 import { MEDIA_CACHE_DIR } from '../media/cachePolicy'
-import { createMediaProviders, type MediaProviders } from '../media/providers'
+import { createMediaProviders } from '../media/providers'
 import type { Secrets } from '../secrets'
 import { handle } from './envelope'
 

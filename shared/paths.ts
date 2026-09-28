@@ -13,7 +13,8 @@ export const trimSep = (p: string): string => p.replace(sepOf(p) === '/' ? /\/+$
 /**
  * `p` is `base` itself or inside it, by whole segment in `base`'s own separator — so `/v` never
  * contains `/vault/x`. A trailing separator on `base` is ignored (`/` and `C:\` contain everything
- * under them). `strict` leaves `base` itself out.
+ * under them). `strict` leaves `base` itself out. Case counts, on Windows too: callers compare
+ * paths main built from the same root, never a hand-typed spelling of it.
  */
 export function isWithin(base: string, p: string, strict = false): boolean {
   const b = trimSep(base)

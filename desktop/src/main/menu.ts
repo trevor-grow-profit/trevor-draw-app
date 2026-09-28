@@ -6,11 +6,14 @@
  * lives in `main/index.ts`.
  */
 import type { MenuItemConstructorOptions } from 'electron'
-import type { FileKind, RecentRoots, ZoomStep } from '@shared/types'
+import type { FileKind, RecentRoots } from '@shared/types'
 import { CONTRACT } from '@shared/ipc'
 import type { Store } from './store'
 import type { WindowManager } from './windows'
 import { sendPush } from './ipc/push'
+
+/** One ⌘+ / ⌘− / ⌘0 press: up, down, or back to the default (YAZ-1710). */
+export type ZoomStep = -1 | 0 | 1
 
 /** Help › Yaseen Draw on GitHub: the repo README (origin URL of this repo). */
 export const HELP_URL = 'https://github.com/yaseenarshad/yaseen-draw-app#readme'

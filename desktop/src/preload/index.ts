@@ -34,6 +34,8 @@ ipcRenderer.on(SPECIAL.appFlush, () => {
 })
 
 const generated = buildBridge(CONTRACT)
+// The compiler cannot see through `buildBridge`, so the cast below is unchecked here; the surface
+// pin in index.test.ts is what holds it to `YaseenDrawApi`.
 const api = {
   ...generated,
   watch: (root: string, listener: (ev: WatchEvent) => void) => {

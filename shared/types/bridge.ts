@@ -25,11 +25,6 @@ export interface RevealResponse {
   path: string
 }
 
-/** An external-link intent from the canvas; main re-validates the protocol before any OS side effect. */
-export interface OpenLinkRequest {
-  href: string
-}
-
 /** In-app delete (GRO-2272): the absolute path of the entry to move to the system Trash. */
 export interface DeleteRequest {
   path: string
@@ -66,7 +61,4 @@ export interface OpenWindowOptions {
   root: string | null
   file: string | null
 }
-
-/** One ⌘+ / ⌘− / ⌘0 press: up, down, or back to the default (YAZ-1710). */
-export type ZoomStep = -1 | 0 | 1
 

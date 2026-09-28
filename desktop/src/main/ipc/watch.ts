@@ -1,5 +1,6 @@
 import { ipcMain, type IpcMainEvent } from 'electron'
 import type { WatchEvent } from '@shared/types'
+import { isRecord } from '@shared/guards'
 import { SPECIAL } from '@shared/ipc'
 import { requireDir, toBridgeFailure } from '../fs/fsUtils'
 import { requireAbsPath } from '../fs/validate'
@@ -24,8 +25,8 @@ export function registerWatchIpc(): void {
 }
 
 async function onSubscribe(e: IpcMainEvent, msg: unknown): Promise<void> {
-  if (typeof msg !== 'object' || msg === null) return
-  const { id, root } = msg as Record<string, unknown>
+  if (!isRecord(msg)) return
+  const { id, root } = msg
   if (typeof id !== 'string') return
   const { sender } = e
   // A watcher event can land between the window closing and its `destroyed` hook running.

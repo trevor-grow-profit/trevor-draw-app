@@ -59,6 +59,8 @@ export async function readViewerAssets(dir: string, drawioDir: string, fontsDir:
   }
   const notBuilt = missing('The viewer page', 'npm run build')
   await readdir(drawioDir).catch(missing('draw.io', 'npm run drawio:pack'))
+  // Only dev can lack them: the packaged app carries its fonts in the asar, and dev reads node_modules.
+  await readdir(fontsDir).catch(missing("Excalidraw's fonts", 'npm install'))
   /** Every file under `root`, published at `prefix` + its path relative to `base`. */
   const filesUnder = async (root: string, base: string, prefix: string) =>
     (await readdir(root, { recursive: true, withFileTypes: true }).catch(notBuilt))
