@@ -3,6 +3,7 @@
  * engine silently depends on (feature-safety-net §3 risks 1, 3, 5).
  */
 import { createHash } from 'node:crypto'
+import { mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { test, expect } from './support/fixtures'
 import { canvasReady } from './support/canvas'
 import { gitVault, readProfile, rect, scene, text } from './support/vault'
@@ -118,4 +119,28 @@ test('Settings › Storage measures a git vault on the storage worker', async ({
   await page.getByRole('button', { name: 'Settings' }).click()
   await page.getByRole('dialog', { name: 'Settings' }).getByRole('button', { name: 'Storage' }).click()
   await expect(page.getByRole('img', { name: /of 10 GB/ })).toBeVisible()
+})
+
+test('a corrupt state file is moved aside, never overwritten, and the app still starts', async ({ sandbox, launch }) => {
+  mkdirSync(sandbox.profile, { recursive: true })
+  writeFileSync(`${sandbox.profile}/yaseendraw.json`, '{ "version": 1, "windows": [ oops')
+  const app = await launch()
+  const page = await app.window()
+  await expect(page.getByRole('heading', { name: 'Yaseen Draw' })).toBeVisible()
+  const aside = readdirSync(sandbox.profile).filter((name) => name.startsWith('yaseendraw.json.corrupt-'))
+  expect(aside).toHaveLength(1)
+  expect(readFileSync(`${sandbox.profile}/${aside[0]}`, 'utf8')).toBe('{ "version": 1, "windows": [ oops')
+})
+
+test('a board opens fitted to its content: a small one at 100 %, a sprawling one zoomed out', async ({ sandbox, launch }) => {
+  const vault = sandbox.vault('V', { 'Small.excalidraw': scene([rect('a')]), 'Sprawl.excalidraw': scene([rect('left', -6000, 0), rect('right', 6000, 3000)]) })
+  sandbox.writeProfile({ windows: [{ root: vault, file: `${vault}/Small.excalidraw` }] })
+  const app = await launch()
+  const page = await app.window()
+  await canvasReady(page)
+  const zoom = page.getByRole('button', { name: 'Reset zoom' }).filter({ visible: true })
+  await expect(zoom).toHaveText('100%')
+  await page.locator('button.tree__row', { hasText: 'Sprawl' }).click()
+  await canvasReady(page)
+  await expect.poll(async () => Number.parseInt((await zoom.textContent()) ?? '100', 10)).toBeLessThan(30)
 })

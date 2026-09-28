@@ -52,7 +52,7 @@ test('Dark theme applies live to the app, the canvas and every window, and is re
   sandbox.writeProfile({ windows: [{ root: vault, file: `${vault}/Board.excalidraw` }, { root: vault, bounds: { x: 220, y: 140, width: 1000, height: 700 } }] })
   const app = await launch()
   const [one, two] = await app.windows(2)
-  const drawingWindow = (await one.locator('.excalidraw').count()) > 0 ? one : two
+  const drawingWindow = (await one.evaluate(() => window.yaseenDraw.window.identity())).file !== null ? one : two
   const other = drawingWindow === one ? two : one
   await canvasReady(drawingWindow)
   await expect(drawingWindow.locator('html')).toHaveAttribute('data-theme', 'light')

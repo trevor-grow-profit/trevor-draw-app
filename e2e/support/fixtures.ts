@@ -118,17 +118,15 @@ export class DrawApp {
     return pages
   }
 
-  /** Clicks an application-menu item by its stable id (desktop/src/main/menu.ts), aimed at `page`'s window. */
+  /**
+   * Clicks an application-menu item by its stable id (desktop/src/main/menu.ts), aimed at `page`'s
+   * window. Main rebuilds the menu when focus or the front tab moves, so an item that depends on
+   * the front board is waited for — the same moment a user would see it enabled.
+   */
   async menu(id: string, page?: Page): Promise<void> {
     if (page !== undefined) await this.focus(page)
-    const found = await this.electron.evaluate(({ Menu }, itemId) => {
-      const item = Menu.getApplicationMenu()?.getMenuItemById(itemId)
-      if (item == null) return 'missing'
-      if (!item.enabled) return 'disabled'
-      item.click()
-      return 'clicked'
-    }, id)
-    expect(found, `menu item ${id}`).toBe('clicked')
+    await expect.poll(() => this.menuEnabled(id), { message: `menu item ${id} enabled` }).toBe(true)
+    await this.electron.evaluate(({ Menu }, itemId) => Menu.getApplicationMenu()?.getMenuItemById(itemId)?.click(), id)
   }
 
   /** Whether a menu item is enabled right now (🔒 YAZ-1775 D10 enablement by the active board's kind). */

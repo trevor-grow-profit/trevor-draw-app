@@ -209,7 +209,7 @@ test('the sidebar collapses (button, ⌘B) and comes back, and the window rememb
   await expect(page.getByRole('tree')).toBeVisible()
 })
 
-test('⇧-click selects several boards; the menu opens them all in tabs', async ({ sandbox, launch }) => {
+test('⇧-click selects several boards; the menu copies their paths and opens them all in tabs', async ({ sandbox, launch }) => {
   const vault = sandbox.vault('V', { 'One.excalidraw': scene(), 'Two.excalidraw': scene(), 'Three.excalidraw': scene() })
   sandbox.writeProfile({ windows: [{ root: vault }] })
   const app = await launch()
@@ -219,6 +219,13 @@ test('⇧-click selects several boards; the menu opens them all in tabs', async 
   await row(page, 'Three').click({ modifiers: ['Shift'] })
   const tabs = page.getByRole('tablist', { name: 'Open files' }).getByRole('tab')
   await expect(tabs).toHaveCount(0) // ⇧-click selects, never opens
+  const saved = await app.electron.evaluate(({ clipboard }) => clipboard.readText())
+  try {
+    await contextMenu(page, 'Three', 'Copy 2 paths')
+    await expect.poll(() => app.electron.evaluate(({ clipboard }) => clipboard.readText())).toBe(`${vault}/One.excalidraw\n${vault}/Three.excalidraw`)
+  } finally {
+    await app.electron.evaluate(({ clipboard }, text) => clipboard.writeText(text), saved)
+  }
   await contextMenu(page, 'Three', 'Open 2 in new tabs')
   await expect(tabs).toHaveText(['One', 'Three'])
 })

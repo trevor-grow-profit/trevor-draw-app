@@ -63,6 +63,20 @@ test('closing one of two windows forgets it; quitting keeps every window for the
   await again.windows(2)
 })
 
+test('closing a window right after an edit flushes the edit first', async ({ sandbox, launch }) => {
+  const vault = sandbox.vault('V', { 'Board.excalidraw': scene([rect('a')]), 'Other.excalidraw': scene() })
+  const board = `${vault}/Board.excalidraw`
+  sandbox.writeProfile({ windows: [{ root: vault, file: board }, { root: vault, file: `${vault}/Other.excalidraw`, bounds: { x: 220, y: 140, width: 1000, height: 700 } }] })
+  const app = await launch()
+  const pages = await app.windows(2)
+  const editing = (await identity(pages[0])).file === board ? pages[0] : pages[1]
+  await canvasReady(editing)
+  await drawRect(editing)
+  await (await app.electron.browserWindow(editing)).evaluate((w) => w.close()) // before the 500 ms autosave
+  await app.windows(1)
+  expect(liveElements(board)).toHaveLength(2)
+})
+
 test('a window saved on a display that is gone comes back on screen', async ({ sandbox, launch }) => {
   const vault = sandbox.vault('V', { 'One.excalidraw': scene() })
   sandbox.writeProfile({ windows: [{ root: vault, bounds: { x: 30_000, y: 30_000, width: 900, height: 700 } }] })
