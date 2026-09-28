@@ -308,6 +308,9 @@ touches is `excalidraw.desktopUIMode`, WRITTEN before every mount and never read
 Invariants: `file ∈ tabs` whenever `file` is non-null, and `tabs: []` ⇔ `file: null`.
 `sidebarCollapsed`, `sidebarLens` and both focus lists are WINDOW identity — a duplicate inherits
 them by value and then diverges; a global `state:changed` broadcast never moves another window's.
+A new window opens on `DEFAULT_SIDEBAR_LENS` (Files), and so does a switch to a DIFFERENT vault:
+`storage.setRoot`'s one identity write clears the file, tabs and focus lists and resets the lens,
+while re-setting the same vault keeps them all (YAZ-2056 D1, a port of Docs YAZ-1846 D2).
 Settings and `sidebarWidth` are global and every window follows a change live.
 
 `SettingsState.libraryFolder` (🔒 YAZ-1775 D5) is the ONE folder every vault shares, where media favorites
