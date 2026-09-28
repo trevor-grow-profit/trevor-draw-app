@@ -1,7 +1,8 @@
 import { execFile } from 'node:child_process'
-import { EventEmitter } from 'node:events'
-import { existsSync, watch as fsWatch, type FSWatcher, type Stats, type WatchListener } from 'node:fs'
-import { lstat, readdir, realpath } from 'node:fs/promises'
+import { EventEmitter, once } from 'node:events'
+import { existsSync, watch as fsWatch, type FSWatcher, type Stats } from 'node:fs'
+import { lstat, mkdtemp, readdir, realpath, rm, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { isWithin } from '@shared/paths'
 import { isAtomicTmp } from '@shared/fileKind'
@@ -72,25 +73,38 @@ function nearestExisting(p: string): string {
   return at
 }
 
+/** How often a probe writes its file until it hears one. */
+const PROBE_MS = 10
+
+interface Probe {
+  /** Resolves once the probe has heard its own write. */
+  heard: Promise<void>
+  close(): Promise<void>
+}
+
 /**
- * `fs.watch`, returned once it hears (YAZ-2073 5F1). On macOS `fs.watch` returns before libuv's
- * FSEvents thread has started the stream that serves it — 0–20 ms later when idle, 100 ms and more
- * with `fseventsd` busy — and a change in that gap is never reported, so a `ready` announced in it
- * would be a lie. Closing an FSEvents watch blocks until that thread has rebuilt the stream (libuv's
- * `uv__fsevents_close` waits for it), so a throwaway watch of the same folder, opened and closed
- * here, returns only once the real one is live: about 1 ms, the length of the rebuild. Windows'
- * watch is live before `fs.watch` returns.
+ * THE STREAM HEARS (YAZ-2073 5F1). On macOS `fs.watch` returns before libuv's FSEvents thread has
+ * started the stream that serves it — 0–20 ms later when idle, 100 ms and more with `fseventsd`
+ * busy — and a change in that gap is never reported, so a `ready` announced in it would be a lie.
+ * libuv serves every FSEvents watch in the process from ONE stream, rebuilt whenever a watch opens
+ * or closes, so a probe — a watch of a fresh private folder, opened after the real one — can only
+ * hear from a stream that serves the real one too. It writes a file there every `PROBE_MS` until it
+ * hears one, without blocking anything (closing a watch waits for a rebuild; opening does not). It
+ * stays open as long as the watch it vouches for: closing it would rebuild the stream, deaf again
+ * until that is done. Windows' watch is live before `fs.watch` returns.
  */
-function liveWatch(p: string, opts: { recursive?: boolean }, listener: WatchListener<string>): FSWatcher {
-  const w = fsWatch(p, opts, listener)
-  if (process.platform !== 'darwin') return w
-  try {
-    fsWatch(p).close()
-  } catch (err) {
-    w.close() // the folder went between the two calls
-    throw err
+async function probeStream(): Promise<Probe> {
+  const dir = await mkdtemp(path.join(tmpdir(), 'yaseendraw-probe-'))
+  const probe = fsWatch(dir)
+  const tick = setInterval(() => void writeFile(path.join(dir, 'probe'), '').catch(() => undefined), PROBE_MS)
+  return {
+    heard: once(probe, 'change').then(() => clearInterval(tick)),
+    async close() {
+      clearInterval(tick)
+      probe.close()
+      await rm(dir, { recursive: true, force: true })
+    },
   }
-  return w
 }
 
 /**
@@ -128,6 +142,8 @@ class Engine extends EventEmitter implements TreeWatcher {
   private chain: Promise<void> = Promise.resolve()
   private native: FSWatcher | null = null
   private polling: TreeWatcher | null = null
+  /** macOS: vouches that the stream serving `native` hears, and stays open while it does. */
+  private probe: Promise<Probe> | null = null
   private started = false
   private closed = false
 
@@ -148,7 +164,7 @@ class Engine extends EventEmitter implements TreeWatcher {
     this.native?.close()
     this.timers.forEach(clearTimeout)
     this.timers.clear()
-    await Promise.all([this.chain, this.polling?.close()])
+    await Promise.all([this.chain, this.polling?.close(), this.probe?.then((p) => p.close())])
   }
 
   private async start(): Promise<void> {
@@ -160,7 +176,9 @@ class Engine extends EventEmitter implements TreeWatcher {
     } catch {
       return this.poll()
     }
+    if (process.platform === 'darwin') this.probe = probeStream()
     await this.walk(this.dir, false)
+    await (await this.probe)?.heard
     this.started = true
     // What moved during the walk is looked at now, against what the walk found.
     for (const [p, timer] of [...this.timers]) {
@@ -192,7 +210,7 @@ class Engine extends EventEmitter implements TreeWatcher {
 
   private watchDir(): void {
     const base = path.basename(this.dir)
-    this.native = liveWatch(this.dir, { recursive: true }, (_type, name) => {
+    this.native = fsWatch(this.dir, { recursive: true }, (_type, name) => {
       if (this.closed) return
       // `null` = the OS dropped the detail (an overflowed buffer): look at everything again.
       if (name === null) return this.queue(this.dir)
@@ -210,7 +228,7 @@ class Engine extends EventEmitter implements TreeWatcher {
    */
   private awaitDir(): void {
     const anchor = nearestExisting(path.dirname(this.dir))
-    const w = liveWatch(anchor, {}, () => {
+    const w = fsWatch(anchor, () => {
       if (this.closed) return
       try {
         if (existsSync(this.dir)) this.arrived(w)

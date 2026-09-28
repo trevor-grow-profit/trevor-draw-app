@@ -17,8 +17,8 @@ import { settled, sleep, until } from './testFixture'
 /**
  * `fail`: every `fs.watch` throws, as on a platform without it; `refuse`: only a watch of that one
  * path does (EACCES). `lateStream`: FSEvents as libuv serves it on macOS (YAZ-2073 5F1) — opening a
- * watch leaves the process's one stream deaf until it is rebuilt, which a close waits for and which
- * otherwise lands `LATE_STREAM_MS` later; `deafUntil` is when.
+ * watch leaves the process's one stream, and so every watch, deaf until it is rebuilt
+ * `LATE_STREAM_MS` later; `deafUntil` is when.
  */
 const nativeWatch = vi.hoisted(() => ({ fail: false, refuse: null as string | null, lateStream: false, deafUntil: 0 }))
 const LATE_STREAM_MS = 300
@@ -28,14 +28,12 @@ vi.mock('node:fs', async (importOriginal) => {
     if (nativeWatch.fail) throw Object.assign(new Error('not here'), { code: 'ERR_FEATURE_UNAVAILABLE_ON_PLATFORM' })
     if (p === nativeWatch.refuse) throw Object.assign(new Error('permission denied'), { code: 'EACCES' })
     if (!nativeWatch.lateStream) return fs.watch(p, opts as WatchOptionsWithStringEncoding, listener)
-    const heard = typeof opts === 'function' ? opts : listener
     nativeWatch.deafUntil = Date.now() + LATE_STREAM_MS
-    const w = fs.watch(p, typeof opts === 'function' ? {} : opts, (type, name) => Date.now() >= nativeWatch.deafUntil && heard?.(type, name))
-    const close = w.close.bind(w)
-    w.close = () => {
-      close()
-      nativeWatch.deafUntil = 0
-    }
+    const w = fs.watch(p, typeof opts === 'function' ? {} : opts)
+    const emit = w.emit.bind(w)
+    w.emit = (event: string, ...args: unknown[]) => (event === 'change' && Date.now() < nativeWatch.deafUntil ? false : emit(event, ...args))
+    const heard = typeof opts === 'function' ? opts : listener
+    if (heard !== undefined) w.on('change', heard)
     return w
   }) as typeof fs.watch
   return { ...fs, default: { ...fs, watch }, watch }
