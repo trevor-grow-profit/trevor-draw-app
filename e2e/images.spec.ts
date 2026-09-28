@@ -3,7 +3,7 @@
  * board keeps `files: {}` (🔒 YAZ-1775 D3); legacy embedded images are moved out on the first save;
  * a missing asset is a placeholder, not a crash.
  */
-import { existsSync, readdirSync, readFileSync } from 'node:fs'
+import { existsSync, readdirSync, readFileSync, utimesSync } from 'node:fs'
 import type { Page } from '@playwright/test'
 import { test, expect, type DrawApp } from './support/fixtures'
 import { activeCanvas, canvasReady, drawRect } from './support/canvas'
@@ -122,4 +122,25 @@ test('a board whose picture is missing from assets/ still opens and edits', asyn
   await expect(page.getByRole('alert')).toHaveCount(0)
   await drawRect(page)
   await expect.poll(() => liveElements(board)?.length).toBe(3)
+})
+
+test('opening a vault sweeps assets nothing uses and are over a day old to the Trash, and says so', async ({ sandbox, launch }) => {
+  const used = png(8, 8, [1, 2, 3])
+  const oldOrphan = png(8, 8, [4, 5, 6])
+  const freshOrphan = png(8, 8, [7, 8, 9])
+  const vault = sandbox.vault('V', {
+    'Board.excalidraw': scene([imageElement('img', fileIdOf(used))]),
+    [`assets/${fileIdOf(used)}.png`]: used,
+    [`assets/${fileIdOf(oldOrphan)}.png`]: oldOrphan,
+    [`assets/${fileIdOf(freshOrphan)}.png`]: freshOrphan,
+  })
+  const twoDaysAgo = new Date(Date.now() - 2 * 86_400_000)
+  utimesSync(`${vault}/assets/${fileIdOf(used)}.png`, twoDaysAgo, twoDaysAgo)
+  utimesSync(`${vault}/assets/${fileIdOf(oldOrphan)}.png`, twoDaysAgo, twoDaysAgo)
+  sandbox.writeProfile({ windows: [{ root: vault }] })
+  const app = await launch()
+  const page = await app.window()
+  await expect(page.locator('.link-notice')).toContainText('Cleaned 1 unused image')
+  expect(sandbox.trashed()).toEqual([`${fileIdOf(oldOrphan)}.png`])
+  expect(assetsOf(vault).sort()).toEqual([`${fileIdOf(used)}.png`, `${fileIdOf(freshOrphan)}.png`].sort())
 })

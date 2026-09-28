@@ -232,3 +232,20 @@ test('Copy path puts the absolute path on the clipboard', async ({ sandbox, laun
     await app.electron.evaluate(({ clipboard }, text) => clipboard.writeText(text), saved)
   }
 })
+
+test('dragging the sidebar’s edge resizes it within 180–520 px and the width is remembered', async ({ sandbox, launch }) => {
+  const vault = sandbox.vault('V', { 'Board.excalidraw': scene() })
+  sandbox.writeProfile({ windows: [{ root: vault }], sidebarWidth: 260 })
+  const app = await launch()
+  const page = await app.window()
+  await treeReady(page)
+  const handle = page.locator('.sidebar-resize')
+  const box = await handle.boundingBox()
+  if (box === null) throw new Error('no resize handle')
+  await page.mouse.move(box.x + box.width / 2, box.y + 200)
+  await page.mouse.down()
+  await page.mouse.move(box.x + box.width / 2 + 120, box.y + 200, { steps: 6 })
+  await page.mouse.up()
+  await expect.poll(() => readProfile(sandbox.profile).sidebarWidth as number).toBeGreaterThan(360)
+  expect(readProfile(sandbox.profile).sidebarWidth as number).toBeLessThanOrEqual(520)
+})

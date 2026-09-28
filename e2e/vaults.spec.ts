@@ -113,3 +113,24 @@ test('File › Open Recent on the Welcome window opens that vault in the Welcome
   await expect(row(page, 'O')).toBeVisible()
   expect(app.electron.windows()).toHaveLength(1)
 })
+
+test('Open folder… on the Welcome window opens the picked folder there; on a vault window it opens beside', async ({ sandbox, launch }) => {
+  const picked = sandbox.vault('Picked', { 'P.excalidraw': scene() })
+  const second = sandbox.vault('Second', { 'S.excalidraw': scene() })
+  sandbox.writeProfile({ windows: [{ root: null }] })
+  const app = await launch()
+  const page = await app.window()
+  const answerPicker = (path: string) =>
+    app.electron.evaluate(({ dialog }, filePath) => {
+      dialog.showOpenDialog = (async () => ({ canceled: false, filePaths: [filePath] })) as typeof dialog.showOpenDialog
+    }, path)
+  await answerPicker(picked)
+  await page.getByRole('button', { name: 'Open folder…' }).click()
+  await expect(row(page, 'P')).toBeVisible()
+  expect(app.electron.windows()).toHaveLength(1)
+  await answerPicker(second)
+  await app.menu('menu.file.open-folder', page)
+  const pages = await app.windows(2)
+  expect((await Promise.all(pages.map(async (p) => (await identity(p)).root))).sort()).toEqual([picked, second].sort())
+  await expect.poll(() => readProfile(sandbox.profile).recents.map((r) => r.path).sort()).toEqual([picked, second].sort())
+})
