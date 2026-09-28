@@ -7,6 +7,8 @@ export type TreeAction =
   /** Replace the whole set (⚡ YAZ-862): expand-all and collapse-all are this ONE action, `[]` being the latter. */
   | { type: 'setAll'; dirs: string[] }
   | { type: 'expandTo'; root: string; file: string }
+  /** Open `dir` ITSELF and every folder above it (YAZ-2073 8B) — a reveal, a focus, a name box or a paste landing in it. */
+  | { type: 'expandDir'; root: string; dir: string }
 
 /** Two path lists, element by element: the idempotence check before every write-back (⚡ YAZ-874). */
 export const sameList = (a: readonly string[], b: readonly string[]) => a.length === b.length && a.every((x, i) => x === b[i])
@@ -17,22 +19,25 @@ export function treeReducer(expanded: string[], action: TreeAction): string[] {
       return expanded.includes(action.dir) ? expanded.filter((d) => d !== action.dir) : [...expanded, action.dir]
     case 'setAll':
       return action.dirs
-    case 'expandTo': {
-      const missing = ancestorDirs(action.root, action.file).filter((d) => !expanded.includes(d))
-      return missing.length === 0 ? expanded : [...expanded, ...missing]
-    }
+    case 'expandTo':
+      return opened(expanded, ancestorDirs(action.root, action.file))
+    case 'expandDir':
+      return isWithin(action.root, action.dir, true) ? opened(expanded, [...ancestorDirs(action.root, action.dir), action.dir]) : expanded
   }
 }
 
-/**
- * Directories strictly between `root` and `file` (root excluded), outermost first, in the root's own
- * separator. Windows takes `/` as a separator too, so the `${dir}/x` synthetic child opens a folder there.
- */
+/** `expanded` with `dirs` open too — the same array when every one already was. */
+function opened(expanded: string[], dirs: string[]): string[] {
+  const missing = dirs.filter((d) => !expanded.includes(d))
+  return missing.length === 0 ? expanded : [...expanded, ...missing]
+}
+
+/** Directories strictly between `root` and `file` (root excluded), outermost first, in the root's own separator. */
 export function ancestorDirs(root: string, file: string): string[] {
   if (!isWithin(root, file, true)) return []
   const sep = sepOf(root)
   let cur = trimSep(root)
-  const parts = file.slice(cur.length + 1).split(sep === '/' ? '/' : /[\\/]/)
+  const parts = file.slice(cur.length + 1).split(sep)
   const dirs: string[] = []
   for (const part of parts.slice(0, -1)) {
     cur = `${cur}${sep}${part}`

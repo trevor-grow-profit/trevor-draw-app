@@ -5,6 +5,8 @@
  * tree closes it. Every close bumps `hoverRequest`, so an earlier row's dwell never fires late.
  * Isolated (YAZ-2073 5D, 🔒 D16): the row lives in a tiny store the Sidebar writes and only the panel
  * reads, so a pointer crossing rows re-renders the panel and nothing else — never the Sidebar or the Tree.
+ * The Sidebar's half, `useHoverPreview`, lives here rather than in `hooks/`: it writes the store this
+ * panel reads, and the two halves only make sense side by side.
  */
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type RefObject } from 'react'
 import type { DiagramDarkColors, TreeResponse } from '@shared/types'

@@ -16,7 +16,9 @@ import { EMPTY_SCENE_JSON } from '../drawings/drawingScene'
 // how a test hands the Sidebar a focus restored from an earlier session (YAZ-1605).
 import { storage } from '../lib/storage'
 import { BridgeRequestError } from '../api'
-import { BOARD_PREVIEW_DWELL_MS, WATCH_REFRESH_MS, countChildren, Sidebar, type SidebarClipboard } from './Sidebar'
+import { BOARD_PREVIEW_DWELL_MS } from './HoverPreviewHost'
+import { WATCH_REFRESH_MS } from './hooks/useVaultTree'
+import { Sidebar, type SidebarClipboard } from './Sidebar'
 import { datedSeed } from './createEntry'
 
 // The hover preview's picture (YAZ-1800) is drawn by the engine, which jsdom cannot run: the cache is
@@ -771,34 +773,6 @@ describe('delete (GRO-2272)', () => {
     act(() => itemByLabel(el, 'Delete')?.click())
     expect(sheet(el)).toBeNull()
     expect(props.onDeleteFile).toHaveBeenCalledExactlyOnceWith('/v/a.excalidraw')
-  })
-})
-
-describe('countChildren (GRO-2272 C3)', () => {
-  const TREE_DEEP: TreeNode[] = [
-    {
-      type: 'dir',
-      name: 'Docs',
-      path: '/v/Docs',
-      children: [
-        { type: 'file', name: 'a.excalidraw', path: '/v/Docs/a.excalidraw', size: 1, mtime: 1, kind: 'drawing' },
-        { type: 'dir', name: 'deep', path: '/v/Docs/deep', children: [{ type: 'file', name: 'b.excalidraw', path: '/v/Docs/deep/b.excalidraw', size: 1, mtime: 1, kind: 'drawing' }] },
-      ],
-    },
-    { type: 'file', name: 'x.excalidraw', path: '/v/x.excalidraw', size: 1, mtime: 1, kind: 'drawing' },
-  ]
-
-  it('counts the WHOLE subtree, not just direct children — a delete takes all of it', () => {
-    expect(countChildren(TREE_DEEP, '/v/Docs')).toEqual({ files: 2, folders: 1 })
-  })
-
-  it('counts a nested folder found by descent', () => {
-    expect(countChildren(TREE_DEEP, '/v/Docs/deep')).toEqual({ files: 1, folders: 0 })
-  })
-
-  it('an unknown or empty folder counts zero rather than throwing', () => {
-    expect(countChildren(TREE_DEEP, '/v/nope')).toEqual({ files: 0, folders: 0 })
-    expect(countChildren([], '/v/Docs')).toEqual({ files: 0, folders: 0 })
   })
 })
 

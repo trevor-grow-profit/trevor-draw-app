@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { TreeNode } from '@shared/types'
-import { allDirs, ancestorDirs, favoriteRoots, findDirNode, findNode, focusRoots, treeHasFile, treeHasPath, treeReducer } from './treeState'
+import { allDirs, ancestorDirs, favoriteRoots, findDirNode, findNode, focusRoots, sameList, treeHasFile, treeHasPath, treeReducer } from './treeState'
 
 describe('treeReducer', () => {
   it('toggle adds then removes a dir', () => {
@@ -19,6 +19,23 @@ describe('treeReducer', () => {
     expect(next).toEqual(['/r/other', '/r/a', '/r/a/b'])
     expect(treeReducer(next, { type: 'expandTo', root: '/r', file: '/r/a/b/c.excalidraw' })).toBe(next)
   })
+
+  it('expandDir opens the folder ITSELF and every one above it; the root is never a row to open (YAZ-2073 8B)', () => {
+    const next = treeReducer(['/r/a'], { type: 'expandDir', root: '/r', dir: '/r/a/b' })
+    expect(next).toEqual(['/r/a', '/r/a/b'])
+    expect(treeReducer(next, { type: 'expandDir', root: '/r', dir: '/r/a/b' })).toBe(next)
+    expect(treeReducer(next, { type: 'expandDir', root: '/r', dir: '/r' })).toBe(next)
+    expect(treeReducer([], { type: 'expandDir', root: 'C:\\r', dir: 'C:\\r\\a\\b' })).toEqual(['C:\\r\\a', 'C:\\r\\a\\b'])
+  })
+})
+
+describe('sameList', () => {
+  it('is element-by-element equality, order included', () => {
+    expect(sameList(['a', 'b'], ['a', 'b'])).toBe(true)
+    expect(sameList(['a', 'b'], ['b', 'a'])).toBe(false)
+    expect(sameList(['a'], ['a', 'b'])).toBe(false)
+    expect(sameList([], [])).toBe(true)
+  })
 })
 
 describe('ancestorDirs', () => {
@@ -28,9 +45,8 @@ describe('ancestorDirs', () => {
     expect(ancestorDirs('/r/', '/r/a/x.excalidraw')).toEqual(['/r/a'])
   })
 
-  it('walks a Windows vault in its own separator, the `${dir}/x` synthetic child included (YAZ-2073 2D)', () => {
+  it('walks a Windows vault in its own separator (YAZ-2073 2D)', () => {
     expect(ancestorDirs('C:\\r', 'C:\\r\\a\\b\\x.excalidraw')).toEqual(['C:\\r\\a', 'C:\\r\\a\\b'])
-    expect(ancestorDirs('C:\\r', 'C:\\r\\a/x')).toEqual(['C:\\r\\a'])
     expect(ancestorDirs('C:\\r', 'C:\\r2\\a\\x.excalidraw')).toEqual([])
   })
 })

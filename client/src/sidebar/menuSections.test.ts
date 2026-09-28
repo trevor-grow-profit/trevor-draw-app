@@ -6,7 +6,8 @@
  * keeps only the component's mechanics.
  */
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { buildMenuSections, type MenuAction, type MenuHandlers, type MenuParent, type MenuSection, type MenuSectionTargets } from './menuSections'
+import type { TreeNode } from '@shared/types'
+import { buildMenuSections, countChildren, type MenuAction, type MenuHandlers, type MenuParent, type MenuSection, type MenuSectionTargets } from './menuSections'
 
 const targets = (over: Partial<MenuSectionTargets> = {}): MenuSectionTargets => ({
   x: 0,
@@ -464,5 +465,33 @@ describe('Info item (🔒 YAZ-1835 D6)', () => {
     const onInfo = vi.fn()
     select(build({ ...FILE_ROW, infoPath: '/v/Note.excalidraw' }, { onInfo }), 'Info')
     expect(onInfo).toHaveBeenCalledExactlyOnceWith('/v/Note.excalidraw')
+  })
+})
+
+describe('countChildren (GRO-2272 C3)', () => {
+  const TREE_DEEP: TreeNode[] = [
+    {
+      type: 'dir',
+      name: 'Docs',
+      path: '/v/Docs',
+      children: [
+        { type: 'file', name: 'a.excalidraw', path: '/v/Docs/a.excalidraw', size: 1, mtime: 1, kind: 'drawing' },
+        { type: 'dir', name: 'deep', path: '/v/Docs/deep', children: [{ type: 'file', name: 'b.excalidraw', path: '/v/Docs/deep/b.excalidraw', size: 1, mtime: 1, kind: 'drawing' }] },
+      ],
+    },
+    { type: 'file', name: 'x.excalidraw', path: '/v/x.excalidraw', size: 1, mtime: 1, kind: 'drawing' },
+  ]
+
+  it('counts the WHOLE subtree, not just direct children — a delete takes all of it', () => {
+    expect(countChildren(TREE_DEEP, '/v/Docs')).toEqual({ files: 2, folders: 1 })
+  })
+
+  it('counts a nested folder found by descent', () => {
+    expect(countChildren(TREE_DEEP, '/v/Docs/deep')).toEqual({ files: 1, folders: 0 })
+  })
+
+  it('an unknown or empty folder counts zero rather than throwing', () => {
+    expect(countChildren(TREE_DEEP, '/v/nope')).toEqual({ files: 0, folders: 0 })
+    expect(countChildren([], '/v/Docs')).toEqual({ files: 0, folders: 0 })
   })
 })
