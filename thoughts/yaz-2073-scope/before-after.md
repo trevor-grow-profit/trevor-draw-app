@@ -23,7 +23,7 @@ sizes, drag frame p50 (display-bound at 10 ms here), storm CPU seconds and peak 
 | draw.io open | 778.1 · 795.5 ms | ≤ 650 ms | **722 · 830.8 ms** (−7 %) | ✗ (load-sensitive) |
 | Hover preview, 121-image board: worst frame | 310 · 320 ms | ≤ 20 ms | **20 · 20.5 ms** | ✓ (at the limit: 2 frames at 100 Hz) |
 | Hover preview, 121-image board: time to picture (incl. 400 ms dwell) | 785.8 · 827.8 ms | ≤ 700 ms | **509.7 · 601.6 ms** (−35 %) | ✓ |
-| Image-heavy open: longest task | 312 · 335 ms | ≤ 50 ms | **316 · 340 ms** (±0) | ✗ (5B1 off-thread bitmap decode is parked for Yasin) |
+| Image-heavy open: longest task | 312 · 335 ms | ≤ 50 ms | **316 · 340 ms** (±0) | ✗ (5B1 off-thread decode tried and closed; follow-up YAZ-2134) |
 | Drag at 1k: frame p50 | 20 · 20.1 ms | — | **10 · 10 ms** (2×, display-bound) | ✓ |
 | Drag at 4k: frame p50 | 460.1 · 480 ms | ≥ 5× faster (≤ 95 ms) | **10 · 10 ms** (46×) | ✓ |
 | Tree storm, main CPU | 31.5 · 34.3 s | ≤ 1 s | **0.3 · 0.3 s** (−99 %) | ✓ |
@@ -42,7 +42,7 @@ Missed targets and the next lever:
 - **Launch 486 ms > 450 ms**: this is the D15 trigger for the Future "V8 startup snapshot" issue.
 - **draw.io open 722 ms > 650 ms**: the time is draw.io's own boot inside its frame. The next lever is to prewarm the draw.io frame after first paint.
 - **DMG 116.1 MB and .app 319.9 MB**: 3B (Chromium locale trim, landed on Yasin's OK after the 7A run — YAZ-2087) took 8.6 MB off the DMG and 47.6 MB off the app. What is left over the targets is Electron itself (the framework is 239.8 MB); the app is English only, so on a non-English OS Chromium's strings, `navigator.language` and the default `Intl` locale are en-US (the sidebar Name sort collates as English).
-- **Image-heavy open, 316 ms long task**: 5B1 (bitmap decode under budget) is parked for Yasin as a fork patch.
+- **Image-heavy open, 316 ms long task**: 5B1 (bitmap decode under a 512 MB budget) was built and failed its gates (RSS 191 → 724 MB, long task 140 ms); closed, follow-up YAZ-2134 (pre-shrunk copies).
 
 ## Size (`npm run perf:budget`, both packaged today)
 

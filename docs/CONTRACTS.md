@@ -1452,8 +1452,8 @@ see `client/vendor/README.md` for the two traps that script exists to defuse.
 A bump that must change no pixels proves it with `node tools/perf/exportPixels.mjs --dev --out <a>`
 on the old build and `--out <b> --compare <a>` on the new: PNG, JPEG, WebP, GIF and SVG images,
 cropped, flipped and rotated, and text, exported (PNG and SVG) and on the live canvas, in both
-themes (YAZ-2073 5A/5B). The off-thread image decode (🔒 YAZ-2073 D5) is parked on YAZ-2126 — it
-blew the memory guard — as the fork branch `yaz-2073-parked-5b1-bitmap-decode`.
+themes (YAZ-2073 5A/5B). Off-thread image decode (🔒 YAZ-2073 D5) was tried and closed on YAZ-2126:
+it failed the memory and long-task gates (fork branch `yaz-2073-5b1`); next idea is YAZ-2134.
 
 ## Out of scope (locked)
 
