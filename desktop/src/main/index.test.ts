@@ -48,7 +48,7 @@ vi.mock('./windows', () => ({
   },
 }))
 vi.mock('./ipc', () => ({ registerIpc: () => h.gitSync }))
-vi.mock('./ipc/share', () => ({ viewerAssetsDir: () => h.userData }))
+vi.mock('./ipc/share', () => ({ viewerAssetsDir: () => h.userData, excalidrawFontsDir: () => h.userData }))
 vi.mock('./library/folder', () => ({ ensureLibraryFolder: async () => undefined }))
 vi.mock('./quitSequence', () => ({ runQuitSequence: vi.fn(async () => undefined) }))
 
