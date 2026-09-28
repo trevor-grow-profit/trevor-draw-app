@@ -10,6 +10,7 @@ import type { FileKind, RecentRoots, ZoomStep } from '@shared/types'
 import { CONTRACT } from '@shared/ipc'
 import type { Store } from './store'
 import type { WindowManager } from './windows'
+import { sendPush } from './ipc/push'
 
 /** Help › Yaseen Draw on GitHub: the repo README (origin URL of this repo). */
 export const HELP_URL = 'https://github.com/yaseenarshad/yaseen-draw-app#readme'
@@ -284,15 +285,15 @@ export function createMenuHandlers(store: Store, windows: MenuWindows, host: Men
       if (entry !== undefined) windows.duplicateWindow(entry)
     },
     switchVault() {
-      host.focusedWebContents()?.send(CONTRACT.menu.onSwitchVault.channel)
+      sendPush(host.focusedWebContents(), CONTRACT.menu.onSwitchVault)
     },
     openFolder() {
-      host.focusedWebContents()?.send(CONTRACT.menu.onOpenFolder.channel)
+      sendPush(host.focusedWebContents(), CONTRACT.menu.onOpenFolder)
     },
     openRecent(path) {
       // A vault window never has its vault swapped (YAZ-1913 🔒 D1): only an empty Welcome window fills in place.
       if (focusedEntry()?.root === null) {
-        host.focusedWebContents()?.send(CONTRACT.menu.onOpenRoot.channel, path)
+        sendPush(host.focusedWebContents(), CONTRACT.menu.onOpenRoot, path)
         return
       }
       // A vault window goes through the one open-recent door (YAZ-1767 D1): raise that vault's
@@ -300,37 +301,37 @@ export function createMenuHandlers(store: Store, windows: MenuWindows, host: Men
       windows.openRecentBeside(path)
     },
     search() {
-      host.focusedWebContents()?.send(CONTRACT.menu.onSearch.channel)
+      sendPush(host.focusedWebContents(), CONTRACT.menu.onSearch)
     },
     settings() {
-      host.focusedWebContents()?.send(CONTRACT.menu.onSettings.channel)
+      sendPush(host.focusedWebContents(), CONTRACT.menu.onSettings)
     },
     closeTab() {
-      host.focusedWebContents()?.send(CONTRACT.menu.onCloseTab.channel)
+      sendPush(host.focusedWebContents(), CONTRACT.menu.onCloseTab)
     },
     nextTab() {
-      host.focusedWebContents()?.send(CONTRACT.menu.onNextTab.channel)
+      sendPush(host.focusedWebContents(), CONTRACT.menu.onNextTab)
     },
     prevTab() {
-      host.focusedWebContents()?.send(CONTRACT.menu.onPrevTab.channel)
+      sendPush(host.focusedWebContents(), CONTRACT.menu.onPrevTab)
     },
     toggleSidebar() {
-      host.focusedWebContents()?.send(CONTRACT.menu.onToggleSidebar.channel)
+      sendPush(host.focusedWebContents(), CONTRACT.menu.onToggleSidebar)
     },
     zoom(step) {
       host.zoom(step)
     },
     exportImage() {
-      host.focusedWebContents()?.send(CONTRACT.menu.onExportImage.channel)
+      sendPush(host.focusedWebContents(), CONTRACT.menu.onExportImage)
     },
     exportDrawing() {
-      host.focusedWebContents()?.send(CONTRACT.menu.onExportDrawing.channel)
+      sendPush(host.focusedWebContents(), CONTRACT.menu.onExportDrawing)
     },
     shareLink() {
-      host.focusedWebContents()?.send(CONTRACT.menu.onShareLink.channel)
+      sendPush(host.focusedWebContents(), CONTRACT.menu.onShareLink)
     },
     canvasBackground(color) {
-      host.focusedWebContents()?.send(CONTRACT.menu.onCanvasBackground.channel, color)
+      sendPush(host.focusedWebContents(), CONTRACT.menu.onCanvasBackground, color)
     },
     openHelp() {
       host.openExternal(HELP_URL)

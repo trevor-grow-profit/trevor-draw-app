@@ -12,6 +12,7 @@ import { isWithin, sepOf, trimSep } from '@shared/paths'
 import { DEFAULT_SIDEBAR_LENS, type OpenWindowOptions, type RecentRoots, type WindowBounds, type WindowEntry } from '@shared/types'
 import { CONTRACT, SPECIAL } from '@shared/ipc'
 import type { Store } from './store'
+import { sendPush } from './ipc/push'
 
 export interface WindowLike {
   webContents: { id: number }
@@ -313,7 +314,7 @@ export function createWindowManager(store: Store, host: WindowHost): WindowManag
     const win = [...live.values()].find((w) => !w.isDestroyed())
     if (win === undefined) return
     focusWindow(win)
-    win.webContents.send(CONTRACT.link.onNotice.channel, message)
+    sendPush(win.webContents, CONTRACT.link.onNotice, message)
   }
 
   return {
@@ -415,7 +416,7 @@ export function createWindowManager(store: Store, host: WindowHost): WindowManag
         return
       }
       focusWindow(win)
-      win.webContents.send(CONTRACT.link.onOpenFile.channel, path)
+      sendPush(win.webContents, CONTRACT.link.onOpenFile, path)
     },
 
     linkNotice,

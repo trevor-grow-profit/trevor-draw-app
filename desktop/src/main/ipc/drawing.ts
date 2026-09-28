@@ -24,6 +24,7 @@ import { loadDrawing, saveDrawing } from '../fs/drawing'
 import { resolveLibraryFolder } from '../library/folder'
 import type { Store } from '../store'
 import { handle } from './envelope'
+import { sendPush } from './push'
 
 export function registerDrawingIpc(store: Store, userData: string): void {
   // A preview's pictures come back preview-sized, cached under userData — never in the vault (🔒 YAZ-2073 D6).
@@ -59,6 +60,6 @@ export function sweepVaultOnce(root: string, sender: Pick<WebContents, 'isDestro
     const message = `Cleaned ${n} unused ${n === 1 ? 'image' : 'images'}`
     console.log(`[drawing] ${message} in ${root}`)
     // The window that asked for the tree may have closed while the vault was being walked.
-    if (!sender.isDestroyed()) sender.send(CONTRACT.link.onNotice.channel, message)
+    if (!sender.isDestroyed()) sendPush(sender, CONTRACT.link.onNotice, message)
   })
 }

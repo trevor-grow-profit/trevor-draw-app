@@ -13,6 +13,7 @@ import workerSource from '../../../../share/worker.js?raw'
 import viewerSource from '../../../../share/viewer/page.js?raw'
 import { broadcastAll } from './broadcast'
 import { handle, handleWithEvent } from './envelope'
+import { sendPush } from './push'
 
 /**
  * The `share.*` half of `window.yaseenDraw` (YAZ-1799). Every request is shape-checked
@@ -105,7 +106,7 @@ export function registerShareIpc(userData: string, secrets: Secrets, where: { vi
   handleWithEvent(CONTRACT.share.setup, (e, token: unknown, accountId: unknown) => {
     const t = str(token, 'token')
     const account = optStr(accountId, 'accountId')
-    return sharing.setup(t, (p) => e.sender.isDestroyed() || e.sender.send(CONTRACT.share.onSetupProgress.channel, p), account)
+    return sharing.setup(t, (p) => e.sender.isDestroyed() || sendPush(e.sender, CONTRACT.share.onSetupProgress, p), account)
   })
   handle(CONTRACT.share.openCloudflare, async () => void (await shell.openExternal(tokenPage)))
   handle(CONTRACT.share.get, async (body: unknown) => {
