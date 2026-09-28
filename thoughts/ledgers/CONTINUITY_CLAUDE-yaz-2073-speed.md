@@ -30,10 +30,10 @@
   - [x] 6 Refactors: 6A 6B 6C 6D
   - [x] 7C demo vault + isolated dev app
   - [x] 8A audit
-- Now:
-  - [→] 7A full before/after run (budget ratchet in tools/perf) and 7B packaged-app pass
-  - [→] 8B apply the audit: code lanes merged into `yaz-2073-8b-main`; docs, thoughts/ and ledger done
-- Next: lead merges 8B into `yaz-2073-speed`; Yasin reviews.
+  - [x] 2E 2F 2G (found by the e2e suite), 5F1 FSEvents ready probe
+  - [x] 7A before/after + ratchet, 7B packaged pass, 8B audit applied (all lanes merged)
+- Now: [→] Yasin reviews: push fork yaz-2073-perf, OK mainBundleBytes raise, decide 3B/5B1, eyeball 5C, try the demo
+- Next: after Yasin's OK — push fork branch, merge `yaz-2073-speed` to main (no release), clean worktrees + Desktop demo
 
 ## Open Questions
 - Needs Yasin: push fork branch `yaz-2073-perf` @ 759e7dfd (and fast-forward the fork's main)
