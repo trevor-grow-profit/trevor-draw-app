@@ -337,9 +337,9 @@
  * wrapper. Everything else stays painted: the canvases, and this overlay, which is a sibling of
  * `.excalidraw` rather than inside it.
  *
- * ⚡ THESE FOUR ARE ENGINE-OWNED CLASS NAMES, and nothing pins them: an engine bump that renames
- * one silently un-hides that chrome while presenting. `tools/packEngine.mjs` bumps the vendored
- * fork, and this block is what to re-check after it — the failure is visible in one Play.
+ * ⚡ THESE FOUR ARE ENGINE-OWNED CLASS NAMES: an engine bump that renames one would silently
+ * un-hide that chrome while presenting, so `drawings/engineSelectors.test.ts` pins them against
+ * the vendored fork (YAZ-2073 D16).
  */
 .drawing-surface--presenting:not(.drawing-surface--presentation-tools) .layer-ui__wrapper,
 .drawing-surface--presenting:not(.drawing-surface--presentation-tools) .sidebar,

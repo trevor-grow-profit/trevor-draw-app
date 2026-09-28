@@ -26,3 +26,6 @@ jobs:
       - run: npm run typecheck
       - run: npm test
       - run: npm run build
+      # The size and integrity gate on the fresh build (YAZ-2073 1A): chunk closure, fonts, draw.io files, renderer
+      # and main bytes against tools/perf/budget.json. The packaged half (.app, DMG, Info.plist, seal) runs locally.
+      - run: npm run perf:budget:ci

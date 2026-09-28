@@ -131,6 +131,23 @@ chip to a bare origin. Add the acceptance list of whatever issue is in flight.
 The packaged app is checked the same way — launch
 `desktop/dist-app/mac-arm64/Yaseen Draw.app/Contents/MacOS/Yaseen Draw` with the same env var.
 
+### Size and speed: `tools/perf/` (YAZ-2073)
+
+```bash
+npm run desktop:build && npm run perf:budget   # size + integrity of the packaged app vs tools/perf/budget.json
+npm run perf -- launch drawio --runs 5          # scenarios (list: npm run perf); `all` runs every one (~45 min)
+npm run perf -- canvas-4k --dev                 # desktop/out under the workspace Electron, no packaging
+```
+
+`perf` generates its fixtures (seeded, so identical every run: 1k/4k-shape boards, 121- and 90-image
+boards, a 32 MB legacy board with its images inline, a 2 000-board vault, a draw.io flowchart, a
+git vault with a bare origin) and an isolated profile under `--work` (default
+`<tmpdir>/yaseen-draw-perf`), launches the app once per run on them, drops the first run as a
+warm-up and prints JSON — median, p95 and `cv` (noise) per metric — checked against the `perf`
+ceilings. It opens real windows for a few seconds each and never reads the real profile or vaults.
+Numbers only compare on the same machine: note `loadAvg` in the output and rerun when it is high.
+`tools/perf/baseline.json` holds v0.1.11's runs; every YAZ-2073 change reports its before → after.
+
 ## Gotchas
 
 - Never draw in real vault files during testing — copy the vault to a scratch dir first.

@@ -4,9 +4,10 @@
  *
  * Bumps the vendored drawing engine to a fork commit in one command.
  *
- * AFTER A BUMP, RE-CHECK THE ENGINE-OWNED SELECTORS this app reaches into: the presenting-chrome
- * block in `client/src/drawings/presentation/presentation.css` and the sidebar rules in
- * `client/src/drawings/drawingEditor.css`. Nothing pins those class names but the fork itself.
+ * AFTER A BUMP, RUN `npm test`: `client/src/drawings/engineSelectors.test.ts` pins the engine-owned
+ * class names this app reaches into (the presenting-chrome block in
+ * `client/src/drawings/presentation/presentation.css`, the sidebar rules in
+ * `client/src/drawings/drawingEditor.css`) and goes red when the fork renames one.
  *
  *   --fork    the yaseen-excalidraw checkout (default: ~/Documents/GitHub/yaseen-excalidraw)
  *   --commit  the commit the fork must be sitting on (default: whatever HEAD is)
