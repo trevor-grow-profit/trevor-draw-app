@@ -78,8 +78,10 @@ export interface MenuHandlers {
    * `PageContextMenu` reports it — a copy that quietly did nothing is the worst kind of no-op.
    */
   onNotice: (message: string) => void
-  /** "New Excalidraw drawing" (⚡ YAZ-1674 D8 amended): the one document birth, and the first row of the create group. */
+  /** "New Excalidraw drawing" (⚡ YAZ-1674 D8 amended): the first row of the create group — opens the name box (🔒 YAZ-1999 D1). */
   onNewDrawing: () => void
+  /** "New dated Excalidraw drawing" (🔒 YAZ-1999 D3): the same birth, its box seeded with today's `MM_DD- `, directly below it. */
+  onNewDatedDrawing: () => void
   /** "New draw.io diagram" (🔒 YAZ-1802 D13): the same birth for a `.drawio`, directly below it. */
   onNewDiagram: () => void
   /** Create a DISK folder — null hides the item (YAZ-948). */
@@ -207,6 +209,8 @@ const copyPath: Leaf = (t, h) => {
 
 const newDrawing: Leaf = (_t, h) => ({ id: 'new-drawing', label: 'New Excalidraw drawing', onSelect: h.onNewDrawing })
 
+const newDatedDrawing: Leaf = (_t, h) => ({ id: 'new-dated-drawing', label: 'New dated Excalidraw drawing', onSelect: h.onNewDatedDrawing })
+
 /** 🔒 YAZ-1802 D13: the create group names both kinds of board, Excalidraw first. */
 const newDiagram: Leaf = (_t, h) => ({ id: 'new-diagram', label: 'New draw.io diagram', onSelect: h.onNewDiagram })
 
@@ -315,7 +319,7 @@ const info: Leaf = (t, h) => {
 
 const OPEN_GROUP: readonly Item[] = [openInNewTabs, focus]
 const CLIPBOARD_GROUP: readonly Item[] = [cut, copy, paste, copyPaths, copyPath]
-const CREATE_GROUP: readonly Item[] = [newDrawing, newDiagram, newFolder, newDatedFolder]
+const CREATE_GROUP: readonly Item[] = [newDrawing, newDatedDrawing, newDiagram, newFolder, newDatedFolder]
 const ROW_GROUP: readonly Item[] = [rename]
 const OPEN_IN_GROUP: readonly Item[] = [toggleFavorite, openIn]
 /**

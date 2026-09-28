@@ -45,6 +45,7 @@ const handlers = (over: Partial<MenuHandlers> = {}): MenuHandlers => ({
   onPaste: vi.fn(),
   onNotice: vi.fn(),
   onNewDrawing: vi.fn(),
+  onNewDatedDrawing: vi.fn(),
   onNewDiagram: vi.fn(),
   onNewFolder: vi.fn(),
   onNewDatedFolder: vi.fn(),
@@ -118,7 +119,7 @@ describe('the six groups (🔒 YAZ-1674 D7, amended)', () => {
     // group leads; the OS verbs live in the "Open in ▸" flyout, a group of its own before Delete.
     expect(groupsOf(build(FILE_ROW))).toEqual([
       ['Cut', 'Copy', 'Paste', 'Copy path'],
-      ['New Excalidraw drawing', 'New draw.io diagram', 'New folder', 'New dated folder'],
+      ['New Excalidraw drawing', 'New dated Excalidraw drawing', 'New draw.io diagram', 'New folder', 'New dated folder'],
       ['Rename'],
       ['Open in'],
       ['Delete'],
@@ -128,7 +129,7 @@ describe('the six groups (🔒 YAZ-1674 D7, amended)', () => {
   it('BLANK SPACE has no row to rename or delete: the this-row and Delete groups are empty, so the menu ends on "Open in"', () => {
     expect(groupsOf(build(BLANK))).toEqual([
       ['Paste', 'Copy path'],
-      ['New Excalidraw drawing', 'New draw.io diagram', 'New folder', 'New dated folder'],
+      ['New Excalidraw drawing', 'New dated Excalidraw drawing', 'New draw.io diagram', 'New folder', 'New dated folder'],
       ['Open in'], // the root's own OS verbs — the one this-row item blank space has
     ])
   })
@@ -159,13 +160,13 @@ describe('the six groups (🔒 YAZ-1674 D7, amended)', () => {
 })
 
 /**
- * The create group (⚡ YAZ-1674 D8 amended): ONE document birth — "New drawing" — leading the two disk
- * folder births. The group targets a DIRECTORY, so it is offered on every row type and on blank
- * space alike.
+ * The create group (⚡ YAZ-1674 D8 amended): the board births — each with its dated twin right under it
+ * where one exists (🔒 YAZ-1999 D2, D3) — leading the two disk folder births. The group targets a
+ * DIRECTORY, so it is offered on every row type and on blank space alike.
  */
 describe('create group', () => {
-  it('offers New Excalidraw drawing first, then New draw.io diagram (🔒 YAZ-1802 D13), then the two folder births', () => {
-    expect(build()[2].map((i) => i.label)).toEqual(['New Excalidraw drawing', 'New draw.io diagram', 'New folder', 'New dated folder'])
+  it('offers New Excalidraw drawing and its dated twin (🔒 YAZ-1999 D3), then New draw.io diagram (🔒 YAZ-1802 D13), then the two folder births', () => {
+    expect(build()[2].map((i) => i.label)).toEqual(['New Excalidraw drawing', 'New dated Excalidraw drawing', 'New draw.io diagram', 'New folder', 'New dated folder'])
   })
 
   it('is offered on every row type — the group targets a DIRECTORY, never the clicked row', () => {
@@ -178,6 +179,7 @@ describe('create group', () => {
     expect(labels).not.toContain('New folder')
     expect(labels).not.toContain('New dated folder')
     expect(labels).toContain('New Excalidraw drawing')
+    expect(labels).toContain('New dated Excalidraw drawing')
   })
 
   it('hands the click to the caller — the handler itself is the item', () => {
@@ -187,6 +189,9 @@ describe('create group', () => {
     const onNewDiagram = vi.fn()
     select(build({}, { onNewDiagram }), 'New draw.io diagram')
     expect(onNewDiagram).toHaveBeenCalledTimes(1)
+    const onNewDatedDrawing = vi.fn()
+    select(build({}, { onNewDatedDrawing }), 'New dated Excalidraw drawing')
+    expect(onNewDatedDrawing).toHaveBeenCalledTimes(1)
   })
 })
 

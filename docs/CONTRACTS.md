@@ -97,24 +97,28 @@ Two kinds of BOARD, one extension each (🔒 YAZ-1802 D1 / D2).
   always written with `files: {}`; a legacy file that still embeds its images is extracted on its
   first save. `assets/` is hidden from the sidebar tree (the TOP-LEVEL one only: a folder the
   user called `assets` inside a subfolder is theirs and shows).
-- There is ONE door that makes a drawing, and it is the sidebar's context menu (🔒 YAZ-1775 R1):
-  the Create group is **New Excalidraw drawing**, **New draw.io diagram** (🔒 YAZ-1802 D13), New
-  folder, New dated folder, in that order, on a row or on blank space. Nowhere else in the app
-  creates a file. A diagram is born the same way — `Untitled.drawio`, counted on `.drawio` names
-  (`untitledBoardName`), written as `EMPTY_DIAGRAM_XML` (one page; page view, grid and alignment
-  guides off — 🔒 YAZ-1802 D12a) under `wx`, stamped with both dates (D7).
-  - "New Excalidraw drawing" does not ask for a name. The board is born `Untitled.excalidraw` — then
-    `Untitled 2`, `Untitled 3`… beside its siblings, filling a gap rather than running past it,
-    compared case-insensitively because the filesystem is — in the right-clicked FOLDER (a file
-    row means its parent, blank space means the vault root).
-  - It is written with the `EMPTY_SCENE` in the same `wx` write (content-at-create), never
-    overwriting: a name lost to a race retries with the next number.
-  - It then opens in the CURRENT tab and lands with the tree's inline rename field focused, so the
-    first thing typed is its name.
+- There is ONE door that makes a board, and it is the sidebar's context menu: the Create group is
+  **New Excalidraw drawing**, **New dated Excalidraw drawing** (🔒 YAZ-1999 D3), **New draw.io
+  diagram** (🔒 YAZ-1802 D13), New folder, New dated folder, in that order, on a row or on blank
+  space. Nowhere else in the app creates a file.
+  - Every board is born NAME-FIRST (🔒 YAZ-1999 D1, D5 — this replaced 🔒 YAZ-1775 R1's `Untitled`
+    birth): the item opens the tree's inline name box in the right-clicked FOLDER (a file row means
+    its parent, blank space means the vault root), exactly like New folder. Nothing touches the
+    disk until Enter; Escape or clicking away leaves nothing behind; Enter on an empty box does
+    nothing. The box's kind — `drawing`, `diagram` or `dir` (D6) — picks the extension (added
+    unless the typed name already carries it), the placeholder and the empty content.
+  - "New dated Excalidraw drawing" is the same box seeded with today's `MM_DD- ` (`datedSeed`,
+    local date, no year — the YAZ-1604 seed "New dated folder" uses), caret at the end; Enter on
+    the untouched seed does nothing. The seed is ordinary text: delete it and the name is plain.
+  - Enter writes the board with its empty content in the same `wx` write (content-at-create): the
+    `EMPTY_SCENE` for a drawing, `EMPTY_DIAGRAM_XML` for a diagram (one page; page view, grid and
+    alignment guides off — 🔒 YAZ-1802 D12a), stamped with both dates (D7). A name already taken is
+    refused, never overwritten: the error shows under the box and the typed text stays.
+  - The new board then opens in the CURRENT tab.
 - A `.excalidraw` has ONE door per direction (🔒 YAZ-1810): `drawing:load` and `drawing:save`, and
   no other channel reads or writes a scene — a second writer with different rules about the
   scene's images is a race with no upside. `fs:create-file` is the one exception and only for
-  BIRTH: "New Excalidraw drawing" writes the empty scene with the file, under `wx`.
+  BIRTH: a new drawing is written with the empty scene, under `wx`.
 - Every board main writes starts with its own dates — `{ "yaseendraw": { "createdAt", "updatedAt" } }`
   as the FIRST key (🔒 YAZ-1834, "Board metadata" below). Set by main in those two doors, read by
   `fs:tree` off the file head, never touched by the renderer.

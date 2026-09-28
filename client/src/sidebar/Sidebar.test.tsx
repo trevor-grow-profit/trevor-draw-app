@@ -17,6 +17,7 @@ import { EMPTY_SCENE_JSON } from '../drawings/drawingScene'
 import { storage } from '../lib/storage'
 import { BridgeRequestError } from '../api'
 import { BOARD_PREVIEW_DWELL_MS, countChildren, Sidebar, type SidebarClipboard } from './Sidebar'
+import { datedSeed } from './createEntry'
 
 // The hover preview's picture (YAZ-1800) is drawn by the engine, which jsdom cannot run: the cache is
 // stubbed to answer a dataURL, the key is the real one.
@@ -278,79 +279,87 @@ describe('Sidebar file-row open gestures (D2 GRO-2168, I3 GRO-2235)', () => {
   })
 
   /**
-   * "New Excalidraw drawing" (🔒 R1 on YAZ-1775, YAZ-1815): the app's ONE file-creation door, and it never
-   * asks for a name — the board is born `Untitled`, opens in the current tab, and offers the inline rename.
+   * Board birth is NAME-FIRST (🔒 YAZ-1999 D1, D5 — reverses YAZ-1775 R1): every "New…" board item opens
+   * the inline name box in the target folder, and nothing touches the disk until Enter. Scenario
+   * numbers are the S1–S18 contract pinned on YAZ-1999.
    */
-  describe('"New Excalidraw drawing" (YAZ-1815)', () => {
-    /** Right-click blank space and take the item; the whole birth settles inside one act. */
-    const newDrawing = async (el: HTMLElement) => {
-      act(() => void el.querySelector('.sidebar__body')?.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true })))
-      await act(async () => itemByLabel(el, 'New Excalidraw drawing')?.click())
-      await act(async () => undefined)
+  describe('name-first board birth (YAZ-1999)', () => {
+    /** Right-click `target` (blank space by default) and take `label`. */
+    const pickNew = async (el: HTMLElement, label: string, target = '.sidebar__body') => {
+      act(() => void el.querySelector(target)?.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true })))
+      await act(async () => itemByLabel(el, label)?.click())
     }
-    /** `createFile` that also grows the tree the next refresh reads — what the watcher does in production. */
-    const growsTree = (bridge: ReturnType<typeof installBridge>, tree: TreeNode[] = TREE) =>
-      bridge.createFile.mockImplementation(async (req: string | { path: string; content?: string }) => {
-        const p = typeof req === 'string' ? req : req.path
-        bridge.tree.mockResolvedValue({ root: '/v', tree: [...tree, { type: 'file', name: p.slice(p.lastIndexOf('/') + 1), path: p, size: 1, mtime: 2, kind: 'drawing' }], generatedAt: 2 })
-        return { path: p, mtime: 2, size: 0 }
-      })
+    const box = (el: HTMLElement) => el.querySelector<HTMLInputElement>('.create-inline__input')
+    const key = async (el: HTMLElement, k: string, value?: string) => {
+      const input = box(el)!
+      if (value !== undefined) input.value = value
+      await act(async () => void input.dispatchEvent(new KeyboardEvent('keydown', { key: k, bubbles: true })))
+    }
 
-    it('names itself `Untitled`, writes an EMPTY SCENE rather than an empty file (🔒 YAZ-1810), and opens it in the current tab', async () => {
+    it('opens an empty, focused box named for the board and writes NOTHING until Enter (S1, S5, S11)', async () => {
+      const { el, bridge } = await mount()
+      await pickNew(el, 'New Excalidraw drawing')
+      expect(box(el)?.placeholder).toBe('New Excalidraw drawing')
+      expect(box(el)?.value).toBe('')
+      expect(document.activeElement).toBe(box(el))
+      await key(el, 'Enter')
+      expect(box(el)).not.toBeNull()
+      expect(bridge.createFile).not.toHaveBeenCalled()
+    })
+
+    it('Enter writes the typed name with an EMPTY SCENE (🔒 YAZ-1810) and opens it in the current tab (S1)', async () => {
       const { el, props, bridge } = await mount()
-      await newDrawing(el)
-      expect(bridge.createFile).toHaveBeenCalledExactlyOnceWith({ path: '/v/Untitled.excalidraw', content: EMPTY_SCENE_JSON })
-      expect(JSON.parse(EMPTY_SCENE_JSON)).toMatchObject({ type: 'excalidraw', elements: [] })
-      expect(props.onOpenFile).toHaveBeenCalledExactlyOnceWith('/v/Untitled.excalidraw')
+      await pickNew(el, 'New Excalidraw drawing')
+      await key(el, 'Enter', 'Roadmap')
+      expect(bridge.createFile).toHaveBeenCalledExactlyOnceWith({ path: '/v/Roadmap.excalidraw', content: EMPTY_SCENE_JSON })
+      expect(props.onOpenFile).toHaveBeenCalledExactlyOnceWith('/v/Roadmap.excalidraw')
       expect(props.onOpenFileBackground).not.toHaveBeenCalled()
+      expect(box(el)).toBeNull()
     })
 
-    it('lands with the name field focused on the new row, ready for the rename', async () => {
+    it('creates inside the right-clicked FOLDER, not the vault root (S1)', async () => {
       const { el, bridge } = await mount()
-      growsTree(bridge)
-      await newDrawing(el)
-      const input = el.querySelector<HTMLInputElement>('.create-inline__input')
-      expect(input?.value).toBe('Untitled')
-      expect(document.activeElement).toBe(input)
+      await pickNew(el, 'New Excalidraw drawing', '.tree__row--dir')
+      await key(el, 'Enter', 'Plan')
+      expect(bridge.createFile).toHaveBeenCalledExactlyOnceWith({ path: '/v/sub/Plan.excalidraw', content: EMPTY_SCENE_JSON })
     })
 
-    it('counts up beside its siblings: a second one is `Untitled 2`', async () => {
-      const taken: TreeNode[] = [...TREE, { type: 'file', name: 'Untitled.excalidraw', path: '/v/Untitled.excalidraw', size: 1, mtime: 1, kind: 'drawing' }]
-      const { el, bridge } = await mount({}, (b) => b.tree.mockResolvedValue({ root: '/v', tree: taken, generatedAt: 1 }))
-      await newDrawing(el)
-      expect(bridge.createFile).toHaveBeenCalledExactlyOnceWith({ path: '/v/Untitled 2.excalidraw', content: EMPTY_SCENE_JSON })
-    })
-
-    it('never overwrites: a name lost to a race retries with the next number', async () => {
-      const { el, bridge } = await mount()
-      bridge.createFile.mockRejectedValueOnce(new BridgeRequestError('ALREADY_EXISTS', 'exists'))
-      await newDrawing(el)
-      expect(bridge.createFile.mock.calls.map((c) => (c[0] as { path: string }).path)).toEqual(['/v/Untitled.excalidraw', '/v/Untitled 2.excalidraw'])
-    })
-
-    it('reports a refusal through the passive notice, naming the engine (🔒 YAZ-1802 D13), and opens nothing', async () => {
+    it('"New draw.io diagram" is the same box, and Enter writes an EMPTY DIAGRAM (S4, 🔒 D5)', async () => {
       const { el, props, bridge } = await mount()
-      bridge.createFile.mockRejectedValue(new BridgeRequestError('FORBIDDEN', 'read-only vault'))
-      await newDrawing(el)
-      expect(props.onNotice).toHaveBeenCalledWith("Can't create Excalidraw drawing: read-only vault", 'error')
-      expect(props.onOpenFile).not.toHaveBeenCalled()
+      await pickNew(el, 'New draw.io diagram')
+      expect(box(el)?.placeholder).toBe('New draw.io diagram')
+      await key(el, 'Enter', 'Flow')
+      expect(bridge.createFile).toHaveBeenCalledExactlyOnceWith({ path: '/v/Flow.drawio', content: EMPTY_DIAGRAM_XML })
+      expect(props.onOpenFile).toHaveBeenCalledExactlyOnceWith('/v/Flow.drawio')
     })
 
-    it('creates inside the right-clicked FOLDER, not the vault root', async () => {
+    it('"New dated Excalidraw drawing" seeds today\'s MM_DD- ; Enter on the untouched seed does nothing, a title creates the dated board (S13, S14)', async () => {
+      const { el, props, bridge } = await mount()
+      await pickNew(el, 'New dated Excalidraw drawing')
+      expect(box(el)?.value).toBe(datedSeed())
+      await key(el, 'Enter')
+      expect(bridge.createFile).not.toHaveBeenCalled()
+      await key(el, 'Enter', `${datedSeed()}Plan`)
+      expect(bridge.createFile).toHaveBeenCalledExactlyOnceWith({ path: `/v/${datedSeed()}Plan.excalidraw`, content: EMPTY_SCENE_JSON })
+      expect(props.onOpenFile).toHaveBeenCalledExactlyOnceWith(`/v/${datedSeed()}Plan.excalidraw`)
+    })
+
+    it('Escape writes nothing (S6)', async () => {
       const { el, bridge } = await mount()
-      act(() => void el.querySelector('.tree__row--dir')?.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true })))
-      await act(async () => itemByLabel(el, 'New Excalidraw drawing')?.click())
-      expect(bridge.createFile).toHaveBeenCalledExactlyOnceWith({ path: '/v/sub/Untitled.excalidraw', content: EMPTY_SCENE_JSON })
+      await pickNew(el, 'New Excalidraw drawing')
+      await key(el, 'Escape', 'Roadmap')
+      expect(box(el)).toBeNull()
+      expect(bridge.createFile).not.toHaveBeenCalled()
     })
 
-    it('🔒 YAZ-1802 D13: "New draw.io diagram" is the same birth — `Untitled.drawio`, an EMPTY DIAGRAM, counted on .drawio names only', async () => {
-      const taken: TreeNode[] = [...TREE, { type: 'file', name: 'Untitled.excalidraw', path: '/v/Untitled.excalidraw', size: 1, mtime: 1, kind: 'drawing' }, { type: 'file', name: 'untitled.DRAWIO', path: '/v/untitled.DRAWIO', size: 1, mtime: 1, kind: 'diagram' }]
-      const { el, props, bridge } = await mount({}, (b) => b.tree.mockResolvedValue({ root: '/v', tree: taken, generatedAt: 1 }))
-      act(() => void el.querySelector('.sidebar__body')?.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true })))
-      await act(async () => itemByLabel(el, 'New draw.io diagram')?.click())
-      await act(async () => undefined)
-      expect(bridge.createFile).toHaveBeenCalledExactlyOnceWith({ path: '/v/Untitled 2.drawio', content: EMPTY_DIAGRAM_XML })
-      expect(props.onOpenFile).toHaveBeenCalledExactlyOnceWith('/v/Untitled 2.drawio')
+    it('a name that is taken keeps the box open with the error and the typed text, and opens nothing (S8)', async () => {
+      const { el, props, bridge } = await mount()
+      bridge.createFile.mockRejectedValueOnce(new BridgeRequestError('ALREADY_EXISTS', 'path already exists'))
+      await pickNew(el, 'New Excalidraw drawing')
+      await key(el, 'Enter', 'a')
+      expect(box(el)?.value).toBe('a')
+      expect(el.querySelector('.create-inline__error')?.textContent).toBe('path already exists')
+      expect(props.onOpenFile).not.toHaveBeenCalled()
     })
   })
 
@@ -1290,7 +1299,7 @@ describe('lens tabs (🔒 D4/D5, YAZ-847)', () => {
     const { el } = await mount({ lens: 'favorites' })
     act(() => void el.querySelector('.sidebar__body')?.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true })))
     expect(el.querySelector('.ctx-menu')).not.toBeNull()
-    expect(menuItems(el).map((b) => b.textContent)).toEqual(['Paste', 'Copy path', 'New Excalidraw drawing', 'New draw.io diagram', 'New folder', 'New dated folder', 'Open in'])
+    expect(menuItems(el).map((b) => b.textContent)).toEqual(['Paste', 'Copy path', 'New Excalidraw drawing', 'New dated Excalidraw drawing', 'New draw.io diagram', 'New folder', 'New dated folder', 'Open in'])
   })
 
   it('a typed query still offers nothing on either lens — a result list has no root to target (YAZ-803)', async () => {
@@ -1693,15 +1702,17 @@ describe('favorites (YAZ-1766)', () => {
     expect(el.querySelector('.tree')).toBeNull()
   })
 
-  it('New drawing from a ROOT favorited FILE hops to Files — its parent dir is not on the tab; from a favorited FOLDER it stays put (3B1)', async () => {
+  it('New drawing from a ROOT favorited FILE hops to Files — its parent dir is not on the tab; from a favorited FOLDER it stays put and the box opens there (3B1, S18)', async () => {
     const { el, v, props, bridge } = await mountVault({ lens: 'favorites' }, { favorites: ['/Notes/n.excalidraw', '/Projects'] })
     await pick(el, `${v}/Notes/n.excalidraw`, 'New Excalidraw drawing')
     expect(props.onLensChange).toHaveBeenCalledExactlyOnceWith('files')
-    expect(bridge.createFile).toHaveBeenCalledWith({ path: `${v}/Notes/Untitled.excalidraw`, content: EMPTY_SCENE_JSON })
     vi.mocked(props.onLensChange).mockClear()
     await pick(el, `${v}/Projects`, 'New Excalidraw drawing')
     expect(props.onLensChange).not.toHaveBeenCalled()
-    expect(bridge.createFile).toHaveBeenLastCalledWith({ path: `${v}/Projects/Untitled.excalidraw`, content: EMPTY_SCENE_JSON })
+    const input = el.querySelector<HTMLInputElement>('.create-inline__input')!
+    input.value = 'Plan'
+    await act(async () => void input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })))
+    expect(bridge.createFile).toHaveBeenCalledExactlyOnceWith({ path: `${v}/Projects/Plan.excalidraw`, content: EMPTY_SCENE_JSON })
   })
 
   it('"Add to favorites" is on file AND folder rows in Files, never on blank space; adding toasts, persists to the vault file and lists the row on the tab', async () => {
@@ -1926,9 +1937,10 @@ describe('context menu order (GRO-2272 C1a)', () => {
       'Copy',
       'Paste',
       'Copy path',
-      // The create group: the one document birth first, then the two folder births — every one
+      // The create group: the board births first, then the two folder births — every one
       // of them targets a DIRECTORY (the row's parent), never the row itself.
       'New Excalidraw drawing',
+      'New dated Excalidraw drawing',
       'New draw.io diagram',
       'New folder',
       'New dated folder',
