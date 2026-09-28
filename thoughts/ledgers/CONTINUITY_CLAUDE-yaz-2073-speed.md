@@ -18,8 +18,10 @@
 ## State
 - Done:
   - [x] 0 Deep scope (YAZ-2074): 8 research angles + decisions + tree
-- Now: [→] Wave 1 — 1A/1B/1D (p1-net), 1C (p1c-e2e), 2A/2B/2D (p2-reliability), 3A–3D/4A/4B (p34-size-launch), 2C/3E/5E/5F/5G/5H (p5-main)
-- Next: Wave 2 — engine fork (5A upstream perf, 5B ImageBitmap + hygiene), 5C thumbnails, 5D sidebar, 5I, 5J
+  - [x] Phase 2 merged (2A 2B 2C 2D); 2B1 (YAZ-2122) found → p5-mem
+  - [x] Phase 3/4 merged (3A 3C 3D 3E 4A 4B); 3B PARKED for Yasin (locale trim changes Intl on non-English Macs)
+  - [x] Main-process smoothness merged (5E 5F 5G 5H)
+- Now: [→] 1A/1B/1D (p1-net), 1C (p1c-e2e), 5A/5B engine (p5-engine + fork wt), 2B1/5I/5J (p5-mem), 5D/6C (p5-sidebar), 5C (p5-thumbs)
 - Remaining:
   - [ ] Wave 3 — 6A IPC contract, 6B board document, 6C sidebar split, 6D hygiene
   - [ ] 7A/7B/7C verify + demo
