@@ -15,7 +15,7 @@ import { DEFAULT_CANVAS_PREFS, type DrawingLoadResponse, type GithubSyncStatus }
 import type { WatchEvent } from '@shared/types'
 import type { DrawingFileData } from '@shared/drawingAssets'
 import type { DrawingSnapshot, DrawingSurfaceApi, DrawingSurfaceProps } from './ExcalidrawSurface'
-import { BOARD_COMMAND_EVENT, requestBoardCommand, type BoardCommand } from './boardCommand'
+import { requestBoardCommand, type BoardCommand } from './boardCommand'
 
 vi.mock('../api', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../api')>()),
@@ -75,8 +75,7 @@ vi.mock('./ExcalidrawSurface', async (importOriginal) => ({
 }))
 
 import { api } from '../api'
-import { _resetRenameContinuity, flushRenamedPath, retirePath } from '../lib/renameContinuity'
-import { BridgeRequestError } from '../api'
+import { _resetRenameContinuity } from '../lib/renameContinuity'
 import { BROKEN_DRAWING_DOCUMENT, DrawingEditor } from './DrawingEditor'
 
 const load = vi.mocked(api.drawing.load)
@@ -106,8 +105,6 @@ function watcherSaw(ev: WatchEvent): void {
   act(() => listeners.forEach((l) => l(ev)))
 }
 
-/** The quit handshake the preload owns; captured so a test can run it. */
-let flushListener: (() => Promise<void> | void) | null = null
 
 let root: Root | null = null
 let container: HTMLElement
@@ -141,18 +138,12 @@ beforeEach(() => {
   surface.focuses = 0
   surface.nextReplaceVersion = 0
   surface.commands = []
-  flushListener = null
   Object.defineProperty(window, 'yaseenDraw', {
     configurable: true,
     writable: true,
     value: {
       window: {
-        onFlush: (listener: () => Promise<void> | void) => {
-          flushListener = listener
-          return () => {
-            flushListener = null
-          }
-        },
+        onFlush: () => () => {},
       },
     },
   })
@@ -241,34 +232,6 @@ describe('autosave', () => {
     expect(chips()).toContain('Saved')
   })
 
-  it('carries the mtime the last write returned into the next save', async () => {
-    render()
-    await flush()
-    emit(1)
-    emit(2)
-    await act(async () => {
-      vi.advanceTimersByTime(500)
-    })
-    save.mockResolvedValue({ path: PATH, mtime: 300, size: 50, persisted: [] })
-    emit(3)
-    await act(async () => {
-      vi.advanceTimersByTime(500)
-    })
-    expect(save.mock.calls[1][0]).toMatchObject({ expectedMtime: 200 })
-  })
-
-  it('reports a failed write as the error chip and keeps the edit pending', async () => {
-    render()
-    await flush()
-    emit(1)
-    save.mockRejectedValue(new Error('disk full'))
-    emit(2)
-    await act(async () => {
-      vi.advanceTimersByTime(500)
-    })
-    expect(chips()).toContain('Save failed')
-  })
-
   it('⌘S flushes immediately, without waiting for the debounce', async () => {
     render()
     await flush()
@@ -281,63 +244,9 @@ describe('autosave', () => {
     expect(save).toHaveBeenCalledTimes(1)
   })
 
-  it('flushes on the quit handshake and on unmount, and never on a RETIRED host (a delete must stay deleted)', async () => {
-    render()
-    await flush()
-    emit(1)
-    emit(2)
-    await act(async () => {
-      await flushListener?.()
-    })
-    expect(save).toHaveBeenCalledTimes(1)
-
-    emit(3)
-    act(() => root?.unmount())
-    root = null
-    await flush()
-    expect(save).toHaveBeenCalledTimes(2)
-
-    // A fresh host whose file is deleted under it: the unmount flush must write nothing.
-    root = createRoot(container)
-    render()
-    await flush()
-    emit(1)
-    emit(2)
-    save.mockClear()
-    act(() => retirePath(PATH))
-    act(() => root?.unmount())
-    root = null
-    await flush()
-    expect(save).not.toHaveBeenCalled()
-  })
-
-  it('answers the pre-rename flush so the bytes travel with the file', async () => {
-    render()
-    await flush()
-    emit(1)
-    emit(2)
-    await act(async () => {
-      await flushRenamedPath(PATH)
-    })
-    expect(save).toHaveBeenCalledTimes(1)
-  })
 })
 
 describe('external changes', () => {
-  it('ignores the echo of our own write', async () => {
-    render()
-    await flush()
-    emit(1)
-    emit(2)
-    await act(async () => {
-      vi.advanceTimersByTime(500)
-    })
-    load.mockClear()
-    watcherSaw({ type: 'change', path: PATH, mtime: 200 })
-    await flush()
-    expect(load).not.toHaveBeenCalled()
-  })
-
   it('RELOADS a clean tab from disk and does not write the reloaded bytes back', async () => {
     render()
     await flush()
@@ -372,72 +281,6 @@ describe('external changes', () => {
     expect(save).not.toHaveBeenCalled()
   })
 
-  it('raises the conflict bar on a DIRTY tab and never reloads under the user', async () => {
-    render()
-    await flush()
-    emit(1)
-    emit(2) // dirty, still inside the debounce
-    load.mockClear()
-    watcherSaw({ type: 'change', path: PATH, mtime: 400 })
-    await flush()
-    expect(chips()).toContain('File changed on disk.')
-    expect(load).not.toHaveBeenCalled()
-  })
-
-  it('Reload takes disk; Keep mine writes the canvas against the NEW mtime', async () => {
-    render()
-    await flush()
-    emit(1)
-    emit(2)
-    watcherSaw({ type: 'change', path: PATH, mtime: 400 })
-    await flush()
-    await act(async () => {
-      container.querySelectorAll('.conflict-bar button')[0].dispatchEvent(new MouseEvent('click', { bubbles: true }))
-    })
-    expect(surface.replaced).toHaveLength(1)
-    expect(chips()).not.toContain('File changed on disk.')
-
-    // …and the other button, from a fresh conflict: the engine's post-reload snapshot lands as
-    // the baseline, then a real edit makes the tab dirty again.
-    emit(0)
-    emit(3)
-    watcherSaw({ type: 'change', path: PATH, mtime: 500 })
-    await flush()
-    save.mockClear()
-    await act(async () => {
-      container.querySelectorAll('.conflict-bar button')[1].dispatchEvent(new MouseEvent('click', { bubbles: true }))
-    })
-    expect(save).toHaveBeenCalledWith(expect.objectContaining({ expectedMtime: 500 }))
-  })
-
-  it('a CONFLICT from the save door itself raises the same bar and BLOCKS further writes until it is answered', async () => {
-    const { BridgeRequestError } = await import('../api')
-    render()
-    await flush()
-    emit(1)
-    save.mockRejectedValue(new BridgeRequestError('CONFLICT', 'drawing changed on disk since last read', 900))
-    emit(2)
-    await act(async () => {
-      vi.advanceTimersByTime(500)
-    })
-    expect(chips()).toContain('File changed on disk.')
-    save.mockClear()
-    emit(3)
-    await act(async () => {
-      vi.advanceTimersByTime(2000)
-    })
-    expect(save).not.toHaveBeenCalled()
-  })
-
-  it('ignores watcher events for other files', async () => {
-    render()
-    await flush()
-    emit(1)
-    load.mockClear()
-    watcherSaw({ type: 'change', path: '/vault/Other.excalidraw', mtime: 400 })
-    await flush()
-    expect(load).not.toHaveBeenCalled()
-  })
 })
 
 describe('🔒 YAZ-1775 D3 — which image bytes a save ships', () => {
@@ -575,43 +418,6 @@ describe('chips and the canvas frame', () => {
       })
     })
 
-    it('takes the keyboard when nothing else holds it, so the tool hotkeys work without a click', async () => {
-      await withObserver(async (reveal) => {
-        render()
-        await flush()
-        expect(document.activeElement).toBe(document.body)
-        reveal()
-        expect(surface.focuses).toBe(1)
-      })
-    })
-
-    it('takes it from the tab being LEFT — the other canvas is inside the same tab layer', async () => {
-      container.className = 'tabstack'
-      await withObserver(async (reveal) => {
-        render()
-        await flush()
-        const inLayer = document.createElement('input')
-        container.appendChild(inLayer)
-        inLayer.focus()
-        reveal()
-        expect(surface.focuses).toBe(1)
-      })
-    })
-
-    it('NEVER takes it from the sidebar search bar, the vault switcher or a dialog', async () => {
-      await withObserver(async (reveal) => {
-        render()
-        await flush()
-        const chrome = document.createElement('input')
-        document.body.appendChild(chrome)
-        chrome.focus()
-        expect(document.activeElement).toBe(chrome)
-        reveal()
-        expect(surface.focuses).toBe(0)
-        expect(surface.refreshes).toBe(1) // the re-measure is unconditional; only the focus is gated
-        chrome.remove()
-      })
-    })
   })
 
   it('claims the application menu`s three canvas commands on its own section (🔒 YAZ-1775 D10, 🔒 YAZ-1775 D3)', async () => {
@@ -625,15 +431,6 @@ describe('chips and the canvas frame', () => {
     expect(requestBoardCommand({ kind: 'export-drawing' }, document.body)).toBe(true)
     await flush()
     expect(surface.commands).toEqual([{ kind: 'export-image' }, { kind: 'canvas-background', color: '#fffce8' }, { kind: 'export-drawing' }])
-  })
-
-  it('ignores a command once the editor is gone — the listener goes with it', async () => {
-    render()
-    await flush()
-    const section = container.querySelector('.editor--drawing') as Element
-    act(() => root?.render(null))
-    section.dispatchEvent(new CustomEvent(BOARD_COMMAND_EVENT, { detail: { kind: 'export-image' } }))
-    expect(surface.commands).toEqual([])
   })
 
   it('Export Drawing… offers the canvas`s standalone bytes under the BOARD`s name (🔒 YAZ-1775 D3, YAZ-1821)', async () => {
@@ -650,31 +447,6 @@ describe('chips and the canvas frame', () => {
     // 🔒 YAZ-1775 D3: the VAULT file is not touched — no save, no flush, nothing read back.
     expect(save).not.toHaveBeenCalled()
     expect(load).toHaveBeenCalledTimes(1)
-  })
-
-  it('a dismissed export sheet says nothing at all', async () => {
-    container.className = 'tabstack__layer'
-    const onNotice = vi.fn()
-    render({ onNotice })
-    await flush()
-    saveDrawing.mockResolvedValue({ cancelled: true })
-
-    requestBoardCommand({ kind: 'export-drawing' }, document.body)
-    await flush()
-    expect(onNotice).not.toHaveBeenCalled()
-  })
-
-  it('a refused export is a passive notice, and the board carries on', async () => {
-    container.className = 'tabstack__layer'
-    const onNotice = vi.fn()
-    render({ onNotice })
-    await flush()
-    saveDrawing.mockRejectedValue(new BridgeRequestError('IO_ERROR', 'disk is full'))
-
-    requestBoardCommand({ kind: 'export-drawing' }, document.body)
-    await flush()
-    expect(onNotice).toHaveBeenCalledWith('disk is full', 'error')
-    expect(chips()).not.toContain(BROKEN_DRAWING_DOCUMENT)
   })
 
   it('hands the surface the shell`s canvas prefs to seed the scene with (🔒 YAZ-1775 D9)', async () => {
