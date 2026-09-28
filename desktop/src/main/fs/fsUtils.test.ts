@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { mkdir, mkdtemp, open, readdir, readFile, rename, rm, stat, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
-import { atomicWrite, BridgeFailure, buildTree, isSkipped, requireAbsPath, requireDrawingFile, toBridgeFailure, writeDurable } from './fsUtils'
+import { atomicWrite, BridgeFailure, buildTree, isAtomicTmp, isSkipped, requireAbsPath, requireDrawingFile, tmpSibling, toBridgeFailure, writeDurable } from './fsUtils'
 
 // Pass-through spies: the durability tests watch the handle's `sync` and the rename that follows it.
 vi.mock('node:fs/promises', async (importOriginal) => {
@@ -202,6 +202,14 @@ describe('durable writes (YAZ-2073 D12)', () => {
       expect(await readdir(dir)).toEqual(['a.excalidraw'])
       expect(await readFile(file, 'utf8')).toBe('old')
     }))
+
+  it('every tmp sibling is one the watchers stay silent about — a save`s and a landing asset`s alike (YAZ-2073 2B1)', () => {
+    for (const file of ['/v/Board.excalidraw', '/v/assets/0a1b2c.png']) {
+      expect(path.dirname(tmpSibling(file))).toBe(path.dirname(file))
+      expect(isAtomicTmp(path.basename(tmpSibling(file)))).toBe(true)
+    }
+    expect(isAtomicTmp('0a1b2c.png')).toBe(false)
+  })
 
   it('writeDurable fsyncs before closing, and `wx` refuses an existing file', () =>
     withDir(async (dir) => {

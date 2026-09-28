@@ -192,6 +192,24 @@ describe('previews', () => {
     await act(async () => undefined)
     expect(media.preview).toHaveBeenCalledTimes(1)
   })
+
+  it('keeps at most 300 tile pictures: past that the least recently seen goes, and re-showing it asks again (YAZ-2073 5J)', async () => {
+    const many = (n: number) => Array.from({ length: n }, (_, i) => stored({ itemKey: `iconify:set:i${i}`, providerId: `set:i${i}`, title: `icon ${i}` }))
+    const reshow = async (host: HTMLElement) => {
+      await click(byText(host, 'Shapes'))
+      await click(byText(host, 'Favorites'))
+      await act(async () => undefined)
+    }
+    media.favorites.mockResolvedValue(many(301))
+    const { container: host } = await mount()
+    await click(byText(host, 'Favorites'))
+    await act(async () => undefined)
+    expect(media.preview).toHaveBeenCalledTimes(301)
+    await reshow(host)
+    // The first tile's picture was evicted by the 301st: that one tile, and only it, is asked for again.
+    expect(media.preview).toHaveBeenCalledTimes(302)
+    expect(media.preview).toHaveBeenLastCalledWith({ provider: 'iconify', id: 'set:i0' })
+  })
 })
 
 describe('searching', () => {

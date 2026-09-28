@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { mkdir, mkdtemp, open, readdir, readFile, rm, stat, utimes, writeFile } from 'node:fs/promises'
+import { access, link, mkdir, mkdtemp, open, readdir, readFile, rm, stat, utimes, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { MAX_DRAWING_BYTES } from '@shared/types'
@@ -8,10 +8,10 @@ import { sweepOrphanAssets } from '../drawings/orphanSweep'
 import { loadDrawing, saveDrawing } from './drawing'
 import { blockOf, failure, withoutBlock } from './testFixture'
 
-// Pass-through: the durability test watches which files get fsynced (YAZ-2073 D12).
+// Pass-through: the durability tests watch which files get fsynced (YAZ-2073 D12) and how an asset is named (2B1).
 vi.mock('node:fs/promises', async (importOriginal) => {
   const m = await importOriginal<typeof import('node:fs/promises')>()
-  return { ...m, open: vi.fn(m.open) }
+  return { ...m, open: vi.fn(m.open), link: vi.fn(m.link) }
 })
 
 const PNG_B64 = 'aGVsbG8='
@@ -293,16 +293,23 @@ describe('🔒 YAZ-1775 D3 — the image store on save', () => {
   it('fsyncs each new asset and the scene before the save answers (YAZ-2073 D12)', async () => {
     const synced: string[] = []
     const { open: realOpen } = await vi.importActual<typeof import('node:fs/promises')>('node:fs/promises')
+    const asset = path.join(root, 'assets', 'newid.png')
     vi.mocked(open).mockImplementation(async (...args) => {
       const fh = await realOpen(...args)
       const sync = fh.sync.bind(fh)
-      fh.sync = () => (synced.push(path.basename(String(args[0])).replace(/\.tmp-.*/, '.tmp')), sync())
+      fh.sync = async () => {
+        // The asset's own name must not exist until its bytes are synced (2B1).
+        const named = String(args[0]).startsWith(asset) && (await access(asset).then(() => true, () => false)) ? ' (named early!)' : ''
+        synced.push(path.basename(String(args[0])).replace(/\.tmp-.*/, '.tmp') + named)
+        return sync()
+      }
       return fh
     })
     try {
       await seed('Board.excalidraw', scene())
       await saveDrawing({ root, path: 'Board.excalidraw', json: scene([imageEl('newid')]), newFiles: [{ fileId: 'newid', mimeType: 'image/png', dataURL: dataUrl() }] })
-      expect(synced).toEqual(['newid.png', 'Board.excalidraw.tmp'])
+      expect(synced).toEqual(['newid.png.tmp', 'Board.excalidraw.tmp'])
+      expect(await readdir(path.join(root, 'assets'))).toEqual(['newid.png'])
     } finally {
       vi.mocked(open).mockRestore()
     }
@@ -316,6 +323,39 @@ describe('🔒 YAZ-1775 D3 — the image store on save', () => {
     expect(res.persisted).toEqual(['same'])
     expect(await readFile(asset, 'utf8')).toBe('original')
     expect((await stat(asset)).mtimeMs).toBe(before)
+    expect(await readdir(path.join(root, 'assets'))).toEqual(['same.png'])
+  })
+
+  it('a write torn mid-way leaves NOTHING under the asset name — no torn "valid" asset, no tmp (YAZ-2073 2B1)', async () => {
+    const original = await seed('Board.excalidraw', scene())
+    const { open: realOpen } = await vi.importActual<typeof import('node:fs/promises')>('node:fs/promises')
+    vi.mocked(open).mockImplementation(async (...args) => {
+      const fh = await realOpen(...args)
+      if (String(args[0]).includes('newid.png')) {
+        fh.writeFile = async (data) => {
+          await fh.write(Buffer.from(data as Uint8Array).subarray(0, 2))
+          throw Object.assign(new Error('EIO: i/o error, write'), { code: 'EIO' })
+        }
+      }
+      return fh
+    })
+    try {
+      const err = await failure(saveDrawing({ root, path: 'Board.excalidraw', json: scene([imageEl('newid')]), newFiles: [{ fileId: 'newid', mimeType: 'image/png', dataURL: dataUrl() }] }))
+      expect(err.path).toBe(path.join(root, 'assets', 'newid.png'))
+      expect(await readdir(path.join(root, 'assets'))).toEqual([])
+      expect(await readFile(original, 'utf8')).toBe(scene())
+    } finally {
+      vi.mocked(open).mockRestore()
+    }
+  })
+
+  it('a volume without hard links (exFAT, FAT: ENOTSUP) still lands the asset, by rename (YAZ-2073 2B1)', async () => {
+    vi.mocked(link).mockRejectedValueOnce(Object.assign(new Error('ENOTSUP: operation not supported, link'), { code: 'ENOTSUP' }))
+    await seed('Board.excalidraw', scene())
+    const res = await saveDrawing({ root, path: 'Board.excalidraw', json: scene([imageEl('newid')]), newFiles: [{ fileId: 'newid', mimeType: 'image/png', dataURL: dataUrl() }] })
+    expect(res.persisted).toEqual(['newid'])
+    expect(await readdir(path.join(root, 'assets'))).toEqual(['newid.png'])
+    expect(await readFile(path.join(root, 'assets', 'newid.png'), 'utf8')).toBe('hello')
   })
 
   it('EXTRACTS a legacy embedded scene on its first save: bytes into assets/, JSON shrunk', async () => {

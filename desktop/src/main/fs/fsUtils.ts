@@ -174,9 +174,14 @@ export async function writeDurable(file: string, content: string | Uint8Array, f
   }
 }
 
-/** Writes `content` durably to `<file>.tmp-<rand>` then renames over `file`. Parent dir must exist. */
+/** The sibling a write lands in before it takes `file`'s name — same dir, so a rename or link is atomic. */
+export function tmpSibling(file: string): string {
+  return `${file}.tmp-${randomBytes(6).toString('hex')}`
+}
+
+/** Writes `content` durably to `tmpSibling(file)` then renames over `file`. Parent dir must exist. */
 export async function atomicWrite(file: string, content: string | Uint8Array, mode?: number): Promise<{ mtime: number; size: number }> {
-  const tmp = `${file}.tmp-${randomBytes(6).toString('hex')}`
+  const tmp = tmpSibling(file)
   try {
     await writeDurable(tmp, content, 'w', mode)
     await rename(tmp, file)
@@ -188,5 +193,5 @@ export async function atomicWrite(file: string, content: string | Uint8Array, mo
   return { mtime: st.mtimeMs, size: st.size }
 }
 
-/** Whether `name` is one of `atomicWrite`'s own tmp files — which no watcher ever announces (YAZ-2073 5F). */
+/** Whether `name` is a `tmpSibling` — `atomicWrite`'s or `landAssets`' own tmp file, which no watcher ever announces (YAZ-2073 5F). */
 export const isAtomicTmp = (name: string): boolean => /\.tmp-[0-9a-f]{12}$/.test(name)

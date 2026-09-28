@@ -23,9 +23,10 @@
  * 🔒 YAZ-1775 D3 ON DISK: the scene carries `files: {}`; image elements keep only their `fileId`; the
  * bytes sit at `<root>/assets/<fileId>.<ext>` (the engine's own SHA-1 id, the mime's extension).
  * An asset is IMMUTABLE — the same bytes always get the same name — so a save never rewrites one
- * (`wx`; EEXIST means it is already exactly these bytes). A LEGACY export that still embeds
- * `files` opens — its entries come back in `files`, and its `json` without them, so the bytes cross
- * the bridge once (🔒 YAZ-2073 D7); opening it writes nothing — and SHRINKS on its first save:
+ * (tmp + fsync + `link`, which never replaces; EEXIST means it is already exactly these bytes). A
+ * LEGACY export that still embeds `files` opens — its entries come back in `files`, and its `json`
+ * without them, so the bytes cross the bridge once (🔒 YAZ-2073 D7); opening it writes nothing — and
+ * SHRINKS on its first save:
  * `liftEmbedded` takes the referenced bytes out of the scene and `landAssets` writes them into the
  * store, then the scene is written lean. Settings › Storage's "Move pictures out" (`shrink.ts`,
  * YAZ-1801 D5) runs the same two helpers over every legacy board at once.
@@ -49,7 +50,7 @@
  * Pure rules (`referencedFileIds`, `stripEmbeddedFiles`, `stampBoardMeta`, …) live in
  * `shared/drawingAssets.ts`; this file is the fs around them.
  */
-import { mkdir, readdir, readFile } from 'node:fs/promises'
+import { link, mkdir, readdir, readFile, rename, unlink } from 'node:fs/promises'
 import path from 'node:path'
 import type { DrawingFileEntry, DrawingLoadRequest, DrawingLoadResponse, DrawingSaveRequest, DrawingSaveResponse } from '@shared/types'
 import { MAX_DRAWING_BYTES } from '@shared/types'
@@ -59,7 +60,7 @@ import { ASSETS_DIR, assetFileName, extForMime, fileIdOfAssetName, isValidFileId
 import type { Thumbs } from '../drawings/thumbs'
 import { readBoardHead } from './boardHead'
 import { readBoundedRegularFile } from './boundedRead'
-import { atomicWrite, BridgeFailure, fsCall, requireAbsPath, requireDir, writeDurable } from './fsUtils'
+import { atomicWrite, BridgeFailure, fsCall, requireAbsPath, requireDir, tmpSibling, writeDurable } from './fsUtils'
 
 const TOO_LARGE = `drawing exceeds ${MAX_DRAWING_BYTES} bytes`
 
@@ -210,9 +211,14 @@ export function liftEmbedded(scene: Record<string, unknown>, elements: readonly 
 }
 
 /**
- * Write each asset durably into `<dir>/assets/` — `wx`, EEXIST is success (content-addressed: an existing
- * file IS these bytes) — and answer the ids now in the store. The other half of the one door
- * `liftEmbedded` opens; a failure rejects as a `BridgeFailure` naming the path.
+ * Write each asset durably into `<dir>/assets/` and answer the ids now in the store. The other half of
+ * the one door `liftEmbedded` opens; a failure rejects as a `BridgeFailure` naming the path.
+ *
+ * The name IS the content hash, so a torn file under it would pass for valid forever. The bytes land
+ * on a tmp sibling, are fsynced, and only then `link`ed to the name (YAZ-2073 2B1): a crash at any
+ * point leaves at most a tmp file. `link` never replaces — EEXIST means identical bytes already
+ * landed, which is success. A volume without hard links (exFAT, FAT: ENOTSUP) renames instead;
+ * replacing identical bytes is harmless there.
  */
 export async function landAssets(dir: string, pending: readonly PendingAsset[]): Promise<string[]> {
   const persisted: string[] = []
@@ -221,11 +227,15 @@ export async function landAssets(dir: string, pending: readonly PendingAsset[]):
   await fsCall(store, () => mkdir(store, { recursive: true }))
   for (const asset of pending) {
     const to = path.join(store, asset.name)
+    const tmp = tmpSibling(to)
     await fsCall(to, async () => {
       try {
-        await writeDurable(to, asset.bytes, 'wx')
-      } catch (err) {
-        if ((err as NodeJS.ErrnoException).code !== 'EEXIST') throw err
+        await writeDurable(tmp, asset.bytes, 'wx')
+        await link(tmp, to).catch((err: NodeJS.ErrnoException) => {
+          if (err.code !== 'EEXIST') return rename(tmp, to)
+        })
+      } finally {
+        await unlink(tmp).catch(() => undefined)
       }
     })
     persisted.push(asset.fileId)
