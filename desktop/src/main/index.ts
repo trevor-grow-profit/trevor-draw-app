@@ -163,6 +163,9 @@ app.on('browser-window-focus', (_event, win) => {
 
 app.whenReady().then(() => {
   if (!isPrimaryInstance) return
+  // Dev only (ACT-371): a packaged build carries the icon in its bundle; `npm run dev` runs the stock
+  // Electron binary, so the Dock would show Electron's icon. Point it at the build PNG instead.
+  if (!app.isPackaged && process.platform === 'darwin') app.dock?.setIcon(join(__dirname, '..', '..', 'build', 'icon.png'))
   // Appearance (K, GRO-2218): the setting IS the themeSource vocabulary. Applied from the loaded
   // store BEFORE any window is created (restoreAll below), re-applied whenever it changes — so
   // `prefers-color-scheme` in every renderer and the OS chrome follow the setting.
