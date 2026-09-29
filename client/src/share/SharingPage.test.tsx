@@ -37,7 +37,7 @@ import { useSharing } from './useSharing'
 const share = vi.mocked(api.share)
 const ROOT = '/v'
 const OFF: ShareStatus = { state: 'off', url: null, workersDevUrl: null, customDomain: null, accountName: null, workerName: null, bucketName: null, readyAt: null, demo: false }
-const READY: ShareStatus = { ...OFF, state: 'ready', url: 'https://yaseen-draw-share.me.workers.dev', workersDevUrl: 'https://yaseen-draw-share.me.workers.dev', accountName: 'Me', workerName: 'yaseen-draw-share', bucketName: 'yaseen-draw-shares', readyAt: 1 }
+const READY: ShareStatus = { ...OFF, state: 'ready', url: 'https://trevor-draw-share.me.workers.dev', workersDevUrl: 'https://trevor-draw-share.me.workers.dev', accountName: 'Me', workerName: 'trevor-draw-share', bucketName: 'trevor-draw-shares', readyAt: 1 }
 const NOW = Date.now()
 const board = (name: string, over: Partial<ShareListEntry> = {}): ShareListEntry => ({
   path: `/v/${name}.excalidraw`,
@@ -271,7 +271,7 @@ describe('Settings › Sharing (YAZ-1889)', () => {
     share.status.mockResolvedValue(READY)
     await mount()
     expect(byTest('sharing-status').textContent).toBe('✅ Sharing ready')
-    expect(row('sharingStatus').textContent).toContain('https://yaseen-draw-share.me.workers.dev · Cloudflare account: Me')
+    expect(row('sharingStatus').textContent).toContain('https://trevor-draw-share.me.workers.dev · Cloudflare account: Me')
     expect(host.textContent).not.toContain('Demo')
     expect(row('sharingSetup').textContent).toContain('Sharing is set up. Paste a key again')
     act(() => reactRoot?.unmount())

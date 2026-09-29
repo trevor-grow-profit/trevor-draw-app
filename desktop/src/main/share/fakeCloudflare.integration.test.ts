@@ -157,13 +157,13 @@ describe('setup against the fake Cloudflare (scenarios 1–3, D17, D18)', () => 
   })
 
   it('D18: an account-owned cfat_ key sets up', async () => {
-    expect(await setUp('cfat_demo-good')).toMatchObject({ state: 'ready', workersDevUrl: 'https://yaseen-draw-share.yasin-demo.workers.dev' })
+    expect(await setUp('cfat_demo-good')).toMatchObject({ state: 'ready', workersDevUrl: 'https://trevor-draw-share.yasin-demo.workers.dev' })
   })
 
   it.each(['demo-no-subdomain', 'demo-subdomain-taken'])('D17: %s claims <account>-xxxx and is ready', async (token) => {
     const status = await setUp(token)
     expect(status.state).toBe('ready')
-    expect(status.workersDevUrl).toMatch(/^https:\/\/yaseen-draw-share\.yasin-s-account-demo-[a-z0-9]{4}\.workers\.dev$/)
+    expect(status.workersDevUrl).toMatch(/^https:\/\/trevor-draw-share\.yasin-s-account-demo-[a-z0-9]{4}\.workers\.dev$/)
   })
 })
 
@@ -329,7 +329,7 @@ describe('the account (scenarios 13–15)', () => {
   it('13: a domain on the account attaches (the longest zone, .co.uk too); others get their own plain message', async () => {
     await setUp()
     expect((await sharing.setDomain('share.example.co.uk')).customDomain).toBe('share.example.co.uk')
-    expect((await sharing.status()).workersDevUrl).toBe('https://yaseen-draw-share.yasin-demo.workers.dev')
+    expect((await sharing.status()).workersDevUrl).toBe('https://trevor-draw-share.yasin-demo.workers.dev')
     await expect(sharing.setDomain('share.missingzone.com')).rejects.toThrow(/isn't under any domain on your Cloudflare account/)
     await expect(sharing.setDomain('share.pending-zone.dev')).rejects.toThrow(/pending-zone\.dev is on your Cloudflare account but isn't active yet/)
     await expect(sharing.setDomain('cname.yasin.dev')).rejects.toThrow(/already has a DNS record/)

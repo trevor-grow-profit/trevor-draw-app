@@ -13,8 +13,8 @@ import { CloudflareError, createCloudflareClient, STEP_PERMISSION, type Cloudfla
 import { newShareId, type ShareContext, type SharingConfig } from './config'
 import { updateShares } from './shareLinks'
 
-export const WORKER_NAME = 'yaseen-draw-share'
-export const BUCKET_NAME = 'yaseen-draw-shares'
+export const WORKER_NAME = 'trevor-draw-share'
+export const BUCKET_NAME = 'trevor-draw-shares'
 const MAIN_MODULE = 'worker.js'
 /** How long setup's test upload waits for a fresh workers.dev address to start answering. */
 const TEST_PATIENCE_MS = 90_000

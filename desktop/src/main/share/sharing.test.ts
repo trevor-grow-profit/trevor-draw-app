@@ -168,7 +168,7 @@ describe('sharing (YAZ-1799) against the real Worker', () => {
     const steps: ShareSetupProgress[] = []
     const status = await sharing.setup('tok', (p) => steps.push(p))
     expect(steps.filter((s) => s.state === 'done').map((s) => s.step)).toEqual(['verify', 'account', 'bucket', 'viewer', 'worker', 'subdomain', 'test'])
-    expect(status).toMatchObject({ state: 'ready', url: ORIGIN, workersDevUrl: 'https://yaseen-draw-share.me.workers.dev' })
+    expect(status).toMatchObject({ state: 'ready', url: ORIGIN, workersDevUrl: 'https://trevor-draw-share.me.workers.dev' })
     expect(JSON.stringify(status)).not.toContain(workerSecret)
     const secrets = JSON.parse(await readFile(path.join(dir, 'secrets.json'), 'utf8')).values
     expect(secrets[CLOUDFLARE_TOKEN_SECRET]).toBe('tok')
@@ -380,7 +380,7 @@ describe('sharing (YAZ-1799) against the real Worker', () => {
   it('custom domain: the longest matching zone on the account wins (share.example.co.uk → example.co.uk, not co.uk)', async () => {
     await sharing.setup('tok', () => {})
     await sharing.setDomain('share.example.co.uk')
-    expect(account.attached.map((b) => JSON.parse(b))).toEqual([{ hostname: 'share.example.co.uk', service: 'yaseen-draw-share', zone_id: 'z-example.co.uk' }])
+    expect(account.attached.map((b) => JSON.parse(b))).toEqual([{ hostname: 'share.example.co.uk', service: 'trevor-draw-share', zone_id: 'z-example.co.uk' }])
     await expect(sharing.setDomain('share.missingzone.com')).rejects.toThrow(/isn't under any domain on your Cloudflare account/)
   })
 
@@ -432,8 +432,8 @@ describe('sharing (YAZ-1799) against the real Worker', () => {
   })
 
   it('setup: an existing bucket is reused when creating it answers 10073 (it is ours)', async () => {
-    account.refuse.push({ when: /GET .*\/r2\/buckets\/yaseen-draw-shares/, status: 404, code: 10006 })
-    account.buckets.add('yaseen-draw-shares')
+    account.refuse.push({ when: /GET .*\/r2\/buckets\/trevor-draw-shares/, status: 404, code: 10006 })
+    account.buckets.add('trevor-draw-shares')
     expect((await sharing.setup('tok', () => {})).state).toBe('ready')
   })
 
@@ -469,7 +469,7 @@ describe('sharing (YAZ-1799) against the real Worker', () => {
     const status = await sharing.setup('tok', () => {})
     expect(account.subdomain).toMatch(/^test-account-[a-z0-9]{4}$/)
     expect(account.calls.filter((c) => c === 'PUT /accounts/acc1/workers/subdomain')).toHaveLength(2)
-    expect(status.workersDevUrl).toBe(`https://yaseen-draw-share.${account.subdomain}.workers.dev`)
+    expect(status.workersDevUrl).toBe(`https://trevor-draw-share.${account.subdomain}.workers.dev`)
   })
 
   it('setup: when Cloudflare refuses the claim outright, it says to claim one in the dashboard', async () => {
