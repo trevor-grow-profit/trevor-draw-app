@@ -176,7 +176,7 @@ export type FolderPatch = Partial<Pick<FolderState, 'expanded' | 'lastFile' | 's
 
 /**
  * The whole persisted app state — one user-global JSON file, owned by the main process
- * (`~/Library/Application Support/Yaseen Draw/yaseendraw.json`). Settings are global so
+ * (`~/Library/Application Support/Trevor Draw/yaseendraw.json`). Settings are global so
  * they apply to every folder and travel to another machine by copying this one file.
  */
 export interface AppState {

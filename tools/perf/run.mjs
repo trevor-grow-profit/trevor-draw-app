@@ -7,7 +7,7 @@
  * profile, runs each scenario `--runs` times after one discarded warm-up, and prints JSON — per
  * metric the median, p95, min, max, cv (noise) and every run — with each median checked against
  * the `perf` ceilings in budget.json (exit 1 when one is over). Local only: it opens real windows.
- *   --app   a packaged bundle (default: desktop/dist-app/mac-arm64/Yaseen Draw.app)
+ *   --app   a packaged bundle (default: desktop/dist-app/mac-arm64/Trevor Draw.app)
  *   --dev   `desktop/out` under the workspace's Electron instead (after `npm run build`, no packaging)
  *   --vs    a second bundle to compare against, interleaved run by run (ABBA order, its own warm-up,
  *           fixtures and profile); its numbers land under each scenario's `vs`, unchecked by ceilings
@@ -37,11 +37,11 @@ if (todo.length === 0 || unknown.length > 0) {
 }
 const runs = Number(opt('runs', '5'))
 const work = claimWorkDir(path.resolve(opt('work', path.join(os.tmpdir(), 'yaseen-draw-perf'))))
-const bundle = path.resolve(opt('app', path.join(repo, 'desktop/dist-app/mac-arm64/Yaseen Draw.app')))
+const bundle = path.resolve(opt('app', path.join(repo, 'desktop/dist-app/mac-arm64/Trevor Draw.app')))
 const app = argv.includes('--dev')
   ? { bin: createRequire(path.join(repo, 'desktop/package.json'))('electron'), args: [path.join(repo, 'desktop')] }
-  : { bin: path.join(bundle, 'Contents/MacOS/Yaseen Draw') }
-const vs = opt('vs') && { bin: path.join(path.resolve(opt('vs')), 'Contents/MacOS/Yaseen Draw') }
+  : { bin: path.join(bundle, 'Contents/MacOS/Trevor Draw') }
+const vs = opt('vs') && { bin: path.join(path.resolve(opt('vs')), 'Contents/MacOS/Trevor Draw') }
 for (const { bin } of [app, vs].filter(Boolean)) {
   if (fs.existsSync(bin)) continue
   console.error(`no app binary at ${bin} — run \`npm run desktop:build\`, or pass --app / --dev`)

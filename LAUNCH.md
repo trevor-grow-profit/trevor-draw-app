@@ -1,6 +1,6 @@
 # LAUNCH — how to run this app (for humans and agents)
 
-Yaseen Draw: a local whiteboard for a folder of boards — `.excalidraw` drawings and `.drawio`
+Trevor Draw: a local whiteboard for a folder of boards — `.excalidraw` drawings and `.drawio`
 diagrams — as an Electron macOS desktop app: React renderer around the vendored Excalidraw fork and
 a bundled draw.io, main-process file layer. See
 `README.md` for the human overview and `docs/CONTRACTS.md` for the bridge, state and packaging
@@ -24,36 +24,36 @@ npm run dev
 npm run desktop:build
 ```
 
-- Builds `desktop/out` (electron-vite) and then packages with electron-builder: `desktop/dist-app/mac-arm64/Yaseen Draw.app` and `desktop/dist-app/Yaseen Draw-<version>-arm64.dmg` (lzma — `tools/packDesktop.mjs` converts electron-builder's zlib image, mounts it and checks the app's seal; YAZ-2073 3A) — arm64 only, and `<version>` is the ROOT `package.json` version that `tools/packDesktop.mjs` stamps in. The YAZ-2073 build is 319.9 MB installed (46.4 MB of it the bundled draw.io webapp, pruned to what the app loads — YAZ-1973) and a 116.1 MB dmg, from v0.1.11's 387.2 MB / 172.5 MB (MB = 10⁶ bytes, as `npm run perf:budget` counts). The filenames contain spaces, so quote every path.
+- Builds `desktop/out` (electron-vite) and then packages with electron-builder: `desktop/dist-app/mac-arm64/Trevor Draw.app` and `desktop/dist-app/Trevor Draw-<version>-arm64.dmg` (lzma — `tools/packDesktop.mjs` converts electron-builder's zlib image, mounts it and checks the app's seal; YAZ-2073 3A) — arm64 only, and `<version>` is the ROOT `package.json` version that `tools/packDesktop.mjs` stamps in. The YAZ-2073 build is 319.9 MB installed (46.4 MB of it the bundled draw.io webapp, pruned to what the app loads — YAZ-1973) and a 116.1 MB dmg, from v0.1.11's 387.2 MB / 172.5 MB (MB = 10⁶ bytes, as `npm run perf:budget` counts). The filenames contain spaces, so quote every path.
 - The renderer ships minified; its hidden sourcemaps land in the gitignored `desktop/.maps/<version>/`, never in the app (🔒 YAZ-2073 D14) — keep that folder for a release whose stack traces you may need to read, and copy it away before building the same version again: every build replaces its version's folder. A stack frame such as `app://yaseen/assets/index-CUvbLYUM.js:23:53960` maps back with `source-map-js` (installed with Vite; it counts columns from 0, a stack from 1):
 
 ```bash
 node -e "const {SourceMapConsumer}=require('source-map-js'); const m=new SourceMapConsumer(require('./desktop/.maps/0.1.11/assets/index-CUvbLYUM.js.map')); console.log(m.originalPositionFor({ line: 23, column: 53959 }))"
 # → { source: '../../../../client/src/main.tsx', line: 26, column: 41, … }
 ```
-- `desktop/build/adhocSign.cjs` (`afterPack`) first drops Chromium's non-English locale paks (the app is English only — 🔒 YAZ-2073 D3; on Windows too): the Mac keeps the framework's 8 `en*.lproj` of 220 and all 55 app-level `Contents/Resources/*.lproj`, so Open/Save panels still follow the OS language, but on a non-English OS Chromium's own strings, `navigator.language` and the default `Intl` locale are en-US (the sidebar's Name sort collates as English). Check with `ls "desktop/dist-app/mac-arm64/Yaseen Draw.app/Contents/Frameworks/Electron Framework.framework/Resources"`.
-- `mac.identity: null` makes electron-builder skip signing, so the same hook then deep ad-hoc signs the bundle itself — without that seal Gatekeeper reports a downloaded copy as "damaged" instead of offering **Open Anyway**. Check it with `codesign -dv --verbose=2 "desktop/dist-app/mac-arm64/Yaseen Draw.app"`, which prints `Signature=adhoc`. `spctl -a -t install` on the same bundle prints `rejected` — expected, because nothing here is Developer-ID signed.
+- `desktop/build/adhocSign.cjs` (`afterPack`) first drops Chromium's non-English locale paks (the app is English only — 🔒 YAZ-2073 D3; on Windows too): the Mac keeps the framework's 8 `en*.lproj` of 220 and all 55 app-level `Contents/Resources/*.lproj`, so Open/Save panels still follow the OS language, but on a non-English OS Chromium's own strings, `navigator.language` and the default `Intl` locale are en-US (the sidebar's Name sort collates as English). Check with `ls "desktop/dist-app/mac-arm64/Trevor Draw.app/Contents/Frameworks/Electron Framework.framework/Resources"`.
+- `mac.identity: null` makes electron-builder skip signing, so the same hook then deep ad-hoc signs the bundle itself — without that seal Gatekeeper reports a downloaded copy as "damaged" instead of offering **Open Anyway**. Check it with `codesign -dv --verbose=2 "desktop/dist-app/mac-arm64/Trevor Draw.app"`, which prints `Signature=adhoc`. `spctl -a -t install` on the same bundle prints `rejected` — expected, because nothing here is Developer-ID signed.
 - The first packaging run on a clean machine needs network: electron-builder downloads its Electron dist zip and dmgbuild once, then caches them.
-- Install: open the dmg and drag `Yaseen Draw.app` into `/Applications` in Finder (or copy it straight from `desktop/dist-app/mac-arm64/`). The installed app and a `npm run dev` instance coexist — different userData, different single-instance lock.
+- Install: open the dmg and drag `Trevor Draw.app` into `/Applications` in Finder (or copy it straight from `desktop/dist-app/mac-arm64/`). The installed app and a `npm run dev` instance coexist — different userData, different single-instance lock.
 - First open is blocked by Gatekeeper (the app is not notarized): right-click › **Open**, or System Settings › Privacy & Security › **Open Anyway** — once, then never again on that Mac. See `README.md` "Installing on another Mac/PC".
 - The app claims `.excalidraw` and `.drawio` as Owner, so after that first open a Finder double-click opens drawings and diagrams with it, and from a shell:
 
 ```bash
-open -a "Yaseen Draw" "/path/to/some drawing.excalidraw"
+open -a "Trevor Draw" "/path/to/some drawing.excalidraw"
 ```
 
 - 🔒 Releases are Yasin's call: no tag, no GitHub release, no `npm version` unless he says so. `npm run desktop:build` is how the release path gets verified.
-- Windows: `npm run desktop:build:win` packages an unsigned x64 NSIS installer, `desktop/dist-app/Yaseen Draw-<version>-win-x64-setup.exe` (electron-builder can produce it from a Mac too). First open shows SmartScreen — **More info › Run anyway**, once. Both scripts stamp the root `package.json` version through `tools/packDesktop.mjs`.
+- Windows: `npm run desktop:build:win` packages an unsigned x64 NSIS installer, `desktop/dist-app/Trevor Draw-<version>-win-x64-setup.exe` (electron-builder can produce it from a Mac too). First open shows SmartScreen — **More info › Run anyway**, once. Both scripts stamp the root `package.json` version through `tools/packDesktop.mjs`.
 - No toolchain on the target machine? Download the `.dmg` (Mac, Apple Silicon) or the `-win-x64-setup.exe` (Windows) from the repo's [Releases page](https://github.com/yaseenarshad/yaseen-draw-app/releases). Pushing a `v*` tag runs `.github/workflows/release.yml`, which builds both on GitHub runners and attaches them to that tag's release.
 
 ## App state — where it lives, how to reset it
 
-- ONE user-global file, owned by the main process: `~/Library/Application Support/Yaseen Draw/yaseendraw.json` (settings, recents, open windows and their tabs, per-folder `lastFile` — schema in `docs/CONTRACTS.md` "App state schema"). Nothing is ever stored in the browser profile.
+- ONE user-global file, owned by the main process: `~/Library/Application Support/Trevor Draw/yaseendraw.json` (settings, recents, open windows and their tabs, per-folder `lastFile` — schema in `docs/CONTRACTS.md` "App state schema"). Nothing is ever stored in the browser profile.
 - TWO things do live in the vault, both by design and both the user's own data rather than app state: the favorites list at `<vault>/.yaseendraw/favorites.json` and the per-vault GitHub sync switch at `<vault>/.yaseendraw/github.json`. The dotfolder is created lazily on the first write and never otherwise; reading it creates nothing. Image bytes written by a drawing land in `<vault>/assets/`, and a board's own `createdAt` / `updatedAt` sit inside the drawing itself as its first key (🔒 YAZ-1834). Everything else about a vault stays in the state file above.
 - To reset or hand-edit: **quit the app first** (⌘Q — quitting flushes the file), then delete or edit the JSON; on the next launch a missing file gets defaults and a corrupt one is moved aside as `yaseendraw.json.corrupt-<epoch>`, never silently overwritten. To find it (the folder first appears after the app has run once against the real state):
 
 ```bash
-ls "$HOME/Library/Application Support/Yaseen Draw/"
+ls "$HOME/Library/Application Support/Trevor Draw/"
 ```
 
 - `YASEEN_DRAW_USER_DATA_DIR=<dir>` relocates the whole state file. This is how every check runs against a temp state without touching the real one.
@@ -157,7 +157,7 @@ applies across boards and windows and survives relaunch · favorites tab · vaul
 chip to a bare origin. Add the acceptance list of whatever issue is in flight.
 
 The packaged app is checked the same way — launch
-`desktop/dist-app/mac-arm64/Yaseen Draw.app/Contents/MacOS/Yaseen Draw` with the same env var.
+`desktop/dist-app/mac-arm64/Trevor Draw.app/Contents/MacOS/Trevor Draw` with the same env var.
 
 ### Size and speed: `tools/perf/` (YAZ-2073)
 

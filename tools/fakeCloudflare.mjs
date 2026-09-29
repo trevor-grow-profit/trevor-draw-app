@@ -376,7 +376,7 @@ async function api(req, res, url) {
 const TOKEN_PAGE = `<!doctype html><html><head><meta charset="utf-8"><title>Fake Cloudflare — API tokens</title>
 <style>body{font:15px/1.5 -apple-system,sans-serif;max-width:720px;margin:40px auto;padding:0 16px;color:#222}code{background:#f2f2f5;padding:2px 6px;border-radius:4px;font-size:14px}li{margin:10px 0}.box{border:1px solid #f5a623;background:#fff8ec;padding:12px 16px;border-radius:8px}</style></head>
 <body><h1>Fake Cloudflare — create API token</h1>
-<p class="box">This is the DEMO stand-in for <b>dash.cloudflare.com/profile/api-tokens</b>. In the real app this button opens Cloudflare with a pre-filled token template (Workers Scripts: Edit, Workers R2 Storage: Edit, Account Settings: Read, Zone: Read, Workers Routes: Edit). Copy one of these magic tokens and paste it back into Yaseen Draw:</p>
+<p class="box">This is the DEMO stand-in for <b>dash.cloudflare.com/profile/api-tokens</b>. In the real app this button opens Cloudflare with a pre-filled token template (Workers Scripts: Edit, Workers R2 Storage: Edit, Account Settings: Read, Zone: Read, Workers Routes: Edit). Copy one of these magic tokens and paste it back into Trevor Draw:</p>
 <ul>
 <li><code>demo-good</code> — everything succeeds</li>
 <li><code>demo-slow</code> — succeeds, ~1.5 s per step (watch the progress list)</li>

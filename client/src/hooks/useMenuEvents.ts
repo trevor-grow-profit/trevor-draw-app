@@ -10,7 +10,7 @@ interface UseMenuEventsOptions {
   onSearch: () => void
   /** File › Switch Vault… (⌘O): open the sidebar header's vault switcher, un-collapsing the sidebar first (YAZ-1767 D8). */
   onSwitchVault: () => void
-  /** Yaseen Draw › Settings… (⌘,): open the settings dialog (YAZ-1679). */
+  /** Trevor Draw › Settings… (⌘,): open the settings dialog (YAZ-1679). */
   onSettings: () => void
   /** View › Toggle Sidebar: toggle only this renderer's window identity (YAZ-1280). */
   onToggleSidebar: () => void

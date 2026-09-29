@@ -1,4 +1,4 @@
-# Yaseen Draw — contracts
+# Trevor Draw — contracts
 
 The one document an agent should read before changing anything. It states what is true about the
 app's shape — layout, bridge, state, menus, windows, links, packaging — not how any one feature is
@@ -12,7 +12,7 @@ Every label NAMES ITS ISSUE, because the numbering restarts per issue: `🔒 YAZ
 port's image-bytes decision, `🔒 YAZ-1674 D3` is the file clipboard's third, and the two have
 nothing to do with each other. A bare `D3` would be unresolvable, so there are none.
 
-> Yaseen Draw is the drawing sibling of Yaseen Docs. It was seeded from `yaseen-docs-app`
+> Trevor Draw is the drawing sibling of Yaseen Docs. It was seeded from `yaseen-docs-app`
 > @ `66c9806` (🔒 YAZ-1775 D1) and then stripped of every subsystem the canvas does not need
 > (YAZ-1808).
 > Git history before the seed lives in that repo, not this one.
@@ -268,7 +268,7 @@ through the existing passive notice; when it did not, it says nothing.
 ## App state schema
 
 ONE user-global JSON file, owned by the main process:
-`~/Library/Application Support/Yaseen Draw/yaseendraw.json`
+`~/Library/Application Support/Trevor Draw/yaseendraw.json`
 (`YASEEN_DRAW_USER_DATA_DIR` overrides the directory — that is how an isolated profile is made).
 Nothing is ever stored in the browser profile. `desktop/src/main/store.ts` loads it field by field:
 anything unrecognised or malformed falls back to its default rather than failing the launch.
@@ -838,7 +838,7 @@ filter ignores ↑/↓/⏎/Esc meanwhile. Every right-click swallows Electron's 
 
 | Menu | Item | Key |
 |---|---|---|
-| Yaseen Draw | Settings… | ⌘, |
+| Trevor Draw | Settings… | ⌘, |
 | File | New Window | ⌘⇧N |
 | File | Switch Vault… | ⌘O |
 | File | Open Folder… | ⌘⇧O |
@@ -855,7 +855,7 @@ filter ignores ↑/↓/⏎/Esc meanwhile. Every right-click swallows Electron's 
 | View | Actual Size / Zoom In / Zoom Out | ⌘0 / ⌘+ / ⌘− |
 | View | Canvas Background ▸ White / Slate / Blue / Yellow / Bronze (a drawing tab only) | — |
 | Window | Minimize · Zoom · Next Tab · Previous Tab · Bring All to Front | ⌃Tab / ⌃⇧Tab (⌘⇧] / ⌘⇧[ alternates) |
-| Help | Yaseen Draw on GitHub | — |
+| Help | Trevor Draw on GitHub | — |
 
 Zoom is deliberately NOT the stock roles: a registered accelerator never reaches the page on
 macOS, so main applies the step to the focused window's `webContents` itself.
@@ -1298,7 +1298,7 @@ before `ready` on a cold start, so they queue (`main/linkQueue.ts`) until the wi
 The packaged app registers the scheme (`protocols` in `desktop/package.json`) and claims
 `.excalidraw` as an Owner file association (🔒 YAZ-1775 D1).
 
-**Opening a drawing from outside the app** — a Finder double-click, `open -a "Yaseen Draw"
+**Opening a drawing from outside the app** — a Finder double-click, `open -a "Trevor Draw"
 Board.excalidraw`, or a plain `open Board.excalidraw` once the association is registered — travels
 the deep-link pipeline rather than a path of its own. The OS delivers it differently per platform
 and main converts each into the same `yaseendraw://` push:
@@ -1400,7 +1400,7 @@ but for two config hooks, inside an iframe on its OWN origin.
 `tools/packDesktop.mjs`, which stamps the ROOT `package.json` version (`<version>`) into the bundle —
 `desktop/package.json`'s own version is never what ships.
 
-- appId `com.yasinarshad.yaseendraw`, productName **Yaseen Draw**, icon from `desktop/build/`
+- appId `com.yasinarshad.yaseendraw`, productName **Trevor Draw**, icon from `desktop/build/`
   (one 1024² `icon.png`; electron-builder derives `Contents/Resources/icon.icns`).
 - macOS: arm64 `dmg` + `dir`, `identity: null` — ad-hoc signed by `desktop/build/adhocSign.cjs`,
   never Developer-ID signed or notarized (out of scope). The dmg is lzma-compressed (ULMO, macOS

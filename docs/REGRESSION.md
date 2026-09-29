@@ -1,4 +1,4 @@
-# Yaseen Draw — the regression pass
+# Trevor Draw — the regression pass
 
 Two layers guard against feature loss (🔒 YAZ-2073 D17):
 
@@ -21,7 +21,7 @@ by hand; `M` = hand only. Only the e2e suite counts as A here — unit tests are
 [feature-safety-net](../thoughts/yaz-2073-scope/research/feature-safety-net.md) inventory, not in this file.
 
 **Setup.** Run the PACKAGED app (`npm run desktop:build`, then
-`desktop/dist-app/mac-arm64/Yaseen Draw.app/Contents/MacOS/Yaseen Draw`) with
+`desktop/dist-app/mac-arm64/Trevor Draw.app/Contents/MacOS/Trevor Draw`) with
 `YASEEN_DRAW_USER_DATA_DIR=<scratch profile>` against seeded vaults under a scratch folder — the
 `LAUNCH.md` › Verify recipe. Never Yasin's real profile or vault. Seeds: `tools/seedDemoVault.mjs`
 (stress vault), `seedDrawioDemoVault.mjs`, `seedMergeDemoVault.mjs`, `seedPreviewDemoVault.mjs`,
@@ -57,7 +57,7 @@ Paste into the PR body and tick each line:
 | ★O1 | App NOT running: double-click a `.excalidraw` in Finder → it opens in the right window and tab. | LaunchServices, cold `open-file` | A (part): `links` — a cold start with the path in argv; the cold `open-file` event by hand |
 | ★O2 | Same as O1 for a `.drawio`. | LaunchServices | A (part): `links` — `open-file` into a running app; cold by hand |
 | O3 | App running: double-click a board in Finder → it opens in the window on its vault (or a new one). | LaunchServices | A: `links` (the event, not the OS) |
-| O4 | `open 'yaseendraw:///<abs path>'` from Terminal routes to the board; a bad link shows a notice, never a dialog. Beware: LaunchServices may pick `/Applications/Yaseen Draw.app` — for a candidate build, `lsregister -f` it or test the installed copy. | the OS URL handler | A: `links` (the event, not the OS) |
+| O4 | `open 'yaseendraw:///<abs path>'` from Terminal routes to the board; a bad link shows a notice, never a dialog. Beware: LaunchServices may pick `/Applications/Trevor Draw.app` — for a candidate build, `lsregister -f` it or test the installed copy. | the OS URL handler | A: `links` (the event, not the OS) |
 
 ## Documents and sidebar (D)
 

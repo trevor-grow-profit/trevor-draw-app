@@ -20,7 +20,7 @@ const APP_DIR = join(REPO, 'desktop')
  * `desktop/out` — the build a user installs (its own draw.io and share-viewer paths, `isPackaged`).
  */
 export const PACKAGED = process.env.E2E_PACKAGED === '1'
-const PACKAGED_BIN = join(REPO, 'desktop/dist-app/mac-arm64/Yaseen Draw.app/Contents/MacOS/Yaseen Draw')
+const PACKAGED_BIN = join(REPO, 'desktop/dist-app/mac-arm64/Trevor Draw.app/Contents/MacOS/Trevor Draw')
 /** In node, the `electron` package's export is the path of its binary. */
 const DEV_BIN = createRequire(__filename)('electron') as string
 const MAIN_HOOK = join(__dirname, 'mainHook.cjs')

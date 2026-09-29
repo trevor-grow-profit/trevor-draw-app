@@ -108,7 +108,7 @@ test('File › Open Recent on the Welcome window opens that vault in the Welcome
   sandbox.writeProfile({ windows: [{ root: null }], recents: [other] })
   const app = await launch()
   const page = await app.window()
-  await expect(page.getByRole('heading', { name: 'Yaseen Draw' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Trevor Draw' })).toBeVisible()
   await app.menu('menu.file.open-recent.0', page)
   await expect(row(page, 'O')).toBeVisible()
   expect(app.electron.windows()).toHaveLength(1)

@@ -93,7 +93,7 @@ board('00 READ ME', [
     'FILES THAT MUST BEHAVE',
     '10. Compressed, Multi-page, UPPERCASE.DRAWIO, Ünïcödé 📊/… all open. Multi-page keeps 3 pages.',
     '11. Broken — empty / corrupt / not mxfile → a readable error pane, file untouched.',
-    '12. image.drawio.svg lists but opens in the default app, not in Yaseen Draw.',
+    '12. image.drawio.svg lists but opens in the default app, not in Trevor Draw.',
     '13. Remote image → the picture stays blank (offline CSP); Embedded image shows.',
     '14. Big — 2000 cells opens and pans.  No dates → Info says not stamped until its first save.',
     'OUTSIDE CHANGES + SYNC',

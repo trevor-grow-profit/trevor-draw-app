@@ -53,13 +53,13 @@ describe('Version history', { timeout: REAL_GIT_TIMEOUT_MS }, () => {
     const versions = await boardHistory(a.root, 'b.excalidraw')
     const plain = versions.filter((v) => !v.localOnly)
     expect(plain.map((v) => [v.author, v.merged])).toEqual([
-      ['Yaseen Draw Test', true],
+      ['Trevor Draw Test', true],
       ['Sam', false],
-      ['Yaseen Draw Test', false],
+      ['Trevor Draw Test', false],
     ])
     expect(plain.every((v, i) => i === 0 || v.at <= (plain[i - 1]?.at ?? 0))).toBe(true)
     const before = versions.find((v) => v.localOnly)
-    expect(before).toMatchObject({ author: 'Yaseen Draw Test', merged: false })
+    expect(before).toMatchObject({ author: 'Trevor Draw Test', merged: false })
     expect(xs((await drawingVersion(a.root, 'b.excalidraw', before?.ref)).json)).toEqual([13, 5])
     expect(xs((await drawingVersion(a.root, path.join(a.root, 'b.excalidraw'), plain[0]?.ref)).json)).toEqual([7, 5])
   })

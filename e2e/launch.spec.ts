@@ -12,7 +12,7 @@ import { gitVault, readProfile, rect, scene, text } from './support/vault'
 test('a first launch opens one Welcome window and writes a fresh state file', async ({ sandbox, launch }) => {
   const app = await launch()
   const page = await app.window()
-  await expect(page.getByRole('heading', { name: 'Yaseen Draw' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Trevor Draw' })).toBeVisible()
   await expect(page.getByText('No recent folders yet.')).toBeVisible()
   await expect(page.getByRole('button', { name: 'Open folder…' })).toBeEnabled()
   await app.quit()
@@ -121,7 +121,7 @@ test('a corrupt state file is moved aside, never overwritten, and the app still 
   writeFileSync(`${sandbox.profile}/yaseendraw.json`, '{ "version": 1, "windows": [ oops')
   const app = await launch()
   const page = await app.window()
-  await expect(page.getByRole('heading', { name: 'Yaseen Draw' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Trevor Draw' })).toBeVisible()
   const aside = readdirSync(sandbox.profile).filter((name) => name.startsWith('yaseendraw.json.corrupt-'))
   expect(aside).toHaveLength(1)
   expect(readFileSync(`${sandbox.profile}/${aside[0]}`, 'utf8')).toBe('{ "version": 1, "windows": [ oops')

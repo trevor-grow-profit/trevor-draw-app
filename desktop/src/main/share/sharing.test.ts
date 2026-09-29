@@ -523,7 +523,7 @@ describe('sharing (YAZ-1799) against the real Worker', () => {
       { key: 'zone', type: 'read' },
       { key: 'workers_routes', type: 'edit' },
     ])
-    expect([url.searchParams.get('accountId'), url.searchParams.get('zoneId'), url.searchParams.get('name')]).toEqual(['*', 'all', 'Yaseen Draw sharing'])
+    expect([url.searchParams.get('accountId'), url.searchParams.get('zoneId'), url.searchParams.get('name')]).toEqual(['*', 'all', 'Trevor Draw sharing'])
   })
 
   it('an in-app rename or move carries the share (same id, same permission); a delete stops it', async () => {

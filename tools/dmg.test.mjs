@@ -8,7 +8,7 @@ import { detach, dmgPath, lzmaDmg } from './lib/dmg.mjs'
 describe('dmgPath', () => {
   it("names the dmg electron-builder wrote from desktop/package.json's own build config", () => {
     const { build } = JSON.parse(readFileSync(new URL('../desktop/package.json', import.meta.url), 'utf8'))
-    expect(dmgPath('/repo/desktop', build, '0.1.11')).toBe(join('/repo/desktop', 'dist-app', 'Yaseen Draw-0.1.11-arm64.dmg'))
+    expect(dmgPath('/repo/desktop', build, '0.1.11')).toBe(join('/repo/desktop', 'dist-app', 'Trevor Draw-0.1.11-arm64.dmg'))
   })
 })
 

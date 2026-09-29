@@ -65,7 +65,7 @@ import {
 } from './curation'
 
 /** The identity the Worker sent; providers rate-limit anonymous traffic harder. */
-const USER_AGENT = 'Yaseen Draw Image Studio'
+const USER_AGENT = 'Trevor Draw Image Studio'
 
 /** The shortest query the studio will run — the Worker's own floor. */
 export const MIN_QUERY_LENGTH = 2

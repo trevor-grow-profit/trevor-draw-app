@@ -40,7 +40,7 @@ const ROOT = args.root
 const HOME = os.homedir()
 const PRECIOUS = [
   path.join(HOME, 'Documents', 'GitHub', 'yaseen-draw-vault'),
-  path.join(HOME, 'Library', 'Application Support', 'Yaseen Draw'),
+  path.join(HOME, 'Library', 'Application Support', 'Trevor Draw'),
   HOME,
   '/',
 ]

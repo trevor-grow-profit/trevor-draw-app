@@ -13,7 +13,7 @@ afterEach(() => rm(dir, { recursive: true, force: true }))
 
 describe('resolveLibraryFolder (🔒 YAZ-1775 D5)', () => {
   it('null means `<userData>/library` — the default no vault has to know about', () => {
-    expect(resolveLibraryFolder(null, '/Users/x/Application Support/Yaseen Draw')).toBe(path.join('/Users/x/Application Support/Yaseen Draw', DEFAULT_LIBRARY_DIR))
+    expect(resolveLibraryFolder(null, '/Users/x/Application Support/Trevor Draw')).toBe(path.join('/Users/x/Application Support/Trevor Draw', DEFAULT_LIBRARY_DIR))
   })
 
   it('a chosen path is used as it stands — pointing it inside a synced vault IS the backup story', () => {

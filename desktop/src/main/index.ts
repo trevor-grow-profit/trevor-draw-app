@@ -24,7 +24,7 @@ import { createWindowManager } from './windows'
 import { createWindowOpenHandler } from './windowOpenPolicy'
 
 // Before anything reads app.getPath('userData'): the workspace is named "desktop", the app is not.
-app.setName('Yaseen Draw')
+app.setName('Trevor Draw')
 applyUserDataOverride(app, process.env.YASEEN_DRAW_USER_DATA_DIR)
 
 /** One running instance (GRO-2160): a second launch focuses the first; a link in its argv routes (E1). */
@@ -87,7 +87,7 @@ const RENDERER_DIR = join(__dirname, '../renderer')
 /** The draw.io webapp (🔒 YAZ-1802 D4/D5): the pack cache in dev, `out/drawio` in a build. */
 const DRAWIO_DIR = resolveDrawioDir({ mainDir: __dirname, appPath: app.getAppPath(), isPackaged: app.isPackaged, exists: existsSync })
 
-/** One user-global state file (D9, GRO-2159): `~/Library/Application Support/Yaseen Draw/yaseendraw.json`. */
+/** One user-global state file (D9, GRO-2159): `~/Library/Application Support/Trevor Draw/yaseendraw.json`. */
 const store = createStore(join(app.getPath('userData'), 'yaseendraw.json'))
 
 /** Window lifecycle (GRO-2160) lives in windows.ts; this host is its Electron-only half. */

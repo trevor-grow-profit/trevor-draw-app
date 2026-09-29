@@ -76,7 +76,7 @@ describe('an Explorer double-click through the link queue', () => {
       const parsed = parseFileLink(url)
       if (parsed !== null) routed.push(parsed.path)
     })
-    for (const path of openableFileArgs(['C:\\Program Files\\Yaseen Draw\\Yaseen Draw.exe', board], 1)) q.push(fileLink(path))
+    for (const path of openableFileArgs(['C:\\Program Files\\Trevor Draw\\Trevor Draw.exe', board], 1)) q.push(fileLink(path))
     q.flush()
     expect(routed).toEqual([board])
   })

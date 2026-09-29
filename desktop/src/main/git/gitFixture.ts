@@ -49,7 +49,7 @@ export async function makeGitRepo(): Promise<GitRepo> {
   const root = await mkdtemp(path.join(tmpdir(), 'yaseendraw-git-'))
   const run = (args: string[]) => runIn(bin, root, args)
   await run(['init', '-b', 'main', '.'])
-  await run(['config', 'user.name', 'Yaseen Draw Test'])
+  await run(['config', 'user.name', 'Trevor Draw Test'])
   await run(['config', 'user.email', 'test@example.invalid'])
   // A developer with `commit.gpgsign = true` globally would otherwise fail every commit here.
   await run(['config', 'commit.gpgsign', 'false'])
@@ -102,7 +102,7 @@ function machine(root: string, bin: string): Machine {
 }
 
 /**
- * Two machines sharing one bare-repo "GitHub" (YAZ-1897): machine A ("Yaseen Draw Test") seeded
+ * Two machines sharing one bare-repo "GitHub" (YAZ-1897): machine A ("Trevor Draw Test") seeded
  * with `files` and pushed, machine B ("Sam") cloned from it. `cleanup` removes all three.
  */
 export async function makeTwoMachines(files: Record<string, string>): Promise<{ a: Machine; b: Machine; cleanup: () => Promise<void> }> {

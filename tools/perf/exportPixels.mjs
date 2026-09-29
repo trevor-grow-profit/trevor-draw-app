@@ -12,7 +12,7 @@
  *   canvas-<theme>@<zoom>.png           a screenshot of the live canvas at a fixed viewport
  * With --compare, every file is diffed against the same name in an earlier run (PNGs pixel by pixel,
  * SVGs byte for byte); any difference exits 1.
- *   --app   a packaged bundle (default: desktop/dist-app/mac-arm64/Yaseen Draw.app)
+ *   --app   a packaged bundle (default: desktop/dist-app/mac-arm64/Trevor Draw.app)
  *   --dev   `desktop/out` under the workspace's Electron instead (after `npm run build`)
  *   --work  where the fixture vault and profile go (default: <tmpdir>/yaseen-draw-pixels); refused
  *           unless empty or made by tools/perf, since it is rewritten on every run
@@ -38,10 +38,10 @@ if (!out) {
   process.exit(2)
 }
 const work = claimWorkDir(opt('work') ?? path.join(os.tmpdir(), 'yaseen-draw-pixels'))
-const bundle = opt('app') ?? path.join(repo, 'desktop/dist-app/mac-arm64/Yaseen Draw.app')
+const bundle = opt('app') ?? path.join(repo, 'desktop/dist-app/mac-arm64/Trevor Draw.app')
 const app = argv.includes('--dev')
   ? { bin: createRequire(path.join(repo, 'desktop/package.json'))('electron'), args: [path.join(repo, 'desktop')] }
-  : { bin: path.join(bundle, 'Contents/MacOS/Yaseen Draw'), args: [] }
+  : { bin: path.join(bundle, 'Contents/MacOS/Trevor Draw'), args: [] }
 
 // The engine and the editor, reached read-only through React's fibers: `engine` is the lazily loaded
 // module a surface component holds, `App` the editor instance under `.excalidraw`.

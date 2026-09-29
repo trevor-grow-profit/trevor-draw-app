@@ -61,7 +61,7 @@ describe('Welcome', () => {
       { path: '/vaults/work', lastOpened: Date.now() - DAY },
     ]
     const { el } = mount({ recents })
-    expect(el.querySelector('.welcome__title')?.textContent).toBe('Yaseen Draw')
+    expect(el.querySelector('.welcome__title')?.textContent).toBe('Trevor Draw')
     const r = rows(el)
     expect(r.map((b) => b.querySelector('.welcome__recent-name')?.textContent)).toEqual(['notes', 'work'])
     expect(r.map((b) => b.querySelector('.welcome__recent-path')?.textContent)).toEqual(['/vaults/notes', '/vaults/work'])

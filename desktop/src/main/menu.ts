@@ -15,8 +15,8 @@ import { sendPush } from './ipc/push'
 /** One ⌘+ / ⌘− / ⌘0 press: up, down, or back to the default (YAZ-1710). */
 export type ZoomStep = -1 | 0 | 1
 
-/** Help › Yaseen Draw on GitHub: the repo README (origin URL of this repo). */
-export const HELP_URL = 'https://github.com/yaseenarshad/yaseen-draw-app#readme'
+/** Help › Trevor Draw on GitHub: the repo README (origin URL of this repo). */
+export const HELP_URL = 'https://github.com/trevor-grow-profit/trevor-draw-app#readme'
 
 export interface MenuHandlers {
   /** File › New Window (⌘⇧N, D6): duplicate the focused window — same folder, same file. */
@@ -29,7 +29,7 @@ export interface MenuHandlers {
   openRecent(path: string): void
   /** File › Search Vault (⌘K, YAZ-804): the focused window's renderer focuses its sidebar search bar. */
   search(): void
-  /** Yaseen Draw › Settings… (⌘,, YAZ-1679): the focused window's renderer opens its settings dialog. */
+  /** Trevor Draw › Settings… (⌘,, YAZ-1679): the focused window's renderer opens its settings dialog. */
   settings(): void
   /** File › Close Tab (⌘W, GRO-2232): the focused window's renderer closes its active tab. */
   closeTab(): void
@@ -101,7 +101,7 @@ export function buildMenuTemplate({ recents, isDev, activeKind }: MenuInputs, ha
   return [
     // macOS titles the first menu with the running app's name; the label only matters off-mac.
     {
-      label: 'Yaseen Draw',
+      label: 'Trevor Draw',
       submenu: [
         { role: 'about' },
         { type: 'separator' },
@@ -201,7 +201,7 @@ export function buildMenuTemplate({ recents, isDev, activeKind }: MenuInputs, ha
         { role: 'front' },
       ],
     },
-    { label: 'Help', role: 'help', submenu: [{ id: 'menu.help.github', label: 'Yaseen Draw on GitHub', click: () => handlers.openHelp() }] },
+    { label: 'Help', role: 'help', submenu: [{ id: 'menu.help.github', label: 'Trevor Draw on GitHub', click: () => handlers.openHelp() }] },
   ]
 }
 

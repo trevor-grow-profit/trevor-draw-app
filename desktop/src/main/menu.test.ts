@@ -53,12 +53,12 @@ function click(item: MenuItemConstructorOptions | undefined, event: { altKey?: b
 
 describe('buildMenuTemplate', () => {
   it('has the six menus in order', () => {
-    expect(build().map((m) => m.label)).toEqual(['Yaseen Draw', 'File', 'Edit', 'View', 'Window', 'Help'])
+    expect(build().map((m) => m.label)).toEqual(['Trevor Draw', 'File', 'Edit', 'View', 'Window', 'Help'])
   })
 
   it('App menu: About, Settings… ⌘, in its own group (YAZ-1679), the standard Hide roles, and Quit', () => {
     const handlers = noopHandlers()
-    const app = menuOf(build(RECENTS, false, handlers), 'Yaseen Draw')
+    const app = menuOf(build(RECENTS, false, handlers), 'Trevor Draw')
     expect(app.map((i) => i.role ?? i.type ?? i.id)).toEqual(['about', 'separator', 'menu.app.settings', 'separator', 'hide', 'hideOthers', 'unhide', 'separator', 'quit'])
     const settings = app.find((i) => i.label === 'Settings…')
     expect(settings?.accelerator).toBe('CmdOrCtrl+,')
@@ -291,7 +291,7 @@ describe('buildMenuTemplate', () => {
     const template = build(RECENTS, false, handlers)
     const top = template.find((m) => m.label === 'Help')
     expect(top?.role).toBe('help')
-    const github = (top?.submenu as MenuItemConstructorOptions[]).find((i) => i.label === 'Yaseen Draw on GitHub')
+    const github = (top?.submenu as MenuItemConstructorOptions[]).find((i) => i.label === 'Trevor Draw on GitHub')
     click(github)
     expect(handlers.openHelp).toHaveBeenCalledTimes(1)
   })
@@ -543,7 +543,7 @@ describe('createMenuHandlers', () => {
     const { handlers, host } = makeHandlers(undefined)
     handlers.openHelp()
     expect(host.openExternal).toHaveBeenCalledWith(HELP_URL)
-    expect(HELP_URL).toBe('https://github.com/yaseenarshad/yaseen-draw-app#readme')
+    expect(HELP_URL).toBe('https://github.com/trevor-grow-profit/trevor-draw-app#readme')
   })
 })
 

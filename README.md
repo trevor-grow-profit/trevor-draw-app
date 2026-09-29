@@ -1,8 +1,10 @@
-# Yaseen Draw
+# Trevor Draw
 
+> Trevor Rea's whiteboard app. Forked 2026-09-29 from [yaseenarshad/yaseen-draw-app](https://github.com/yaseenarshad/yaseen-draw-app) at v0.1.13 (`upstream` remote). The canvas engine is Yasin's private Excalidraw fork, vendored as prebuilt packages in `client/vendor/`; app-layer changes live here.
+>
 > Seeded from yaseen-docs-app @ 66c9806
 
-Yaseen Draw — a local whiteboard for a folder of boards (Excalidraw drawings and draw.io
+Trevor Draw — a local whiteboard for a folder of boards (Excalidraw drawings and draw.io
 diagrams), as an Electron macOS desktop app: a React renderer around a vendored
 [Excalidraw](https://excalidraw.com) fork and a bundled, offline draw.io, and a main process
 that reads and writes the files on this machine (the renderer only ever talks to the
@@ -46,9 +48,9 @@ What the E2E suite cannot see is checked by hand from `docs/REGRESSION.md`.
 npm run desktop:build
 ```
 
-produces `desktop/dist-app/mac-arm64/Yaseen Draw.app` and `desktop/dist-app/Yaseen Draw-<version>-arm64.dmg` (arm64, ad-hoc signed). Drag the `.app` into `/Applications`, or send someone the dmg.
+produces `desktop/dist-app/mac-arm64/Trevor Draw.app` and `desktop/dist-app/Trevor Draw-<version>-arm64.dmg` (arm64, ad-hoc signed). Drag the `.app` into `/Applications`, or send someone the dmg.
 
-The app bundles jgraph's draw.io webapp ([jgraph/drawio](https://github.com/jgraph/drawio), Apache-2.0) unmodified, with its licence as `LICENSE-drawio.txt` in the app's `drawio/` folder. Yaseen Draw is not affiliated with draw.io; it opens `.drawio` files.
+The app bundles jgraph's draw.io webapp ([jgraph/drawio](https://github.com/jgraph/drawio), Apache-2.0) unmodified, with its licence as `LICENSE-drawio.txt` in the app's `drawio/` folder. Trevor Draw is not affiliated with draw.io; it opens `.drawio` files.
 
 ## Installing on another Mac/PC
 
@@ -141,7 +143,7 @@ its own colours (`adaptiveColors="none"`) always does. Present is Excalidraw-onl
 - **Cut, copy, paste**: right-click a row (or a selection) → **Cut** / **Copy**, then right-click a folder → **Paste** (`⌘X` / `⌘C` / `⌘V` do the same on the selected rows; `⌘V` pastes into the selected folder, beside the selected file, or into the vault root when nothing is selected). One clipboard for the whole app, so you can copy in one window and paste into another vault's window. A copy that lands on an existing name becomes "Board copy.excalidraw", then "Board copy 2.excalidraw" — pasting into the same folder is how you duplicate; a cut never overwrites, moves tabs along like drag-drop, and pastes once. Folders copy whole. The menu itself is five groups: open, clipboard, new, this row, favorites + **Open in ▸** (new window, VS Code, default app, Finder), delete.
 - **Search**: `⌘K` searches file and folder names across the vault from the sidebar; ↑/↓ pick, Enter opens, ⌘-Enter opens in a background tab. Right-click a result for the same menu its row has in the tree.
 - **Tabs and windows**: drawings open in tabs (`⌃Tab` / `⌃⇧Tab` or `⌘⇧]` / `⌘⇧[` to switch, `⌘W` closes the **tab** — on the last one it empties the window and then closes it). `⌘⇧N` duplicates the window (same folder, same file), `⌘O` opens the vault switcher in the sidebar header (type to filter, `⏎` brings that vault to the front or opens it in a new window, `⇧⏎` or ⇧-click opens it in this window; hover a vault's ⓘ to see its full path; right-click a vault — or the header's vault name — to open it in this window, give it a display name, copy its name or path, reveal it in Finder, open it in VS Code, or remove it from the recents), `⌘⇧O` opens a folder, `⌘⇧W` closes the window; File › Open Recent lists the last folders. Opening a folder never replaces the vault you are in (only "Open in this window" — the right-click item, or `⇧⏎` in the switcher — does, on purpose): it opens in its own window, or brings that vault's window to the front (only the empty Welcome screen fills itself). ⌘-click a sidebar file — or right-click → Open in ▸ "New window" — to open it in its own window. Open windows and their tabs are restored on relaunch.
-- **Links**: a `yaseendraw://` URL opens that exact drawing from anywhere (Slack, another app). Finder opens `.excalidraw` and `.drawio` files with Yaseen Draw, and Open With lists it for both.
+- **Links**: a `yaseendraw://` URL opens that exact drawing from anywhere (Slack, another app). Finder opens `.excalidraw` and `.drawio` files with Trevor Draw, and Open With lists it for both.
 - **Folders start closed**: the tree opens fully collapsed on every launch, with your last tab restored. Folders you open are remembered for the session and shared by every window on the vault; quitting forgets them. Opening a drawing from search, a link or another tab still opens its folders. The double chevron beside the tabs expands or collapses everything on screen.
 - **Collapse**: the panel icon in the header hides the sidebar (a floating button on the left edge brings it back); the choice survives reload. Drag the sidebar's right edge to resize it (180–520 px, remembered); drag it well past the minimum to collapse.
 - **Paths**: the open file shows in the URL as `#/absolute/path.excalidraw`; right-click any row for "Copy path"; a click selects a row, shift-click adds files and folders to the selection, then right-click it for "Copy N paths".

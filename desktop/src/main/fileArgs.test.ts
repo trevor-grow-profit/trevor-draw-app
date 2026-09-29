@@ -7,7 +7,7 @@ import { openableFileArgs } from './fileArgs'
 
 describe('openableFileArgs', () => {
   it('takes a drawing handed over by a double-click on a packaged app', () => {
-    expect(openableFileArgs(['C:\\Program Files\\Yaseen Draw\\Yaseen Draw.exe', 'C:\\vault\\Board.excalidraw'])).toEqual(['C:\\vault\\Board.excalidraw'])
+    expect(openableFileArgs(['C:\\Program Files\\Trevor Draw\\Trevor Draw.exe', 'C:\\vault\\Board.excalidraw'])).toEqual(['C:\\vault\\Board.excalidraw'])
   })
 
   it('takes several, in order', () => {

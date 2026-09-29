@@ -34,7 +34,7 @@ export const CLOUDFLARE_TOKEN_PAGE =
     ]),
   ) +
   '&accountId=*&zoneId=all&name=' +
-  encodeURIComponent('Yaseen Draw sharing')
+  encodeURIComponent('Trevor Draw sharing')
 
 const API_TIMEOUT_MS = 20_000
 /** An upload's patience: a minute, plus ~2 s per MB (a slow uplink moves ~0.5 MB/s). */

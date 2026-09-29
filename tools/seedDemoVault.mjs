@@ -127,7 +127,7 @@ fs.utimesSync(assets.get('orphan-old (mtime 3 days ago)').file, threeDaysAgo, th
 fs.writeFileSync(
   path.join(ASSETS, 'README-DEMO.txt'),
   [
-    'Yaseen Draw demo vault — asset map (fileId = lowercase SHA-1 hex of the bytes, i.e. Excalidraw generateIdFromFile)',
+    'Trevor Draw demo vault — asset map (fileId = lowercase SHA-1 hex of the bytes, i.e. Excalidraw generateIdFromFile)',
     '',
     ...[...assets].map(([name, a]) => `${assetFileName(a.id, a.mime)}  ${a.write ? '' : '(NOT written) '}${name}`),
     `${missingId}.png  missing-on-purpose (referenced by "04 Missing asset", never written)`,
@@ -147,7 +147,7 @@ const add = (rel, content) => {
 // Welcome
 {
   const lines = [
-    'Yaseen Draw — stress-test vault',
+    'Trevor Draw — stress-test vault',
     '01 simple shapes',
     '02 images from assets/',
     '03 legacy embedded dataURLs',
@@ -240,7 +240,7 @@ for (let n = 1; n <= 50; n++) {
 }
 
 // non-drawing files
-writeFile('notes.md', '# Demo vault notes\n\n- This vault stress-tests Yaseen Draw.\n- Drawings are `*.excalidraw`; image bytes live in `assets/<sha1>.<ext>`.\n- See `Welcome.excalidraw` for the scenario list.\n')
+writeFile('notes.md', '# Demo vault notes\n\n- This vault stress-tests Trevor Draw.\n- Drawings are `*.excalidraw`; image bytes live in `assets/<sha1>.<ext>`.\n- See `Welcome.excalidraw` for the scenario list.\n')
 writeFile('random.txt', 'just a plain text file — not a drawing\n')
 writeFile('photo.jpg', TINY_JPEG)
 

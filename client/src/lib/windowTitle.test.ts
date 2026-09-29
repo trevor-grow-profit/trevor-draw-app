@@ -12,7 +12,7 @@ describe('windowTitle', () => {
   })
 
   it('is the app name on the Welcome screen (no vault), whatever the file says', () => {
-    expect(APP_NAME).toBe('Yaseen Draw')
+    expect(APP_NAME).toBe('Trevor Draw')
     expect(windowTitle(null, null)).toBe(APP_NAME)
     expect(windowTitle(null, '/stray.md')).toBe(APP_NAME)
   })

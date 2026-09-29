@@ -13,7 +13,7 @@ import { registered } from './ipcFixture'
 vi.mock('electron', () => ({ shell: { openExternal: vi.fn() }, BrowserWindow: { getAllWindows: () => [] }, ipcMain: { handle: vi.fn(), on: vi.fn() } }))
 
 describe('viewerAssetsDir', () => {
-  const where = { resourcesPath: '/Applications/Yaseen Draw.app/Contents/Resources', appPath: '/repo/desktop' }
+  const where = { resourcesPath: '/Applications/Trevor Draw.app/Contents/Resources', appPath: '/repo/desktop' }
 
   it('reads the extraResource inside a packaged app', () => {
     expect(viewerAssetsDir({ ...where, isPackaged: true })).toBe(path.join(where.resourcesPath, 'share-viewer'))
@@ -26,7 +26,7 @@ describe('viewerAssetsDir', () => {
 
 describe('excalidrawFontsDir (YAZ-2073 3C)', () => {
   it("reads the renderer's own copy inside a packaged app's asar", () => {
-    const mainDir = '/Applications/Yaseen Draw.app/Contents/Resources/app.asar/out/main'
+    const mainDir = '/Applications/Trevor Draw.app/Contents/Resources/app.asar/out/main'
     expect(excalidrawFontsDir({ isPackaged: true, mainDir, appPath: '/unused', exists: () => false })).toBe(path.resolve(mainDir, '..', 'renderer', 'excalidraw-assets', 'fonts'))
   })
 

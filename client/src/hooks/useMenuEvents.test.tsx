@@ -1,6 +1,6 @@
 /**
  * useMenuEvents (GRO-2161, tabs GRO-2232): the renderer's half of the File › Open Folder… /
- * Open Recent / Search Vault / Close Tab, Yaseen Draw › Settings… (YAZ-1679) and Window › Next/Previous Tab menu gestures — subscribed on
+ * Open Recent / Search Vault / Close Tab, Trevor Draw › Settings… (YAZ-1679) and Window › Next/Previous Tab menu gestures — subscribed on
  * mount, unsubscribed on unmount, latest callbacks win.
  */
 import { afterEach, describe, expect, it, vi } from 'vitest'

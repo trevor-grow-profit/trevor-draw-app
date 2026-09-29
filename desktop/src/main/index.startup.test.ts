@@ -131,10 +131,10 @@ describe('main startup order (YAZ-2073 1D)', () => {
     await settle()
     const win = { isDestroyed: () => false, isMinimized: () => true, restore: vi.fn(), focus: vi.fn() }
     h.s.windows = [win]
-    h.s.on.get('second-instance')!(event(), ['/Applications/Yaseen Draw.app/Contents/MacOS/Yaseen Draw', BOARD])
+    h.s.on.get('second-instance')!(event(), ['/Applications/Trevor Draw.app/Contents/MacOS/Trevor Draw', BOARD])
     expect(h.manager.routeToFile).toHaveBeenCalledWith(BOARD, null)
     expect(win.focus).not.toHaveBeenCalled()
-    h.s.on.get('second-instance')!(event(), ['/Applications/Yaseen Draw.app/Contents/MacOS/Yaseen Draw', '--flag'])
+    h.s.on.get('second-instance')!(event(), ['/Applications/Trevor Draw.app/Contents/MacOS/Trevor Draw', '--flag'])
     expect([win.restore, win.focus].map((f) => f.mock.calls.length)).toEqual([1, 1])
   })
 

@@ -35,7 +35,7 @@ export function Welcome({ recents, onOpenRecent, onPickFolder, picking }: Welcom
 
   return (
     <div className="welcome">
-      <h1 className="welcome__title">Yaseen Draw</h1>
+      <h1 className="welcome__title">Trevor Draw</h1>
       {rows.length === 0 ? (
         <p className="welcome__empty">No recent folders yet.</p>
       ) : (

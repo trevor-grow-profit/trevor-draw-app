@@ -22,8 +22,8 @@ const arg = (name, dflt) => (argv.includes(`--${name}`) ? resolve(argv[argv.inde
 const outOnly = argv.includes('--out-only')
 const { version } = JSON.parse(readFileSync(join(repo, 'package.json'), 'utf8'))
 const out = arg('out', join(repo, 'desktop/out'))
-const app = outOnly ? null : arg('app', join(repo, 'desktop/dist-app/mac-arm64/Yaseen Draw.app'))
-const dmg = outOnly ? null : arg('dmg', join(repo, `desktop/dist-app/Yaseen Draw-${version}-arm64.dmg`))
+const app = outOnly ? null : arg('app', join(repo, 'desktop/dist-app/mac-arm64/Trevor Draw.app'))
+const dmg = outOnly ? null : arg('dmg', join(repo, `desktop/dist-app/Trevor Draw-${version}-arm64.dmg`))
 const budget = JSON.parse(readFileSync(join(here, 'budget.json'), 'utf8'))
 
 const fails = [...checkOut(out), ...(app ? checkApp(app) : [])]

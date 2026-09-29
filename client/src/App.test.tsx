@@ -432,7 +432,7 @@ describe('App after a sync pass that merged (YAZ-1897 D4)', () => {
 describe('App on a null root (C2, GRO-2164)', () => {
   it('boots to the Welcome screen with the recents and never auto-opens the folder dialog', async () => {
     const { bridge, el } = await mount({ ...defaultAppState(), recents: [recent('/vaults/notes')] }, { id: 'w1', root: null, file: null, tabs: [] })
-    expect(el.querySelector('.welcome__title')?.textContent).toBe('Yaseen Draw')
+    expect(el.querySelector('.welcome__title')?.textContent).toBe('Trevor Draw')
     expect([...el.querySelectorAll('.welcome__recent-path')].map((s) => s.textContent)).toEqual(['/vaults/notes'])
     expect(bridge.pickFolder).not.toHaveBeenCalled()
     expect(el.querySelector('[data-editor]')).toBeNull()
@@ -511,7 +511,7 @@ describe('App window title (C3, GRO-2165)', () => {
   it('is "<file> — <folder>" with a file open, the folder alone without one, the app name on Welcome', async () => {
     const state = withFolder(defaultAppState(), '/vaults/w', '/vaults/w/Note.excalidraw')
     const { emitOpenRoot } = await mount(state, { id: 'w1', root: null, file: null, tabs: [] })
-    expect(document.title).toBe('Yaseen Draw')
+    expect(document.title).toBe('Trevor Draw')
     await act(async () => emitOpenRoot('/vaults/w'))
     expect(document.title).toBe('Note — w')
     await act(async () => emitOpenRoot('/vaults/empty'))
@@ -759,7 +759,7 @@ describe('App reveal request ownership (YAZ-1023, 🔒 YAZ-1775 D3 YAZ-1491)', (
 })
 
 describe('App settings dialog (YAZ-1679)', () => {
-  it('Yaseen Draw › Settings… (⌘,) mounts the ONE dialog, and its × unmounts it', async () => {
+  it('Trevor Draw › Settings… (⌘,) mounts the ONE dialog, and its × unmounts it', async () => {
     const { el, emitSettings } = await mount(defaultAppState(), { id: 'w1', root: '/v', file: null, tabs: [] })
     expect(el.querySelector('.settings-dialog')).toBeNull()
     // Async: opening Settings reads the share status (App's `useSharing`), which lands a tick later.
@@ -1039,7 +1039,7 @@ describe('App root-missing (C2, GRO-2164)', () => {
     expect(el.querySelector('[data-sidebar]')?.getAttribute('data-root')).toBe('/v')
     expect(el.querySelector('.welcome')).toBeNull()
     act(() => captured.sidebar?.onRootMissing())
-    expect(el.querySelector('.welcome__title')?.textContent).toBe('Yaseen Draw')
+    expect(el.querySelector('.welcome__title')?.textContent).toBe('Trevor Draw')
     expect(el.querySelector('[data-sidebar]')).toBeNull()
     expect(el.querySelector('[data-editor]')).toBeNull()
     expect(bridge.window.setIdentity).toHaveBeenLastCalledWith({ root: null, file: null, tabs: [], sidebarLens: 'files', focusDirs: [], focusFavorites: [] })
