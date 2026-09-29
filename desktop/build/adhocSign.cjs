@@ -31,6 +31,11 @@ module.exports = async function afterPack(context) {
   trimChromiumLocales(context.appOutDir, context.electronPlatformName, context.packager.appInfo.productFilename)
   if (context.electronPlatformName !== 'darwin') return
   const app = path.join(context.appOutDir, `${context.packager.appInfo.productFilename}.app`)
+  // macOS stamps `com.apple.provenance` (and Finder info) on files some tools write, and codesign's
+  // strict verify refuses a bundle carrying any ("resource fork, Finder information, or similar
+  // detritus not allowed") — the dmg step verifies exactly that. Strip every extended attribute
+  // from the bundle BEFORE sealing it; they carry nothing the app needs.
+  execFileSync('xattr', ['-cr', app], { stdio: 'inherit' })
   execFileSync('codesign', ['--force', '--deep', '--sign', '-', app], { stdio: 'inherit' })
 }
 module.exports.trimChromiumLocales = trimChromiumLocales
