@@ -210,7 +210,7 @@ describe('SettingsDialog: one page of every settings section (the post-demo rede
   it('the Sync section carries the per-vault note under its title; no other section does', () => {
     const { el } = mount({ ...DEFAULT_SETTINGS }, status())
     const notes = [...el.querySelectorAll('.settings-section__note')]
-    expect(notes.map((n) => n.textContent)).toEqual(["These settings are saved in this vault's .yaseendraw folder, not app-wide."])
+    expect(notes.map((n) => n.textContent)).toEqual(["These settings are saved in this vault's .yaseendraw folder, not app-wide. Sync commits boards only: Excalidraw drawings, draw.io diagrams, their pictures in assets/, and .yaseendraw/. Anything else in the repo is left for you to commit."])
     expect(notes[0].closest('[data-section]')?.id).toBe('settings-sync')
   })
 

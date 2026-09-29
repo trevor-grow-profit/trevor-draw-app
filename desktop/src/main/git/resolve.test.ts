@@ -254,16 +254,17 @@ describe('resolveRebase via syncPass', { timeout: REAL_GIT_TIMEOUT_MS }, () => {
   })
 
   it('S17: a held-back too-large file stays parked and untouched while a board conflict is merged', async () => {
-    const { a, b } = await twoMachines({ 'b.excalidraw': board([r1]), 'huge.bin': 'small\n' })
+    // A BOARD, so it is sync's to hold back (ACT-370: a `huge.bin` would be outside the scope and simply left alone).
+    const { a, b } = await twoMachines({ 'b.excalidraw': board([r1]), 'huge.excalidraw': 'small\n' })
     await b.write('b.excalidraw', board([r1, shape('sam', { index: 'a9' })]))
-    await writeFile(path.join(a.root, 'huge.bin'), Buffer.alloc(GITHUB_FILE_LIMIT_BYTES, 1))
+    await writeFile(path.join(a.root, 'huge.excalidraw'), Buffer.alloc(GITHUB_FILE_LIMIT_BYTES, 1))
     await a.write('b.excalidraw', board([r1, shape('me', { index: 'a9' })]))
     await syncPass(b.root)
     const status = await syncPass(a.root)
     expect(status.state).toBe('attention')
     expect(status.attention).toBe('too-large')
     expect(status.merged?.[0]?.path).toBe('b.excalidraw')
-    expect((await readFile(path.join(a.root, 'huge.bin'))).length).toBe(GITHUB_FILE_LIMIT_BYTES)
+    expect((await readFile(path.join(a.root, 'huge.excalidraw'))).length).toBe(GITHUB_FILE_LIMIT_BYTES)
     expect(shapesOf(a.read('b.excalidraw')).map((e) => e.id)).toEqual(['1', 'me', 'sam'])
   })
 

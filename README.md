@@ -85,6 +85,8 @@ Worker, and every existing link keeps working.
 
 Turn on **Settings › Sync** to push a vault to GitHub. It uses the computer's own git, found at a fixed set of locations rather than on `PATH` (`desktop/src/main/git/exec.ts`): on a Mac the Command Line Tools or Homebrew git, on Windows [Git for Windows](https://git-scm.com/download/win) (its installer bundles the Git Credential Manager, so a one-time GitHub sign-in sticks). Without one, the sync banner says so and offers a setup prompt to paste into an LLM. The switch lives per vault, in `<vault>/.yaseendraw/github.json`.
 
+Sync commits boards and what belongs to them, nothing else: `.excalidraw` and `.drawio` files at any depth, `assets/` (a drawing's pictures), `.yaseendraw/` and `.gitignore`. Any other file in the repo is left exactly as it is, staged or not, for you to commit yourself; an edit to one does not even start a pass. So a vault can be a folder inside a working repo (this fork's reason: `our-marketing` holds the live boards next to their notes) without sync sweeping the notes into a `sync:` commit. Dirty non-board files are shelved by copy for the length of a rebase and put back byte for byte.
+
 Two computers can work on one vault. When both changed the same Excalidraw drawing, sync merges it
 shape by shape: everyone's shapes are kept, and if you both changed the same shape, the newest edit
 wins. A draw.io diagram, and any other file, changed on both keeps both copies (yours as

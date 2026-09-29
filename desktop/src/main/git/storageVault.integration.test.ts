@@ -114,7 +114,8 @@ describe('1801G — stats, sync, shrink, sync, stats on the seeded storage vault
 
   it('Y1 + Y6: the first pass pushes everything but the two oversize files, and .git never sees them', async () => {
     const pass = await syncPass(repo.root)
-    expect(pass).toMatchObject({ state: 'attention', attention: 'too-large', tooLarge: [VIDEO, TOO_BIG] })
+    // ACT-370: the .mov is outside the sync scope, so only the oversize BOARD is held back and named.
+    expect(pass).toMatchObject({ state: 'attention', attention: 'too-large', tooLarge: [TOO_BIG] })
     expect(await status()).toEqual([`?? ${VIDEO}`, `?? ${TOO_BIG}`])
     expect(await remoteRun(['rev-parse', 'main'])).toBe(await repo.run(['rev-parse', 'HEAD']))
     expect(await everCommitted()).not.toMatch(/Too big|Big video/)
@@ -128,7 +129,7 @@ describe('1801G — stats, sync, shrink, sync, stats on the seeded storage vault
   it('Y5 + Y7: a pass whose only dirty files are oversize commits nothing, writes nothing and answers the same', async () => {
     const head = await repo.run(['rev-parse', 'HEAD'])
     const again = await syncPass(repo.root)
-    expect(again).toMatchObject({ state: 'attention', attention: 'too-large', tooLarge: [VIDEO, TOO_BIG] })
+    expect(again).toMatchObject({ state: 'attention', attention: 'too-large', tooLarge: [TOO_BIG] }) // ACT-370: the .mov is outside the scope
     // `attention`, not `pending`: the manager arms a retry only for `pending`.
     expect(await syncPass(repo.root)).toEqual(again)
     expect(await repo.run(['rev-parse', 'HEAD'])).toBe(head)
@@ -156,9 +157,11 @@ describe('1801G — stats, sync, shrink, sync, stats on the seeded storage vault
     expect(await assets()).toEqual(stored)
   })
 
-  it('Y8: the next pass syncs the shrunk board and its pictures; only the .mov stays behind', async () => {
+  it('Y8: the next pass syncs the shrunk board and its pictures; the .mov stays behind, and is not sync\'s to name (ACT-370)', async () => {
     const pass = await syncPass(repo.root)
-    expect(pass).toMatchObject({ state: 'attention', attention: 'too-large', tooLarge: [VIDEO] })
+    // A video is outside the sync scope: not committed, and not a "too large" banner either.
+    expect(pass).toMatchObject({ state: 'synced' })
+    expect(pass.tooLarge).toBeUndefined()
     expect(await status()).toEqual([`?? ${VIDEO}`])
     expect(await remoteRun(['rev-parse', 'main'])).toBe(await repo.run(['rev-parse', 'HEAD']))
     const onRemote = (await remoteRun(['ls-tree', '-r', '--name-only', 'main'])).split('\n')

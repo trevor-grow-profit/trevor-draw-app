@@ -59,7 +59,7 @@ async function twoClonesOneRemote(): Promise<{ bin: string; remoteUrl: string; a
   cleanups.push(remote.cleanup)
   const a = await makeGitRepo()
   cleanups.push(a.cleanup)
-  await a.write('note.md', 'line one\nline two\n')
+  await a.write('note.drawio', 'line one\nline two\n')
   await a.run(['add', '-A'])
   await a.run(['commit', '-m', 'base'])
   await wireOrigin(a, remote)
@@ -76,7 +76,7 @@ async function twoClonesOneRemote(): Promise<{ bin: string; remoteUrl: string; a
 
 /** Pushes a same-line edit from the second clone. */
 async function pushFromB(bin: string, bDir: string, content: string): Promise<void> {
-  await writeFile(path.join(bDir, 'note.md'), content, 'utf8')
+  await writeFile(path.join(bDir, 'note.drawio'), content, 'utf8')
   for (const args of [['add', '-A'], ['commit', '-m', 'b change'], ['push']]) {
     expect((await git(bin, bDir, args)).code).toBe(0)
   }
@@ -86,15 +86,15 @@ describe('guarantee 1: a conflict is lossless', { timeout: REAL_GIT_TIMEOUT_MS }
   it('keeps both versions of a file both machines changed, and finishes the pass (YAZ-1897 D3)', async () => {
     const { bin, a, bDir } = await twoClonesOneRemote()
     await pushFromB(bin, bDir, 'line one CHANGED ON B\nline two\n')
-    await a.write('note.md', 'line one CHANGED ON A\nline two\n')
+    await a.write('note.drawio', 'line one CHANGED ON A\nline two\n')
 
     const status = await syncPass(a.root)
 
     expect(status.state).toBe('synced')
     const copy = status.merged?.[0]?.copy ?? ''
-    expect(status.merged).toEqual([{ path: 'note.md', author: 'other', clashes: 0, copy: expect.stringMatching(/^note \(conflict, \d{4}-\d{2}-\d{2}\)\.md$/) }])
+    expect(status.merged).toEqual([{ path: 'note.drawio', author: 'other', clashes: 0, copy: expect.stringMatching(/^note \(conflict, \d{4}-\d{2}-\d{2}\)\.drawio$/) }])
     const files = snapshot(a.root)
-    expect(files.get('note.md')).toBe('line one CHANGED ON B\nline two\n')
+    expect(files.get('note.drawio')).toBe('line one CHANGED ON B\nline two\n')
     expect(files.get(copy)).toBe('line one CHANGED ON A\nline two\n')
     expect((await git(bin, a.root, ['status'])).stdout).not.toMatch(/rebase in progress/i)
   })
@@ -102,21 +102,21 @@ describe('guarantee 1: a conflict is lossless', { timeout: REAL_GIT_TIMEOUT_MS }
   it('aborts back to a byte-identical working tree when the merge cannot be committed, keeping a save made mid-rebase', async () => {
     const { bin, a, bDir } = await twoClonesOneRemote()
     await pushFromB(bin, bDir, 'line one CHANGED ON B\nline two\n')
-    await a.write('note.md', 'line one CHANGED ON A\nline two\n')
-    await a.write('other.md', 'saved before\n')
+    await a.write('note.drawio', 'line one CHANGED ON A\nline two\n')
+    await a.write('other.drawio', 'saved before\n')
     await a.run(['add', '-A'])
     await a.run(['commit', '-m', 'local work'])
     // A user hook that refuses any commit made while a rebase is stopped — and, standing in for the
     // app's autosave, writes a board exactly then. The merge cannot be committed, so the pass aborts.
     const hook = path.join(a.root, '.git', 'hooks', 'pre-commit')
-    await writeFile(hook, `#!/bin/sh\nif [ -d "$(git rev-parse --git-dir)/rebase-merge" ]; then echo "saved mid-rebase" > other.md; exit 1; fi\n`, { mode: 0o755 })
+    await writeFile(hook, `#!/bin/sh\nif [ -d "$(git rev-parse --git-dir)/rebase-merge" ]; then echo "saved mid-rebase" > other.drawio; exit 1; fi\n`, { mode: 0o755 })
     const before = snapshot(a.root)
 
     const status = await syncPass(a.root)
 
     expect(status.state).toBe('attention')
     expect(status.attention).toBe('conflict')
-    expect(snapshot(a.root)).toEqual(new Map([...before, ['other.md', 'saved mid-rebase\n']]))
+    expect(snapshot(a.root)).toEqual(new Map([...before, ['other.drawio', 'saved mid-rebase\n']]))
     // A merge that never landed does not move "your version before the merge" (Version history).
     expect((await git(bin, a.root, ['rev-parse', '--verify', '-q', 'refs/yaseendraw/before-merge'])).code).not.toBe(0)
     const st = await git(bin, a.root, ['status'])
@@ -187,7 +187,7 @@ describe('guarantee 3: a disabled root is completely silent', { timeout: REAL_GI
     const manager = createGitSync(host)
     manager.setOpenRoots(['/tmp/vault'])
     await new Promise((r) => setTimeout(r, 50)) // give adoption every chance to misbehave
-    for (let i = 0; i < 50; i += 1) storm?.({ type: 'change', path: `/tmp/vault/n${i}.md`, mtime: i })
+    for (let i = 0; i < 50; i += 1) storm?.({ type: 'change', path: `/tmp/vault/n${i}.drawio`, mtime: i })
     manager.notifyFocus('/tmp/vault')
     manager.notifyWake()
     await manager.flushForQuit()
@@ -209,7 +209,7 @@ describe('guarantee 4: no git binary is a classification, not a crash', { timeou
 describe('guarantee 5: quit flush lands pending edits', { timeout: REAL_GIT_TIMEOUT_MS }, () => {
   it('commits and pushes before resolving', async () => {
     const { remoteUrl, a } = await twoClonesOneRemote()
-    await a.write('note.md', 'line one\nline two\nline three added\n')
+    await a.write('note.drawio', 'line one\nline two\nline three added\n')
     const host: GitSyncHost = {
       readConfig: async () => ({ enabled: true }),
       writeConfig: async () => {},

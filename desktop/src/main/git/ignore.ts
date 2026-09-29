@@ -4,10 +4,13 @@ import { ATOMIC_TMP_HEX_LEN } from '@shared/fileKind'
 import { atomicWrite } from '../fs/fsUtils'
 
 /**
- * THE VAULT'S `.gitignore`, kept honest before every `git add -A` (YAZ-1829).
+ * THE VAULT'S `.gitignore`, kept honest before every sync commit (YAZ-1829).
  *
- * `syncPass` stages everything, so anything the OS drops in the vault is committed and pushed —
- * Finder's `.DS_Store` in every folder the user has ever opened, one per sync commit subject.
+ * `syncPass` used to stage everything, so anything the OS dropped in the vault was committed and
+ * pushed — Finder's `.DS_Store` in every folder the user had ever opened, one per sync commit
+ * subject. Staging is scoped to boards now (ACT-370, `SYNC_SCOPE` in `sync.ts`), but the ignore
+ * entries still earn their keep: `.gitignore` itself is in the scope, and a `.DS_Store` an older
+ * version committed is untracked here.
  * The user's own vault is not ours to reorganise, so this is APPEND-ONLY: a missing entry is
  * added at the end, every line already there is left byte-for-byte, and a vault that already
  * ignores the entry is not touched at all.

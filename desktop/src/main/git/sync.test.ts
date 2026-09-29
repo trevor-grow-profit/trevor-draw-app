@@ -7,7 +7,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { GIT_TIMEOUT_CODE, git, type GitResult } from './exec'
 import { makeBareRemote, makeGitRepo, REAL_GIT_TIMEOUT_MS, requireGit, wireOrigin, type BareRemote, type GitRepo } from './gitFixture'
 import { GITHUB_FILE_LIMIT_BYTES } from '@shared/types'
-import { classifyGitFailure, commitMessage, lookAtRemote, syncPass, TRANSFER_TIMEOUT_MS } from './sync'
+import { classifyGitFailure, commitMessage, inSyncScope, lookAtRemote, syncPass, TRANSFER_TIMEOUT_MS } from './sync'
 
 /** A file's SHA-1, streamed (the D12 test's file is 95 MiB). */
 async function sha1(file: string): Promise<string> {
@@ -42,7 +42,7 @@ afterEach(async () => {
 async function baseRepo(): Promise<GitRepo> {
   const repo = await makeGitRepo()
   cleanups.push(repo.cleanup)
-  await repo.write('note.md', 'line one\n')
+  await repo.write('note.drawio', 'line one\n')
   await repo.run(['add', '-A'])
   await repo.run(['commit', '-m', 'base'])
   return repo
@@ -83,20 +83,20 @@ async function secondClone(remote: BareRemote): Promise<string> {
 describe('syncPass', { timeout: REAL_GIT_TIMEOUT_MS }, () => {
   it('commits dirty files and pushes them, naming them in the subject', async () => {
     const { repo, remote } = await pushedRepo()
-    await repo.write('a.md', '# a\n')
-    await repo.write('b.md', '# b\n')
+    await repo.write('a.drawio', '# a\n')
+    await repo.write('b.drawio', '# b\n')
 
     const status = await syncPass(repo.root)
 
     expect(status.state).toBe('synced')
     expect(status.repo).toEqual({ remoteUrl: remote.url, branch: 'main' })
-    expect(await repo.run(['log', '-1', '--format=%s'])).toBe('sync: a.md, b.md')
+    expect(await repo.run(['log', '-1', '--format=%s'])).toBe('sync: a.drawio, b.drawio')
     expect(await remoteHead(repo, remote)).toBe(await repo.run(['rev-parse', 'HEAD']))
   })
 
   it("never commits Finder's droppings: `.DS_Store` is ignored, at any depth, before anything is staged (YAZ-1829)", async () => {
     const { repo } = await pushedRepo()
-    await repo.write('a.md', '# a\n')
+    await repo.write('a.drawio', '# a\n')
     await repo.write('.DS_Store', 'finder\n')
     await repo.write('sub/.DS_Store', 'finder\n')
 
@@ -137,7 +137,7 @@ describe('syncPass', { timeout: REAL_GIT_TIMEOUT_MS }, () => {
 
   it('leaves a vault with no droppings untouched — no `.gitignore` appears out of nowhere', async () => {
     const { repo } = await pushedRepo()
-    await repo.write('a.md', '# a\n')
+    await repo.write('a.drawio', '# a\n')
 
     expect((await syncPass(repo.root)).state).toBe('synced')
 
@@ -154,31 +154,31 @@ describe('syncPass', { timeout: REAL_GIT_TIMEOUT_MS }, () => {
 
   it('holds an oversize file back, commits and pushes everything else, and says so as attention/too-large', async () => {
     const { repo, remote } = await pushedRepo()
-    await repo.write('small.md', '# small\n')
+    await repo.write('small.drawio', '# small\n')
     await oversize(repo, 'Folder/Huge board.excalidraw')
 
     const status = await syncPass(repo.root)
 
     expect(status).toMatchObject({ state: 'attention', attention: 'too-large', tooLarge: ['Folder/Huge board.excalidraw'] })
     const tracked = await repo.run(['ls-files'])
-    expect(tracked).toContain('small.md')
+    expect(tracked).toContain('small.drawio')
     expect(tracked).not.toContain('Huge board')
     // The rest really went: the remote has our commit, and its subject does not name the held-back file.
     expect(await remoteHead(repo, remote)).toBe(await repo.run(['rev-parse', 'HEAD']))
-    expect(await repo.run(['log', '-1', '--format=%s'])).toBe('sync: small.md')
+    expect(await repo.run(['log', '-1', '--format=%s'])).toBe('sync: small.drawio')
     // Never even hashed: excluded BEFORE the add, so no 95 MB blob lands in .git/objects.
     expect(Number(/(\d+) kilobytes/.exec(await repo.run(['count-objects']))?.[1])).toBeLessThan(1024)
   })
 
   it('is idempotent: a second pass holds the same file back, makes no commit, and does not fail on "nothing to commit"', async () => {
     const { repo } = await pushedRepo()
-    await oversize(repo, 'Big video.mov')
+    await oversize(repo, 'Big video.excalidraw')
     const head = await repo.run(['rev-parse', 'HEAD'])
 
     const first = await syncPass(repo.root)
     const second = await syncPass(repo.root)
 
-    for (const status of [first, second]) expect(status).toMatchObject({ state: 'attention', attention: 'too-large', tooLarge: ['Big video.mov'] })
+    for (const status of [first, second]) expect(status).toMatchObject({ state: 'attention', attention: 'too-large', tooLarge: ['Big video.excalidraw'] })
     // The ONLY dirty file was oversize: nothing was staged, so nothing was committed.
     expect(await repo.run(['rev-parse', 'HEAD'])).toBe(head)
     expect(await repo.run(['diff', '--cached', '--name-only'])).toBe('')
@@ -186,21 +186,21 @@ describe('syncPass', { timeout: REAL_GIT_TIMEOUT_MS }, () => {
 
   it('draws the line AT the limit: a file one byte under it syncs, a file exactly at it is held back', async () => {
     const { repo } = await pushedRepo()
-    await oversize(repo, 'under.mov', GITHUB_FILE_LIMIT_BYTES - 1)
-    await oversize(repo, 'at.mov')
+    await oversize(repo, 'under.excalidraw', GITHUB_FILE_LIMIT_BYTES - 1)
+    await oversize(repo, 'at.excalidraw')
 
-    expect(await syncPass(repo.root)).toMatchObject({ attention: 'too-large', tooLarge: ['at.mov'] })
-    expect(await repo.run(['ls-files'])).toContain('under.mov')
+    expect(await syncPass(repo.root)).toMatchObject({ attention: 'too-large', tooLarge: ['at.excalidraw'] })
+    expect(await repo.run(['ls-files'])).toContain('under.excalidraw')
   })
 
   it('holds back a TRACKED file that grew past the limit; the committed version stays as it was', async () => {
     const { repo } = await pushedRepo()
-    await truncate(path.join(repo.root, 'note.md'), GITHUB_FILE_LIMIT_BYTES + 1)
+    await truncate(path.join(repo.root, 'note.drawio'), GITHUB_FILE_LIMIT_BYTES + 1)
 
     const status = await syncPass(repo.root)
 
-    expect(status).toMatchObject({ attention: 'too-large', tooLarge: ['note.md'] })
-    expect(await repo.run(['show', 'HEAD:note.md'])).toBe('line one')
+    expect(status).toMatchObject({ attention: 'too-large', tooLarge: ['note.drawio'] })
+    expect(await repo.run(['show', 'HEAD:note.drawio'])).toBe('line one')
   })
 
   it('D12: a held-back TRACKED file never blocks the rebase — the rest syncs both ways and its bytes stay exactly as they were', async () => {
@@ -208,29 +208,29 @@ describe('syncPass', { timeout: REAL_GIT_TIMEOUT_MS }, () => {
     const other = await secondClone(remote)
     const bin = await requireGit()
     // The other machine changes the big file's committed version AND adds a note, and pushes first.
-    await writeFile(path.join(other, 'note.md'), 'line one\nfrom the other machine\n', 'utf8')
-    await writeFile(path.join(other, 'other.md'), '# other\n', 'utf8')
+    await writeFile(path.join(other, 'note.drawio'), 'line one\nfrom the other machine\n', 'utf8')
+    await writeFile(path.join(other, 'other.drawio'), '# other\n', 'utf8')
     for (const args of [['add', '-A'], ['commit', '-m', 'other'], ['push']]) expect((await git(bin, other, args)).code).toBe(0)
-    // Here: note.md grows past the line (a distinctive head, then a sparse tail), and a small edit.
-    const big = path.join(repo.root, 'note.md')
+    // Here: note.drawio grows past the line (a distinctive head, then a sparse tail), and a small edit.
+    const big = path.join(repo.root, 'note.drawio')
     await writeFile(big, 'our head\n')
     await truncate(big, GITHUB_FILE_LIMIT_BYTES + 1)
     const before = await sha1(big)
-    await repo.write('small.md', '# small\n')
+    await repo.write('small.drawio', '# small\n')
 
     const status = await syncPass(repo.root)
 
-    expect(status).toMatchObject({ state: 'attention', attention: 'too-large', tooLarge: ['note.md'] })
+    expect(status).toMatchObject({ state: 'attention', attention: 'too-large', tooLarge: ['note.drawio'] })
     // Both ways: their commit is under ours, ours is on the remote.
-    expect(await repo.run(['log', '--format=%s'])).toBe('sync: small.md\nother\nbase')
+    expect(await repo.run(['log', '--format=%s'])).toBe('sync: small.drawio\nother\nbase')
     expect(await remoteHead(repo, remote)).toBe(await repo.run(['rev-parse', 'HEAD']))
     // Our bytes on disk, untouched; theirs is what history holds; nothing staged, nothing stashed.
     expect(await sha1(big)).toBe(before)
-    expect(await repo.run(['show', 'HEAD:note.md'])).toBe('line one\nfrom the other machine')
+    expect(await repo.run(['show', 'HEAD:note.drawio'])).toBe('line one\nfrom the other machine')
     expect(await repo.run(['diff', '--cached', '--name-only'])).toBe('')
     expect(await repo.run(['stash', 'list'])).toBe('')
     // And the next pass is the same calm answer, not a conflict.
-    expect(await syncPass(repo.root)).toMatchObject({ attention: 'too-large', tooLarge: ['note.md'] })
+    expect(await syncPass(repo.root)).toMatchObject({ attention: 'too-large', tooLarge: ['note.drawio'] })
   })
 
   it('clears once the file is gone: the next pass is plain synced, with no list', async () => {
@@ -261,7 +261,7 @@ describe('syncPass', { timeout: REAL_GIT_TIMEOUT_MS }, () => {
 
   it('gives fetch and push the transfer budget and every local call the default (YAZ-1801 D4)', async () => {
     const { repo } = await pushedRepo()
-    await repo.write('a.md', '# a\n')
+    await repo.write('a.drawio', '# a\n')
     vi.mocked(git).mockClear()
 
     expect((await syncPass(repo.root)).state).toBe('synced')
@@ -275,11 +275,11 @@ describe('syncPass', { timeout: REAL_GIT_TIMEOUT_MS }, () => {
 
   it('asks git where the merge rule lives once per vault, and still puts back a rule someone deleted (YAZ-2073 5H)', async () => {
     const { repo } = await pushedRepo()
-    await repo.write('a.md', '# a\n')
+    await repo.write('a.drawio', '# a\n')
     expect((await syncPass(repo.root)).state).toBe('synced')
     const attributes = path.join(repo.root, '.git', 'info', 'attributes')
     await unlink(attributes)
-    await repo.write('b.md', '# b\n')
+    await repo.write('b.drawio', '# b\n')
     vi.mocked(git).mockClear()
     expect((await syncPass(repo.root)).state).toBe('synced')
     const gitPath = vi.mocked(git).mock.calls.filter(([, root, args]) => root === repo.root && args.includes('--git-path'))
@@ -289,17 +289,17 @@ describe('syncPass', { timeout: REAL_GIT_TIMEOUT_MS }, () => {
 
   it('summarises past three files in the subject', async () => {
     const { repo } = await pushedRepo()
-    for (const name of ['a.md', 'b.md', 'c.md', 'd.md', 'e.md']) await repo.write(name, `# ${name}\n`)
+    for (const name of ['a.drawio', 'b.drawio', 'c.drawio', 'd.drawio', 'e.drawio']) await repo.write(name, `# ${name}\n`)
 
     expect((await syncPass(repo.root)).state).toBe('synced')
-    expect(await repo.run(['log', '-1', '--format=%s'])).toBe('sync: a.md, b.md, c.md +2 more')
+    expect(await repo.run(['log', '-1', '--format=%s'])).toBe('sync: a.drawio, b.drawio, c.drawio +2 more')
   })
 
   it('rebases a behind-only repo and pushes nothing new', async () => {
     const { repo, remote } = await pushedRepo()
     const other = await secondClone(remote)
     const bin = await requireGit()
-    await writeFile(path.join(other, 'note.md'), 'line one\nfrom the other machine\n', 'utf8')
+    await writeFile(path.join(other, 'note.drawio'), 'line one\nfrom the other machine\n', 'utf8')
     for (const args of [['add', '-A'], ['commit', '-m', 'other'], ['push']]) {
       expect((await git(bin, other, args)).code).toBe(0)
     }
@@ -319,20 +319,20 @@ describe('syncPass', { timeout: REAL_GIT_TIMEOUT_MS }, () => {
     const other = await secondClone(remote)
     const bin = await requireGit()
     // The other machine adds its OWN note and pushes first…
-    await writeFile(path.join(other, 'other.md'), '# from the other machine\n', 'utf8')
+    await writeFile(path.join(other, 'other.drawio'), '# from the other machine\n', 'utf8')
     for (const args of [['add', '-A'], ['commit', '-m', 'other'], ['push']]) {
       expect((await git(bin, other, args)).code).toBe(0)
     }
     // …while this machine edits a DIFFERENT file. No lines collide: the everyday two-machine case.
-    await repo.write('note.md', 'line one\nedited here\n')
+    await repo.write('note.drawio', 'line one\nedited here\n')
 
     const status = await syncPass(repo.root)
 
     expect(status.state).toBe('synced')
     // Our commit replayed on top of theirs and both are on the remote; the working tree has both files.
     expect(await remoteHead(repo, remote)).toBe(await repo.run(['rev-parse', 'HEAD']))
-    expect(await repo.run(['log', '--format=%s'])).toBe('sync: note.md\nother\nbase')
-    expect(await repo.run(['show', 'HEAD:other.md'])).toBe('# from the other machine')
+    expect(await repo.run(['log', '--format=%s'])).toBe('sync: note.drawio\nother\nbase')
+    expect(await repo.run(['show', 'HEAD:other.drawio'])).toBe('# from the other machine')
   })
 
   it('sets the upstream on a first push', async () => {
@@ -373,13 +373,13 @@ describe('syncPass', { timeout: REAL_GIT_TIMEOUT_MS }, () => {
   it('commits locally and reports pending when the remote is unreachable', async () => {
     const { repo } = await pushedRepo()
     await repo.run(['remote', 'set-url', 'origin', path.join(tmpdir(), 'yaseendraw-no-such-remote')])
-    await repo.write('offline.md', '# written on a train\n')
+    await repo.write('offline.drawio', '# written on a train\n')
 
     const status = await syncPass(repo.root)
 
     expect(status.state).toBe('pending')
     expect(status.message).toMatch(/does not appear to be a git repository/)
-    expect(await repo.run(['log', '-1', '--format=%s'])).toBe('sync: offline.md')
+    expect(await repo.run(['log', '-1', '--format=%s'])).toBe('sync: offline.drawio')
   })
 })
 
@@ -403,19 +403,19 @@ describe('lookAtRemote', { timeout: REAL_GIT_TIMEOUT_MS }, () => {
     const { repo, remote } = await pushedRepo()
     const other = await secondClone(remote)
     const bin = await requireGit()
-    await writeFile(path.join(other, 'theirs.md'), 'from the other machine\n', 'utf8')
+    await writeFile(path.join(other, 'theirs.drawio'), 'from the other machine\n', 'utf8')
     for (const args of [['add', '-A'], ['commit', '-m', 'other'], ['push']]) expect((await git(bin, other, args)).code).toBe(0)
     expect(await lookAtRemote(repo.root)).toBe('moved')
     vi.mocked(git).mockClear()
     expect((await syncPass(repo.root, { fetched: true })).state).toBe('synced')
     expect(spawns(repo.root)).not.toContain('fetch')
-    expect(existsSync(path.join(repo.root, 'theirs.md'))).toBe(true)
+    expect(existsSync(path.join(repo.root, 'theirs.drawio'))).toBe(true)
     expect(await lookAtRemote(repo.root)).toBe('level')
   })
 
   it('a local commit nobody pushed yet (made outside the app), or no upstream yet: moved', async () => {
     const { repo } = await pushedRepo()
-    await repo.write('by-hand.md', '# committed in a terminal\n')
+    await repo.write('by-hand.drawio', '# committed in a terminal\n')
     await repo.run(['add', '-A'])
     await repo.run(['commit', '-m', 'by hand'])
     expect(await lookAtRemote(repo.root)).toBe('moved')
@@ -433,7 +433,7 @@ describe('lookAtRemote', { timeout: REAL_GIT_TIMEOUT_MS }, () => {
 describe('flush mode (YAZ-1111)', { timeout: REAL_GIT_TIMEOUT_MS }, () => {
   it('pushes to a reachable remote exactly like a normal pass', async () => {
     const { repo, remote } = await pushedRepo()
-    await repo.write('note.md', 'line one\nline two\n')
+    await repo.write('note.drawio', 'line one\nline two\n')
     vi.mocked(git).mockClear()
     const status = await syncPass(repo.root, { flush: true })
     expect(status.state).toBe('synced')
@@ -450,23 +450,23 @@ describe('flush mode (YAZ-1111)', { timeout: REAL_GIT_TIMEOUT_MS }, () => {
     // fast — exactly the captive-portal quit the flush cap exists for. On a network that answers
     // with a quick refusal instead, the pass just returns even faster; both paths are in-budget.
     await repo.run(['remote', 'add', 'origin', 'http://192.0.2.1:9418/x.git'])
-    await repo.write('note.md', 'line one\nedited\n')
+    await repo.write('note.drawio', 'line one\nedited\n')
     const status = await syncPass(repo.root, { flush: true })
     // The CAP itself, not the wall clock: `syncPass` must not have waited out git's own 30 s
     // (a clock assertion here flakes under full-suite load, for exactly the reason the suite
     // ceiling was raised). Returning at all inside the suite's ceiling IS the guarantee.
     expect(status.state === 'pending' || status.state === 'attention').toBe(true)
     // The edit is safe regardless: committed locally, pushed on the next open.
-    expect(await repo.run(['log', '-1', '--format=%s'])).toBe('sync: note.md')
+    expect(await repo.run(['log', '-1', '--format=%s'])).toBe('sync: note.drawio')
   })
 })
 
 describe('commitMessage', () => {
   it('uses basenames, caps the list at three, and falls back to a bare subject', () => {
     expect(commitMessage([])).toBe('sync')
-    expect(commitMessage(['notes/deep/one.md'])).toBe('sync: one.md')
-    expect(commitMessage(['a.md', 'b.md', 'c.md'])).toBe('sync: a.md, b.md, c.md')
-    expect(commitMessage(['a.md', 'b.md', 'c.md', 'd.md'])).toBe('sync: a.md, b.md, c.md +1 more')
+    expect(commitMessage(['notes/deep/one.drawio'])).toBe('sync: one.drawio')
+    expect(commitMessage(['a.drawio', 'b.drawio', 'c.drawio'])).toBe('sync: a.drawio, b.drawio, c.drawio')
+    expect(commitMessage(['a.drawio', 'b.drawio', 'c.drawio', 'd.drawio'])).toBe('sync: a.drawio, b.drawio, c.drawio +1 more')
   })
 })
 
@@ -502,5 +502,121 @@ describe('classifyGitFailure', () => {
 
   it('does not mistake an abbreviated sha for an HTTP 403', () => {
     expect(classifyGitFailure(failed('error: failed to push some refs\n ! [rejected] 1a403bc..9f2c1de main -> main'))).toBe('other')
+  })
+})
+
+// ---------- ACT-370: sync commits boards and theirs, and nothing else in the repo ----------
+
+describe('sync scope (ACT-370)', { timeout: REAL_GIT_TIMEOUT_MS }, () => {
+  it('inSyncScope: boards at any depth, assets/, .yaseendraw/ and .gitignore are in; everything else is out', () => {
+    for (const rel of ['a.excalidraw', 'Folder/Deep/b.EXCALIDRAW', 'flow.drawio', 'assets/abc.png', 'assets', '.yaseendraw/favorites.json', '.yaseendraw', '.gitignore']) {
+      expect(inSyncScope(rel), rel).toBe(true)
+    }
+    for (const rel of ['README.md', 'docs/spec.md', 'Big video.mov', 'src/assets/logo.png', 'notes.gitignore', '', '../outside.excalidraw']) {
+      expect(inSyncScope(rel), rel).toBe(false)
+    }
+  })
+
+  it('leaves a dirty non-board file alone: not committed, not pushed, its bytes untouched', async () => {
+    const { repo, remote } = await pushedRepo()
+    await repo.write('README.md', '# half-written doc\n')
+    await repo.write('Board.excalidraw', '{"type":"excalidraw"}\n')
+
+    const status = await syncPass(repo.root)
+
+    expect(status.state).toBe('synced')
+    expect(await repo.run(['log', '-1', '--format=%s'])).toBe('sync: Board.excalidraw')
+    expect(await repo.run(['ls-files'])).not.toContain('README.md')
+    expect(readFileSync(path.join(repo.root, 'README.md'), 'utf8')).toBe('# half-written doc\n')
+    expect(await repo.run(['status', '--porcelain'])).toBe('?? README.md')
+    expect(await remoteHead(repo, remote)).toBe(await repo.run(['rev-parse', 'HEAD']))
+  })
+
+  it('a pass whose only dirty files are outside the scope commits nothing and is still synced', async () => {
+    const { repo } = await pushedRepo()
+    const head = await repo.run(['rev-parse', 'HEAD'])
+    await repo.write('README.md', '# doc\n')
+    await repo.write('src/app.ts', 'export {}\n')
+
+    expect((await syncPass(repo.root)).state).toBe('synced')
+
+    expect(await repo.run(['rev-parse', 'HEAD'])).toBe(head)
+    expect(await repo.run(['diff', '--cached', '--name-only'])).toBe('')
+  })
+
+  it('a MODIFIED tracked non-board file never blocks the rebase: the rest syncs both ways and its bytes stay exactly as they were', async () => {
+    const { repo, remote } = await pushedRepo()
+    await repo.write('README.md', '# original\n')
+    await repo.run(['add', '-A'])
+    await repo.run(['commit', '-m', 'docs'])
+    await repo.run(['push'])
+    const other = await secondClone(remote)
+    const bin = await requireGit()
+    await writeFile(path.join(other, 'README.md'), '# original\nfrom the other machine\n', 'utf8')
+    await writeFile(path.join(other, 'theirs.excalidraw'), '{}\n', 'utf8')
+    for (const args of [['add', '-A'], ['commit', '-m', 'other'], ['push']]) expect((await git(bin, other, args)).code).toBe(0)
+    // Here: an uncommitted edit to the doc, and a new board.
+    await repo.write('README.md', '# original\nedited here, not committed\n')
+    await repo.write('mine.excalidraw', '{}\n')
+
+    const status = await syncPass(repo.root)
+
+    expect(status.state).toBe('synced')
+    expect(await repo.run(['log', '--format=%s'])).toBe('sync: mine.excalidraw\nother\ndocs\nbase')
+    expect(await remoteHead(repo, remote)).toBe(await repo.run(['rev-parse', 'HEAD']))
+    // The doc on disk is ours, byte for byte; history holds theirs; nothing staged, nothing stashed.
+    expect(readFileSync(path.join(repo.root, 'README.md'), 'utf8')).toBe('# original\nedited here, not committed\n')
+    expect(await repo.run(['show', 'HEAD:README.md'])).toBe('# original\nfrom the other machine')
+    expect(await repo.run(['status', '--porcelain'])).toBe('M README.md') // `run` trims the leading column
+    expect(await repo.run(['stash', 'list'])).toBe('')
+    expect(existsSync(path.join(repo.root, 'theirs.excalidraw'))).toBe(true)
+  })
+
+  it('a DELETED tracked non-board file stays deleted across the rebase', async () => {
+    const { repo, remote } = await pushedRepo()
+    await repo.write('old.md', '# old\n')
+    await repo.run(['add', '-A'])
+    await repo.run(['commit', '-m', 'docs'])
+    await repo.run(['push'])
+    const other = await secondClone(remote)
+    const bin = await requireGit()
+    await writeFile(path.join(other, 'theirs.excalidraw'), '{}\n', 'utf8')
+    for (const args of [['add', '-A'], ['commit', '-m', 'other'], ['push']]) expect((await git(bin, other, args)).code).toBe(0)
+    await unlink(path.join(repo.root, 'old.md'))
+    await repo.write('mine.excalidraw', '{}\n')
+
+    expect((await syncPass(repo.root)).state).toBe('synced')
+
+    expect(existsSync(path.join(repo.root, 'old.md'))).toBe(false)
+    expect(await repo.run(['show', 'HEAD:old.md'])).toBe('# old')
+    expect(await repo.run(['status', '--porcelain'])).toBe('D old.md') // `run` trims the leading column
+  })
+
+  it('unstages what the user staged outside the scope, and commits boards only', async () => {
+    const { repo } = await pushedRepo()
+    await repo.write('README.md', '# staged by hand\n')
+    await repo.run(['add', '-A'])
+    await repo.write('Board.excalidraw', '{}\n')
+
+    expect((await syncPass(repo.root)).state).toBe('synced')
+
+    expect(await repo.run(['log', '-1', '--format=%s'])).toBe('sync: Board.excalidraw')
+    expect(await repo.run(['show', '--name-only', '--format=', 'HEAD'])).toBe('Board.excalidraw')
+    // Still there, still theirs to commit — just no longer staged.
+    expect(await repo.run(['status', '--porcelain'])).toBe('?? README.md')
+  })
+
+  it('a board deep in a shared repo syncs, and an oversize video beside it is not held back or named', async () => {
+    const { repo } = await pushedRepo()
+    await repo.write('skool-community/lives/mockups/2026-09-29-landing-page.excalidraw', '{}\n')
+    await repo.write('skool-community/lives/mockups/Big video.mov', '')
+    await truncate(path.join(repo.root, 'skool-community/lives/mockups/Big video.mov'), GITHUB_FILE_LIMIT_BYTES + 1)
+
+    const status = await syncPass(repo.root)
+
+    expect(status.state).toBe('synced')
+    expect(status.tooLarge).toBeUndefined()
+    expect(await repo.run(['ls-files'])).toContain('skool-community/lives/mockups/2026-09-29-landing-page.excalidraw')
+    expect(await repo.run(['ls-files'])).not.toContain('Big video.mov')
   })
 })

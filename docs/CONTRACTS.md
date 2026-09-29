@@ -602,8 +602,14 @@ GitHub refuses any file over 100 MiB (and rejects the WHOLE push that carries on
 50 MiB, and wants a repo under 1 GB (strongly under 5 GB). The constants live in
 `shared/types/vault.ts`.
 
-- **D3 — an oversize file never jams sync.** A sync pass stats the untracked and modified files
-  before `git add -A` and excludes any at or over `GITHUB_FILE_LIMIT_BYTES` (95 MiB, a margin under the
+- **ACT-370 — sync stages boards only.** A pass never runs `git add -A` on the root: it lists the
+  untracked and modified files inside `SYNC_SCOPE` (`sync.ts`: `*.excalidraw`, `*.drawio`, `assets/`,
+  `.yaseendraw/`, `.gitignore`, case-insensitive) and adds those by literal path. Anything the user
+  staged outside the scope is unstaged first (bytes untouched), the commit subject names only what is
+  staged, and a dirty tracked file outside the scope is shelved by copy across the rebase and put back
+  byte for byte (or deleted again). The watcher ignores edits outside the scope (`inSyncScope`).
+- **D3 — an oversize file never jams sync.** A sync pass stats the untracked and modified files in
+  the scope before adding them and excludes any at or over `GITHUB_FILE_LIMIT_BYTES` (95 MiB, a margin under the
   100) by literal pathspec, then re-checks the staged list and `reset`s anything that grew past it.
   Everything else commits and pushes; the pass ends `attention` / `too-large` with
   `GithubSyncStatus.tooLarge` (vault-relative paths). The banner for it has NO Dismiss and stays

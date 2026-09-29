@@ -1,6 +1,7 @@
 import type { GithubSyncConfig, GithubSyncStatus, VaultConfigChange, WatchEvent } from '@shared/types'
 import { isRecord } from '@shared/guards'
-import type { RemoteLook } from './sync'
+import path from 'node:path'
+import { inSyncScope, type RemoteLook } from './sync'
 
 /**
  * Per-root sync orchestration (YAZ-1081 2B): WHEN a pass runs, and what the app is told about it.
@@ -324,6 +325,9 @@ export function createGitSync(host: GitSyncHost): GitSyncManager {
     // `ready` is the watcher announcing itself and `error` is about the watcher, not the vault —
     // neither means a byte changed on disk.
     if (ev.type === 'ready' || ev.type === 'error') return
+    // ACT-370: sync commits boards and theirs only, so an edit to anything else in the repo (a doc
+    // beside the boards) is not a reason to run a pass — no `pending` flash, no fetch/push round trip.
+    if (!inSyncScope(path.relative(root, ev.path))) return
     const entry = entries.get(root)
     if (entry === undefined) return
     // The first event of a burst is what the UI needs to hear; the other forty-nine say the same thing.

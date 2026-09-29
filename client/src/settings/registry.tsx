@@ -195,7 +195,7 @@ export const SETTINGS_SECTIONS: readonly SettingsSection[] = [
     id: 'sync',
     title: 'Sync',
     available: (ctx) => ctx.sync !== undefined,
-    note: "These settings are saved in this vault's .yaseendraw folder, not app-wide.",
+    note: "These settings are saved in this vault's .yaseendraw folder, not app-wide. Sync commits boards only: Excalidraw drawings, draw.io diagrams, their pictures in assets/, and .yaseendraw/. Anything else in the repo is left for you to commit.",
     groups: [
       {
         items: [

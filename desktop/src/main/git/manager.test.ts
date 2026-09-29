@@ -142,9 +142,9 @@ describe('vault edits (D2 cadence)', () => {
     await until(() => h.statuses.at(-1)?.state === 'synced') // adoption's pull (D3)
     expect(h.passes).toEqual([ROOT])
 
-    h.emitVault(ROOT, change('a.md', 1))
-    h.emitVault(ROOT, change('b.md', 2))
-    h.emitVault(ROOT, { type: 'add', path: `${ROOT}/c.md`, mtime: 3 })
+    h.emitVault(ROOT, change('a.excalidraw', 1))
+    h.emitVault(ROOT, change('b.excalidraw', 2))
+    h.emitVault(ROOT, { type: 'add', path: `${ROOT}/c.excalidraw`, mtime: 3 })
     // The UI hears about unsynced work immediately, and only once for the burst.
     expect(h.statuses.filter((s) => s.state === 'pending')).toHaveLength(1)
     expect(h.passes).toEqual([ROOT])
@@ -185,7 +185,7 @@ describe('vault edits (D2 cadence)', () => {
     manager.setOpenRoots([ROOT])
     await until(() => h.passes.length === 1)
 
-    for (let i = 0; i < 20; i += 1) h.emitVault(ROOT, change(`n${i}.md`, i))
+    for (let i = 0; i < 20; i += 1) h.emitVault(ROOT, change(`n${i}.excalidraw`, i))
     await sleep(60) // the debounce fires while pass 1 is still blocked
     expect(h.passes).toHaveLength(1)
 
@@ -235,7 +235,7 @@ describe('github.json drives adoption', () => {
     h.enabled.set(ROOT, false)
     h.emitConfig(ROOT, GITHUB_SYNC_FILE)
     await until(() => h.statuses.at(-1)?.state === 'off')
-    h.emitVault(ROOT, change('a.md', 1)) // the watcher is gone; this reaches nobody
+    h.emitVault(ROOT, change('a.excalidraw', 1)) // the watcher is gone; this reaches nobody
     await sleep(60)
     expect(h.passes).toHaveLength(1)
     expect(await manager.status(ROOT)).toEqual({ root: ROOT, state: 'off', enabled: false })
@@ -262,7 +262,7 @@ describe('github.json drives adoption', () => {
     await until(() => h.passes.length === 1)
 
     manager.setOpenRoots([])
-    h.emitVault(ROOT, change('a.md', 1))
+    h.emitVault(ROOT, change('a.excalidraw', 1))
     await sleep(60)
     expect(h.passes).toHaveLength(1)
     expect(await manager.status(ROOT)).toEqual({ root: ROOT, state: 'off', enabled: false })
@@ -377,7 +377,7 @@ describe('flushForQuit', () => {
     const manager = createGitSync(h.host)
     manager.setOpenRoots([ROOT])
     await until(() => h.passes.length === 1)
-    h.emitVault(ROOT, change('a.md', 1))
+    h.emitVault(ROOT, change('a.excalidraw', 1))
 
     await manager.flushForQuit()
 
@@ -404,7 +404,7 @@ describe('files held back as too large (YAZ-1801 D3)', () => {
     await sleep(80)
     expect(h.passes).toEqual([ROOT])
 
-    h.emitVault(ROOT, change('a.md', 1))
+    h.emitVault(ROOT, change('a.excalidraw', 1))
     await until(() => h.statuses.at(-1)?.state === 'synced')
     const transitional = h.statuses.filter((s) => s.state === 'pending' || s.state === 'syncing').slice(-2)
     expect(transitional.map((s) => s.tooLarge)).toEqual([['Huge.excalidraw'], ['Huge.excalidraw']])
@@ -455,7 +455,7 @@ describe('idle pull (YAZ-1897 D6)', () => {
     const manager = createGitSync(h.host)
     manager.setOpenRoots([ROOT])
     await until(() => h.passes.length === 1)
-    h.emitVault(ROOT, change('a.md', 1))
+    h.emitVault(ROOT, change('a.excalidraw', 1))
     await sleep(60) // the poll would have fired by now; the edit cancelled it
     expect(h.passes).toHaveLength(1)
     await until(() => h.passes.length === 2) // the debounce's pass
@@ -512,7 +512,7 @@ describe('idle pull (YAZ-1897 D6)', () => {
     const manager = createGitSync(h.host)
     manager.setOpenRoots([ROOT])
     await until(() => h.passes.length === 1)
-    h.emitVault(ROOT, change('a.md', 1))
+    h.emitVault(ROOT, change('a.excalidraw', 1))
     await until(() => h.passes.length === 2)
     await manager.syncNow(ROOT)
     expect(h.passes).toHaveLength(3)
@@ -529,5 +529,28 @@ describe('idle pull (YAZ-1897 D6)', () => {
     manager.setOpenRoots([])
     await sleep(50)
     expect(h.passes).toHaveLength(1)
+  })
+})
+
+describe('sync scope (ACT-370)', () => {
+  it('an edit outside the scope is not a reason to run a pass, or to flash pending', async () => {
+    const h = harness({ quietMs: 20 })
+    h.enabled.set(ROOT, true)
+    const manager = createGitSync(h.host)
+    manager.setOpenRoots([ROOT])
+    await until(() => h.statuses.at(-1)?.state === 'synced')
+    expect(h.passes).toEqual([ROOT])
+
+    h.emitVault(ROOT, change('README.md', 1))
+    h.emitVault(ROOT, change('src/app.ts', 2))
+    h.emitVault(ROOT, { type: 'add', path: `${ROOT}/docs/spec.md`, mtime: 3 })
+    await sleep(80)
+
+    expect(h.statuses.filter((s) => s.state === 'pending')).toHaveLength(0)
+    expect(h.passes).toEqual([ROOT])
+
+    // A board edit still does what it always did.
+    h.emitVault(ROOT, change('Folder/Board.excalidraw', 4))
+    await until(() => h.passes.length === 2)
   })
 })

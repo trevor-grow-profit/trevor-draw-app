@@ -1,6 +1,8 @@
-import { stat } from 'node:fs/promises'
+import { copyFile, mkdtemp, rm, stat } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
 import path from 'node:path'
-import { GITHUB_FILE_LIMIT_BYTES, type GithubSyncMerge, type GithubSyncStatus } from '@shared/types'
+import { DIAGRAM_EXTENSIONS, DRAWING_VIEW_EXTENSIONS, GITHUB_FILE_LIMIT_BYTES, type GithubSyncMerge, type GithubSyncStatus } from '@shared/types'
+import { isBoard } from '@shared/fileKind'
 import { detectRepo } from './detect'
 import { ensureVaultIgnores, VAULT_IGNORED } from './ignore'
 import { git, GIT_TIMEOUT_CODE, installGitHint, resolveGit, zList, type GitResult } from './exec'
@@ -37,6 +39,34 @@ const SUBJECT_FILES = 3
 
 /** Git pathspecs for what a vault ignores; `*` crosses `/`, so these match at any depth. */
 const IGNORED_PATHSPEC = VAULT_IGNORED.map((entry) => `*${entry}`)
+
+/**
+ * WHAT SYNC COMMITS (ACT-370): boards and what belongs to them, nothing else. `add -A` on the vault
+ * root would commit every dirty file in the repo — fine in a repo that holds only boards, a trap in
+ * any other (a vault opened inside a working repo, say our-marketing, where a half-done doc edit
+ * would ride along in a `sync:` commit). So staging is scoped to these pathspecs (`*` crosses `/`,
+ * so a board at any depth matches) and every other dirty file is left exactly as it is, for its
+ * owner to commit. `.yaseendraw/` holds the vault's favorites and sync switch, `assets/` is where a
+ * drawing's picture bytes land, and `.gitignore` is in because `ensureVaultIgnores` appends to it.
+ */
+const SCOPE_GLOBS: readonly string[] = [...DRAWING_VIEW_EXTENSIONS.map((ext) => `*${ext}`), ...DIAGRAM_EXTENSIONS.map((ext) => `*${ext}`), '.yaseendraw/', 'assets/', '.gitignore']
+
+/** The scope as git pathspecs. `icase`: a board's extension is matched in any case (`B.EXCALIDRAW`), like everywhere else in the app. */
+export const SYNC_SCOPE: readonly string[] = SCOPE_GLOBS.map((glob) => `:(icase)${glob}`)
+
+/** The complement of `SYNC_SCOPE` as pathspecs: everything sync leaves alone. */
+const OUTSIDE_SCOPE: readonly string[] = ['.', ...SCOPE_GLOBS.map((glob) => `:(exclude,icase)${glob}`)]
+
+/**
+ * Whether a vault-relative path is something sync would commit — the pure twin of `SYNC_SCOPE`,
+ * for the watcher: an edit outside the scope is not a reason to run a pass (`manager.ts`).
+ */
+export function inSyncScope(rel: string): boolean {
+  const posix = rel.split(path.sep).join('/')
+  if (posix === '' || posix.startsWith('..')) return false
+  if (isBoard(posix)) return true
+  return posix === '.gitignore' || posix === '.yaseendraw' || posix.startsWith('.yaseendraw/') || posix === 'assets' || posix.startsWith('assets/')
+}
 
 const listFiles = async (bin: string, root: string, args: readonly string[]): Promise<string[]> => {
   const listed = await git(bin, root, ['ls-files', '-z', ...args, '--', ...IGNORED_PATHSPEC])
@@ -107,10 +137,17 @@ async function oversize(root: string, rel: readonly string[]): Promise<string[]>
  * history and the push will keep failing (`attention/error`) until the history is rewritten.
  */
 async function stageWithinLimit(bin: string, root: string): Promise<{ failed: GitResult | null; tooLarge: string[] }> {
-  const untracked = zList(await git(bin, root, ['ls-files', '-z', '--others', '--exclude-standard']))
-  const modified = zList(await git(bin, root, ['ls-files', '-z', '--modified']))
-  const held = await oversize(root, [...new Set([...untracked, ...modified])])
-  const staged = await git(bin, root, ['add', '-A', '--', '.', ...held.map((p) => `:(exclude,literal)${p}`)])
+  // Only what is in scope is even looked at (ACT-370): an untracked video beside the boards is not
+  // sync's to hold back, or to name in a banner. `--modified` lists deletions too.
+  const untracked = zList(await git(bin, root, ['ls-files', '-z', '--others', '--exclude-standard', '--', ...SYNC_SCOPE]))
+  const modified = zList(await git(bin, root, ['ls-files', '-z', '--modified', '--', ...SYNC_SCOPE]))
+  const dirty = [...new Set([...untracked, ...modified])]
+  const held = await oversize(root, dirty)
+  // Literal paths, never the globs: `git add` fails outright on a pathspec that matches nothing,
+  // and a vault with no `.drawio` in it is the ordinary case.
+  const toStage = dirty.filter((p) => !held.includes(p))
+  if (toStage.length === 0) return { failed: null, tooLarge: held }
+  const staged = await git(bin, root, ['add', '-A', '--', ...toStage.map((p) => `:(literal)${p}`)])
   if (staged.code !== 0) return { failed: staged, tooLarge: held }
   const late = await oversize(root, zList(await git(bin, root, ['diff', '--cached', '--name-only', '-z'])))
   if (late.length > 0) await git(bin, root, ['reset', '-q', '--', ...late.map((p) => `:(literal)${p}`)])
@@ -227,10 +264,14 @@ export async function syncPass(root: string, opts?: { candidates?: readonly stri
     if (staging.failed !== null) return withTooLarge(fromFailure(root, repo, staging.failed), tooLarge)
     // Nothing staged — every dirty file was held back, or ignored — is not a commit to attempt:
     // git's wording for "only untracked files left" matches neither NOTHING_TO_COMMIT needle.
+    // Something the user staged by hand outside the scope (`git add` in a terminal, half a commit
+    // in progress) is theirs, not sync's: it is unstaged — every byte stays in the working tree —
+    // so the commit below carries boards only (ACT-370). `.DS_Store` untracking (above) is kept.
+    await git(bin, root, ['reset', '-q', '--', ...OUTSIDE_SCOPE, ...IGNORED_PATHSPEC.map((spec) => `:(exclude)${spec}`)])
     const anything = (await git(bin, root, ['diff', '--cached', '--quiet'])).code !== 0
-    // With a file held back, the subject is built from what IS staged: porcelain collapses an
-    // untracked folder to `Folder/`, which would name the folder the held-back file sits in.
-    const named = tooLarge.length > 0 ? zList(await git(bin, root, ['diff', '--cached', '--name-only', '-z'])) : facts.dirtyFiles
+    // The subject is built from what IS staged, never from porcelain: porcelain collapses an
+    // untracked folder to `Folder/`, and it names the dirty files sync leaves alone.
+    const named = zList(await git(bin, root, ['diff', '--cached', '--name-only', '-z']))
     const committed = anything ? await git(bin, root, ['commit', '-m', commitMessage(named)]) : { code: 0, stdout: '', stderr: '' }
     if (committed.code !== 0 && !NOTHING_TO_COMMIT.test(`${committed.stdout}\n${committed.stderr}`)) {
       // A machine with no `user.name`/`user.email` cannot commit at all, and no amount of retrying
@@ -328,6 +369,46 @@ export async function lookAtRemote(root: string): Promise<RemoteLook> {
  * rebase and are not touched. Answers `rebase()`'s verdict, or the git failure that stopped the park.
  */
 async function parkWhileRebasing(bin: string, root: string, tooLarge: readonly string[], rebase: () => Promise<boolean>): Promise<boolean | GitResult> {
+  // ACT-370: a dirty tracked file OUTSIDE the scope (the user's own edit in a shared repo) is the
+  // same problem as a held-back one — `rebase` refuses over it — with the same answer: shelved by
+  // copy for the length of the rebase, and its exact bytes (or its deletion) put back after.
+  const outside = zList(await git(bin, root, ['ls-files', '-z', '--modified', '--', ...OUTSIDE_SCOPE]))
+  const shelf = outside.length === 0 ? null : await shelve(bin, root, outside)
+  try {
+    return await parkTooLarge(bin, root, tooLarge, rebase)
+  } finally {
+    if (shelf !== null) await shelf.restore()
+  }
+}
+
+/**
+ * Copies of the given dirty tracked files (a deleted one recorded as such), then `checkout` so
+ * the tree is clean for the rebase. `restore` puts the copies back byte for byte, deletes again
+ * what was deleted, and removes the copies. On disk, not in memory: a shared repo's dirty file can
+ * be anything, a video included.
+ */
+async function shelve(bin: string, root: string, rels: readonly string[]): Promise<{ restore: () => Promise<void> }> {
+  const dir = await mkdtemp(path.join(tmpdir(), 'yaseendraw-shelf-'))
+  const kept = new Map<string, string | null>()
+  for (const [i, rel] of rels.entries()) {
+    const copy = path.join(dir, String(i))
+    const ok = await copyFile(path.join(root, rel), copy).then(() => true, () => false)
+    kept.set(rel, ok ? copy : null)
+  }
+  await git(bin, root, ['checkout', '--', ...rels.map((p) => `:(literal)${p}`)])
+  return {
+    async restore() {
+      for (const [rel, copy] of kept) {
+        const target = path.join(root, rel)
+        if (copy === null) await rm(target, { force: true })
+        else await copyFile(copy, target).catch(() => undefined)
+      }
+      await rm(dir, { recursive: true, force: true })
+    },
+  }
+}
+
+async function parkTooLarge(bin: string, root: string, tooLarge: readonly string[], rebase: () => Promise<boolean>): Promise<boolean | GitResult> {
   const tracked = tooLarge.length === 0 ? [] : zList(await git(bin, root, ['ls-files', '-z', '--', ...tooLarge.map((p) => `:(literal)${p}`)]))
   if (tracked.length === 0) return rebase()
   const specs = tracked.map((p) => `:(literal)${p}`)
