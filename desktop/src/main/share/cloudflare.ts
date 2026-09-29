@@ -66,8 +66,26 @@ export class CloudflareError extends BridgeFailure {
   }
 }
 
+/** Tries per call when the socket dies under the request: the first, then two more. */
+const SOCKET_RETRIES = 3
+const DEAD_SOCKET_CODES = new Set(['EPIPE', 'ECONNRESET', 'UND_ERR_SOCKET', 'ECONNREFUSED'])
+
+function deadSocketCode(err: unknown): string | null {
+  const cause = err instanceof Error ? (err.cause as { code?: unknown } | undefined) : undefined
+  const code = cause !== undefined && cause !== null && typeof cause.code === 'string' ? cause.code : null
+  return code !== null && DEAD_SOCKET_CODES.has(code) ? code : null
+}
+
+/** `fetch failed` whose cause is the socket closing under the write — not a timeout, not a refusal Cloudflare answered. */
+export function isDeadSocket(err: unknown): boolean {
+  return deadSocketCode(err) !== null
+}
+
 export function offline(what: string, err: unknown): CloudflareError {
   const timedOut = err instanceof Error && (err.name === 'TimeoutError' || err.name === 'AbortError')
+  // The person gets plain English; the log keeps the real reason (undici folds it into `cause`).
+  const cause = err instanceof Error && err.cause instanceof Error ? ` — cause: ${err.cause.name} ${err.cause.message}` : ''
+  console.warn(`[share] could not reach ${what}: ${err instanceof Error ? `${err.name} ${err.message}` : String(err)}${cause}`)
   return new CloudflareError('OFFLINE', timedOut ? `${what} took too long to answer. Check your internet connection and try again.` : `Can't reach ${what}. Check your internet connection and try again.`, 0, null)
 }
 
@@ -117,12 +135,24 @@ export const assetHash = (file: AssetFile): string => createHash('sha256').updat
 export function createCloudflareClient(token: string, base: string = CLOUDFLARE_API, fetchImpl: typeof fetch = fetch): CloudflareClient {
   async function call<T>(method: string, route: string, body?: BodyInit, contentType?: string, bearer: string = token, timeoutMs = API_TIMEOUT_MS): Promise<{ status: number; env: CfEnvelope<T> }> {
     let res: Response
-    try {
-      const headers: Record<string, string> = { authorization: `Bearer ${bearer}` }
-      if (contentType !== undefined) headers['content-type'] = contentType
-      res = await fetchImpl(`${base}${route}`, { method, headers, body, signal: AbortSignal.timeout(timeoutMs) })
-    } catch (err) {
-      throw offline('Cloudflare', err)
+    const headers: Record<string, string> = { authorization: `Bearer ${bearer}` }
+    if (contentType !== undefined) headers['content-type'] = contentType
+    // A request written into a keep-alive socket Cloudflare has already closed dies with EPIPE or
+    // ECONNRESET before a byte reaches the server (Electron's Node does not notice the closed
+    // socket first; setup's asset reads leave the connection idle long enough). Nothing was
+    // received, so sending it again is safe — the same retry wrangler makes. A timeout is not retried.
+    for (let attempt = 1; ; attempt += 1) {
+      try {
+        res = await fetchImpl(`${base}${route}`, { method, headers, body, signal: AbortSignal.timeout(timeoutMs) })
+        break
+      } catch (err) {
+        if (attempt < SOCKET_RETRIES && isDeadSocket(err)) {
+          console.warn(`[share] ${method} ${route}: the connection was closed under the request (${deadSocketCode(err)}); sending it again (${attempt}/${SOCKET_RETRIES - 1})`)
+          await new Promise((r) => setTimeout(r, 300 * attempt))
+          continue
+        }
+        throw offline('Cloudflare', err)
+      }
     }
     let env: CfEnvelope<T>
     try {
