@@ -6,7 +6,7 @@
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import type { Page } from '@playwright/test'
 import { test, expect } from './support/fixtures'
-import { canvasBox, canvasChanged, canvasReady, clickEmpty, savedChip, staticCanvasShot } from './support/canvas'
+import { activeCanvas, canvasBox, canvasChanged, canvasReady, clickEmpty, savedChip, staticCanvasShot } from './support/canvas'
 import { diagramReady } from './support/drawio'
 import { notice } from './support/sidebar'
 import { diagram, diagramBox, fileIdFor, frame, imageElement, liveElements, readScene, rect, scene, solidPNG, unchangedFor } from './support/vault'
@@ -199,4 +199,36 @@ test('the launcher rail’s Writing mode and Show frames are global canvas prefe
   await rail.getByRole('button', { name: 'Show frames' }).click()
   await expect(rail.getByRole('button', { name: 'Show frames' })).toHaveAttribute('aria-pressed', 'false')
   await expect.poll(async () => (await page.evaluate(() => window.yaseenDraw.state.get())).settings.canvas).toMatchObject({ writingMode: true, framesVisible: false })
+})
+
+/** Drops scene JSON as a file onto the canvas, the way a Finder drag of a `.excalidraw` does (no MIME type). */
+async function dropSceneOnCanvas(page: Page, json: string, name: string): Promise<void> {
+  await activeCanvas(page).evaluate((canvas, { json, fileName }) => {
+    const dt = new DataTransfer()
+    dt.items.add(new File([json], fileName))
+    const r = canvas.getBoundingClientRect()
+    const at = { clientX: r.left + r.width / 2, clientY: r.top + r.height / 2, bubbles: true, cancelable: true, dataTransfer: dt }
+    canvas.dispatchEvent(new DragEvent('dragover', at))
+    canvas.dispatchEvent(new DragEvent('drop', at))
+  }, { json, fileName: name })
+}
+
+test('a scene file dropped on a board that has drawings ADDS to it — twice adds twice — and never replaces it', async ({ openBoard }) => {
+  const { page, board } = await openBoard({ 'Board.excalidraw': scene([rect('a')]) })
+  const other = scene([rect('b', 300, 0), rect('c', 600, 0)])
+  await dropSceneOnCanvas(page, other, 'Other.excalidraw')
+  await expect.poll(() => liveElements(board)?.length).toBe(3)
+  expect(liveElements(board)?.map((el) => el.id)).toContain('a')
+  // The paste door duplicates ids, so the same file can be dropped again and lands again.
+  await dropSceneOnCanvas(page, other, 'Other.excalidraw')
+  await expect.poll(() => liveElements(board)?.length).toBe(5)
+  expect(new Set(liveElements(board)?.map((el) => el.id)).size).toBe(5)
+  expect(liveElements(board)?.filter((el) => el.type === 'rectangle')).toHaveLength(5)
+})
+
+test('a scene file dropped on an EMPTY board opens it, as the engine always did', async ({ openBoard }) => {
+  const { page, board } = await openBoard({ 'Board.excalidraw': scene() })
+  await dropSceneOnCanvas(page, scene([rect('b', 300, 0), rect('c', 600, 0)], { background: '#fffce8' }), 'Other.excalidraw')
+  await expect.poll(() => liveElements(board)?.map((el) => el.id).sort()).toEqual(['b', 'c'])
+  await expect.poll(() => readScene(board).appState?.viewBackgroundColor).toBe('#fffce8')
 })

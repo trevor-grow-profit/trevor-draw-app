@@ -112,6 +112,12 @@ Image bytes are kept OUT of the scene: a pasted or dropped image is written once
 a small JSON file that git can actually diff and GitHub will actually accept. The same image used
 twice is stored once.
 
+Dropping an `.excalidraw` (or `.json`) file onto a board that already has drawings on it ADDS the
+file's elements to the board, the way a paste does: centred in the view, selected, one undo step,
+fresh ids (so the same file can be dropped twice). It never replaces what is there. Dropped onto an
+empty board, the file opens as is, background included. Pictures and `.excalidrawlib` files drop as
+they always did.
+
 Saving is debounced and atomic (tmp file + rename), the mtime you read is the mtime a write must
 match, and a file that changed underneath an unsaved buffer raises the conflict bar instead of
 silently losing either side.

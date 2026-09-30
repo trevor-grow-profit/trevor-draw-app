@@ -1014,6 +1014,25 @@ Pure rules: `shared/drawingAssets.ts` (`stampBoardMeta`, `parseBoardMetaBlock`) 
 `shared/diagramFile.ts` (`stampDiagramMeta`, `parseDiagramMetaAttrs`); the one open that serves both
 the tree and the save: `desktop/src/main/fs/boardHead.ts` (`readBoardHead`).
 
+### Dropping a scene file on a board (drop merge)
+
+The engine's own drop handler (`handleAppOnDrop` → `loadFileToCanvas`) treats a dropped
+`.excalidraw` / `.json` as "open this file" and REPLACES every element on the canvas. In a vault the
+open tab is a document, so `client/src/drawings/dropScene.ts` intercepts instead
+(`ExcalidrawSurface`'s `onDropCapture`, on the seam's own element, stops the event before the
+engine's `onDrop` runs):
+
+- **Ours**: exactly ONE dropped file named `.excalidraw` or `.json`, on a board holding at least one
+  live element. The file is parsed (anything with an `elements` array; deleted elements never
+  travel), restored with `repairBindings`, its embedded image bytes handed to `addFiles` (the next
+  save extracts them into `assets/`, 🔒 YAZ-1775 D3), and its elements go through `insertElements`,
+  the paste door the Components tab uses: fresh ids and seeds, indices synced, frames and bound
+  text kept, centred in the view, selected, one undo step. The file's own appState is ignored.
+- **The engine's, unchanged**: a drop on an EMPTY board (the file opens as before, background and
+  view included), images, a `.excalidrawlib`, several files at once, text and links.
+- A file that will not parse is reported in the engine's own error dialog (`appState.errorMessage`),
+  the same place its loader reports one, and the board is untouched.
+
 ### Export Drawing… (🔒 YAZ-1775 D3, YAZ-1821)
 
 **🔒 YAZ-1775 D3 says the vault file never embeds, and that export is the one place that does.** A board in

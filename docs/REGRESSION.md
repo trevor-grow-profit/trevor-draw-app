@@ -176,6 +176,7 @@ Every line of [feature-safety-net](../thoughts/yaz-2073-scope/research/feature-s
 | F18 | Export Excalidraw Drawing… ⌘⇧S, images embedded | A: `canvas` | ★C6 |
 | F19 | Excalidraw fonts served offline from `app://` | A: `launch` | ★C2 |
 | F20 | One engine per mounted tab; focus handoff on reveal | A (part): `tabs` — a hidden tab keeps its engine; focus handoff untested | — |
+| F88 | Drop an `.excalidraw` / `.json` onto a board with drawings: it is ADDED (fresh ids, twice adds twice); onto an empty board it opens | A: `canvas` | — |
 
 ### Canvas panel (hamburger)
 

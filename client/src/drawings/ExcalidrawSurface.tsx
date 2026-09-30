@@ -95,19 +95,21 @@
  *
  * THE IMPERATIVE DOORS THIS APP USES: `updateScene` (the prefs push, the dock pref, image export,
  * canvas background, `replaceScene`) · `refresh` · `getAppState` / `getSceneElements` / `getFiles` /
- * `addFiles` (the 🔒 YAZ-1775 D3 hydrate/extract path) · `updateFrameRendering` (the frames pref's one
+ * `addFiles` (the 🔒 YAZ-1775 D3 hydrate/extract path, and a dropped scene's bytes) · `insertElements` (a dropped
+ * scene file, `dropScene.ts`) · `updateFrameRendering` (the frames pref's one
  * application path) · `setViewport` and `setActiveTool` (the Present tab) · `toggleSidebar` (the
  * hamburger and the two shortcuts). `focusContainer` is RE-IMPLEMENTED here: the engine keeps it
  * on its App class rather than on the imperative API, so the seam focuses `.excalidraw-container`
  * itself for the tab-reveal handoff (🔒 YAZ-1812).
  */
-import { useCallback, useEffect, useMemo, useRef, useState, type ComponentProps, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type ComponentProps, type DragEvent as ReactDragEvent, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from 'react'
 import { referencedFileIds, type DrawingFileData } from '@shared/drawingAssets'
 import { appStateToPrefs, changedPrefKeys, prefsEqual, prefsToAppState, type EngineAppStateSlice } from '@shared/canvasPrefs'
 import { DEFAULT_CANVAS_PANEL, DEFAULT_CANVAS_PREFS, type CanvasPanelState, type CanvasPanelTab, type CanvasPrefs } from '@shared/types'
 import { CANVAS_SIDEBAR, CanvasSidebar, openCanvasTab } from './CanvasSidebar'
 import { appStateEdits, boardAppStateKeys } from './boardAppState'
 import { openViewport, type DrawingScene } from './drawingScene'
+import { droppedSceneFile, mergeDroppedScene, shouldMergeDrop } from './dropScene'
 import { applyToolbarMode, loadExcalidraw, type ExcalidrawModule } from './engine'
 import { yaseenFormFactor } from './formFactor'
 import { applyFramesVisibility } from './framesVisibility'
@@ -405,6 +407,33 @@ export function ExcalidrawSurface({
     [rail],
   )
 
+  /**
+   * A SCENE FILE DROPPED ON A BOARD ADDS TO IT (`dropScene.ts`). The engine's own `onDrop` would
+   * REPLACE the canvas with the file; this capture-phase handler on the seam's own element runs
+   * first and, for one `.excalidraw` / `.json` on a board that holds elements, stops the event and
+   * inserts the file instead. Every other drop — images, a library, several files, an empty board —
+   * falls through to the engine untouched. A file that will not parse is reported in the engine's
+   * own error dialog, the same place its loader reports one.
+   */
+  const onDropCapture = useCallback((event: ReactDragEvent<HTMLDivElement>) => {
+    const api = rawApiRef.current
+    const mod = engineRef.current
+    if (api === null || mod === null) return
+    const file = droppedSceneFile(event.dataTransfer)
+    if (file === null || !shouldMergeDrop(api.getSceneElements())) return
+    event.preventDefault()
+    event.stopPropagation()
+    void file
+      .text()
+      .then((json) => {
+        mergeDroppedScene(mod, api, json)
+      })
+      .catch((error: unknown) => {
+        const reason = error instanceof Error ? error.message : String(error)
+        api.updateScene({ appState: { errorMessage: `Could not add "${file.name}": ${reason}` } as unknown as EngineAppState })
+      })
+  }, [])
+
   // Shell → engine (🔒 YAZ-1775 D9): a prop that differs from what was last applied is pushed, changed keys
   // only. `framesVisible` goes through `updateFrameRendering`; `toolLock` is merged into the tool
   // the engine is HOLDING, because a partial `activeTool` would wipe it.
@@ -561,7 +590,7 @@ export function ExcalidrawSurface({
   const { Excalidraw } = engine
   return (
     // The surface's own element, so ⌘F / ⌘C are heard here and nowhere else in the shell.
-    <div ref={rootRef} className="drawing-surface" onKeyDownCapture={onKeyDownCapture}>
+    <div ref={rootRef} className="drawing-surface" onKeyDownCapture={onKeyDownCapture} onDropCapture={onDropCapture}>
       <Excalidraw
         initialData={initialData}
         initialState={initialState}
