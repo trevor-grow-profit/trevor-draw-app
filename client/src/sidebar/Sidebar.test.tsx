@@ -268,6 +268,18 @@ describe('Sidebar file-row open gestures (D2 GRO-2168, I3 GRO-2235)', () => {
     expect(bridge.window.open).not.toHaveBeenCalled()
   })
 
+  it('the file row context menu offers "Open in ▸ New tab"; it opens a background tab and closes', async () => {
+    const { bridge, props, el } = await mount()
+    act(() => void fileRow(el)?.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true })))
+    expect(subLabels(el)[0]).toBe('New tab')
+    clickSub(el, 'New tab')
+    expect(props.onOpenFileBackground).toHaveBeenCalledTimes(1)
+    expect(props.onOpenFileBackground).toHaveBeenCalledWith('/v/a.excalidraw')
+    expect(props.onOpenFile).not.toHaveBeenCalled()
+    expect(bridge.window.open).not.toHaveBeenCalled()
+    expect(el.querySelector('.ctx-menu')).toBeNull()
+  })
+
   it('the file row context menu offers "Open in ▸ New window" above "Copy path"; it routes to the bridge and closes', async () => {
     const { bridge, props, el } = await mount()
     act(() => void fileRow(el)?.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true })))
@@ -371,6 +383,7 @@ describe('Sidebar file-row open gestures (D2 GRO-2168, I3 GRO-2235)', () => {
     const { el } = await mount()
     act(() => void el.querySelector('.tree__row--dir')?.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true })))
     expect(subItemByLabel(el, 'New window')).toBeUndefined()
+    expect(subItemByLabel(el, 'New tab')).toBeUndefined()
     expect(itemByLabel(el, 'Copy path')).toBeDefined()
     act(() => void el.querySelector('.ctx-overlay')?.dispatchEvent(new MouseEvent('mousedown', { bubbles: true })))
     act(() => void el.querySelector('.sidebar__body')?.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true })))

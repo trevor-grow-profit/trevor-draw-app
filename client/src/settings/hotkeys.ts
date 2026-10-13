@@ -80,7 +80,7 @@ export const MOUSE_TIPS: readonly HotkeyEntry[] = [
   // (YAZ-1337): the two plural menu items. Shift toggles one row at a time — it never opens
   // anything and never folds a folder.
   { keys: '⇧-click file or folder', label: 'Add or remove it from a multi-selection — right-click for Copy N paths / Open N in new tabs' },
-  { keys: 'Right-click file', label: 'Cut / Copy / Paste, Copy path, New Excalidraw drawing / New draw.io diagram, Open in ▸ (new window, VS Code, default app, Finder)' },
+  { keys: 'Right-click file', label: 'Cut / Copy / Paste, Copy path, New Excalidraw drawing / New draw.io diagram, Open in ▸ (new tab, new window, VS Code, default app, Finder)' },
   // Search results (Docs YAZ-2050): the Sidebar opens the tree row's own menu for them.
   { keys: 'Right-click a search result', label: 'The same menu as its row in the tree' },
   // The vault menu (YAZ-1941, ported from Docs YAZ-1798): the sidebar header's vault name, or any vault in the ⌘O switcher.

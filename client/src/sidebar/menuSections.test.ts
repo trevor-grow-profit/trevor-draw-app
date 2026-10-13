@@ -205,8 +205,8 @@ describe('create group', () => {
  * (a second section). No child → no parent. The parent has no select of its own.
  */
 describe('"Open in ▸" (D7 amended)', () => {
-  it('a drawing FILE row: the three open verbs, then Reveal in its own section', () => {
-    expect(openInLabels(build(FILE_ROW))).toEqual([['New window', 'VS Code', 'Default app'], ['Reveal in Finder']])
+  it('a drawing FILE row: the four open verbs, then Reveal in its own section', () => {
+    expect(openInLabels(build(FILE_ROW))).toEqual([['New tab', 'New window', 'VS Code', 'Default app'], ['Reveal in Finder']])
   })
 
   it('the parent is a parent: no onSelect, and it stands ALONE in its own group between the this-row items and Delete', () => {

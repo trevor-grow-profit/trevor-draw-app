@@ -381,6 +381,13 @@ const toggleFavorite: Leaf = (t, h) => {
 
 // ---- (5) Open in ▸: the OS verbs, one parent in a group of its own (D7 amended) ----
 
+/** "Open in ▸ New tab" — FILE rows only, same gate as New window: the ⌘-click background opener (I3, GRO-2235), from the menu. */
+const openInNewTab: Leaf = (t, h) => {
+  const path = t.newWindowPath
+  if (path === null) return null
+  return { id: 'open-tab', label: 'New tab', onSelect: () => h.onOpenInNewTabs([path]) }
+}
+
 /** "Open in ▸ New window" — FILE rows only (D2, GRO-2168); folders and blank space hide it. */
 const openInNewWindow: Leaf = (t, h) => {
   const path = t.newWindowPath
@@ -424,7 +431,7 @@ const revealInFinder: Leaf = (t, h) => {
  * sets Reveal apart from the three "open" verbs. No child at all → no parent: an empty flyout is a lie.
  */
 const openIn: Item = (t, h) => {
-  const children = [build([openInNewWindow, openInVsCode, openInDefault], t, h), build([revealInFinder], t, h)]
+  const children = [build([openInNewTab, openInNewWindow, openInVsCode, openInDefault], t, h), build([revealInFinder], t, h)]
   if (children.every((section) => section.length === 0)) return null
   return { id: 'open-in', label: 'Open in', children }
 }
