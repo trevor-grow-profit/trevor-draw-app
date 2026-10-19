@@ -544,6 +544,23 @@ describe('sync scope (ACT-370)', { timeout: REAL_GIT_TIMEOUT_MS }, () => {
     expect(await repo.run(['diff', '--cached', '--name-only'])).toBe('')
   })
 
+  it('syncs past untracked files also added upstream without committing or losing the local drafts', async () => {
+    const { repo, remote } = await pushedRepo()
+    const other = await secondClone(remote)
+    const bin = await requireGit()
+    await writeFile(path.join(other, 'draft.md'), 'remote version')
+    await writeFile(path.join(other, 'theirs.drawio'), 'remote board')
+    for (const args of [['add', '-A'], ['commit', '-m', 'remote additions'], ['push']]) expect((await git(bin, other, args)).code).toBe(0)
+    await repo.write('draft.md', 'uncommitted local version')
+    await repo.write('mine.drawio', 'local board')
+    expect((await syncPass(repo.root)).state).toBe('synced')
+    expect(readFileSync(path.join(repo.root, 'draft.md'), 'utf8')).toBe('uncommitted local version')
+    expect(await repo.run(['show', 'HEAD:draft.md'])).toBe('remote version')
+    expect(await remoteHead(repo, remote)).toBe(await repo.run(['rev-parse', 'HEAD']))
+    expect((await syncPass(repo.root)).state).toBe('synced')
+    expect(readFileSync(path.join(repo.root, 'draft.md'), 'utf8')).toBe('uncommitted local version')
+  })
+
   it('a MODIFIED tracked non-board file never blocks the rebase: the rest syncs both ways and its bytes stay exactly as they were', async () => {
     const { repo, remote } = await pushedRepo()
     await repo.write('README.md', '# original\n')

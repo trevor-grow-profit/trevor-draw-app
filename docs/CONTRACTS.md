@@ -1507,3 +1507,15 @@ it failed the memory and long-task gates (fork branch `yaz-2073-5b1`); next idea
 No browser mode — the app runs only inside Electron. No path jail in the file layer. No
 Developer-ID signing or notarization, no auto-update, no Intel or universal builds. No end-to-end
 suite in CI (the Playwright suite is local — ⚡ YAZ-2073 D17, "Scripts" above).
+
+### Shared-repository sync recovery
+
+Sync shelves modified tracked and untracked files outside the board scope before rebasing.
+Incoming versions remain in Git history; local drafts return to their original paths without
+being committed. Recovery copies and a manifest live under the repository's Git directory at
+`trevor-draw-recovery/`. The full backup must succeed before any working file is changed.
+A failed restore retains those copies and reports their location. A later sync refuses to run
+while recovery is pending. Recover the manifest's files before removing that directory; never
+blindly delete it to dismiss an error. Concurrent edits and incoming symlinks stop restoration
+instead of overwriting new work or writing outside the vault. Non-conflict Git failures report
+the actual error rather than the generic merge warning.
