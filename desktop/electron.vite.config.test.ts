@@ -28,6 +28,17 @@ describe('renderSourcemapsAside (🔒 YAZ-2073 D14)', () => {
     expect(await files(maps())).toEqual(['assets/index-a1.js.map', 'assets/subset-worker.chunk-b2.js.map'])
   })
 
+  it('moves maps from an overridden output directory used by bundle tests and tooling', async () => {
+    const custom = path.join(root, 'custom-main')
+    await mkdir(custom)
+    await writeFile(path.join(custom, 'index.js'), 'code')
+    await writeFile(path.join(custom, 'index.js.map'), 'map')
+    const hook = renderSourcemapsAside(out(), maps()).writeBundle as (options: unknown, bundle: Rollup.OutputBundle) => Promise<void>
+    await hook({ dir: custom }, Object.fromEntries(['index.js', 'index.js.map'].map((name) => [name, {}])) as Rollup.OutputBundle)
+    expect(await files(custom)).toEqual(['index.js'])
+    expect(await files(maps())).toEqual(['index.js.map'])
+  })
+
   it("replaces the version's maps whole, so a rebuild keeps only its own", async () => {
     await build(['assets/index-a1.js', 'assets/index-a1.js.map'])
     await build(['assets/index-d4.js', 'assets/index-d4.js.map'])

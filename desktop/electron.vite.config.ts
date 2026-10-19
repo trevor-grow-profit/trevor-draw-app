@@ -93,7 +93,7 @@ export function renderSourcemapsAside(outDir: string, mapsDir: string): Plugin {
       await rm(mapsDir, { recursive: true, force: true })
       for (const file of Object.keys(bundle).filter((f) => f.endsWith('.map'))) {
         await mkdir(dirname(resolve(mapsDir, file)), { recursive: true })
-        await rename(resolve(outDir, file), resolve(mapsDir, file))
+        await rename(resolve(_options.dir ?? outDir, file), resolve(mapsDir, file))
       }
     },
   }
@@ -111,7 +111,10 @@ export default defineConfig({
     // devDependency; `tools/mainBundle.test.mjs` fails if the bundle requires anything but Node
     // built-ins and electron (YAZ-2073 3E).
     resolve: { alias: { '@shared': shared } },
-    build: { externalizeDeps: false, rollupOptions: { input: { index: resolve(here, 'src/main/index.ts') } } },
+    // Keep the sync recovery code within the size gate without dropping safety checks.
+    // Maps stay outside the packaged output, separately from the renderer's maps.
+    plugins: [renderSourcemapsAside(resolve(here, 'out/main'), resolve(here, '.maps/main', version))],
+    build: { externalizeDeps: false, minify: 'esbuild', sourcemap: 'hidden', rollupOptions: { input: { index: resolve(here, 'src/main/index.ts') } } },
   },
   preload: {
     resolve: { alias: { '@shared': shared } },
@@ -132,8 +135,8 @@ export default defineConfig({
        */
       dedupe: ['react', 'react-dom'],
     },
-    // electron-vite 5 leaves the renderer unminified; Vite's esbuild minifier cuts its JS + CSS
-    // 14.7 → 9.4 MB and the entry chunk every window parses 973 → 413 KB (YAZ-2073 D14).
-    build: { outDir: rendererOut, minify: 'esbuild', sourcemap: 'hidden', rollupOptions: { input: resolve(client, 'index.html') } },
+    // Compress the renderer without moving startup work behind artificial lazy boundaries.
+    // Hidden maps remain available outside the packaged app for debugging.
+    build: { outDir: rendererOut, minify: 'terser', sourcemap: 'hidden', rollupOptions: { input: resolve(client, 'index.html') } },
   },
 })

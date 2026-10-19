@@ -1,9 +1,9 @@
-import { copyFile, mkdtemp, rm, stat } from 'node:fs/promises'
-import { tmpdir } from 'node:os'
+import { stat } from 'node:fs/promises'
 import path from 'node:path'
 import { DIAGRAM_EXTENSIONS, DRAWING_VIEW_EXTENSIONS, GITHUB_FILE_LIMIT_BYTES, type GithubSyncMerge, type GithubSyncStatus } from '@shared/types'
 import { isBoard } from '@shared/fileKind'
 import { detectRepo } from './detect'
+import { assertNoPendingShelf, shelfOutsideScope } from './shelf'
 import { ensureVaultIgnores, VAULT_IGNORED } from './ignore'
 import { git, GIT_TIMEOUT_CODE, installGitHint, resolveGit, zList, type GitResult } from './exec'
 import { ensureBoardMergeRule, resolveRebase } from './resolve'
@@ -254,6 +254,8 @@ export async function syncPass(root: string, opts?: { candidates?: readonly stri
   // of every vault that has never been set up, and the settings panel still gets the facts.
   if (!facts.isRepo || facts.remoteUrl === null) return { root, state: 'off', repo }
 
+  await assertNoPendingShelf(bin, root)
+
   // ---------- 1. local edits become one commit (minus anything GitHub would refuse — D3) ----------
   const droppings = await keepDroppingsOut(bin, root)
   await ensureBoardMergeRule(bin, root) // YAZ-1897 D2: boards never reach git's line merge
@@ -300,7 +302,13 @@ export async function syncPass(root: string, opts?: { candidates?: readonly stri
   if (behind > 0 && !flush) {
     const span = (await git(bin, root, ['rev-parse', 'HEAD', '@{u}'])).stdout.split('\n')
     const outcome = await parkWhileRebasing(bin, root, tooLarge, async () => {
-      if ((await git(bin, root, ['rebase', '@{u}'])).code === 0) return true
+      const rebased = await git(bin, root, ['rebase', '@{u}'])
+      if (rebased.code === 0) return true
+      const conflicts = await git(bin, root, ['ls-files', '-z', '--unmerged'])
+      if (conflicts.code !== 0 || conflicts.stdout === '') {
+        await git(bin, root, ['rebase', '--abort'])
+        throw new Error(`Sync could not update this folder: ${rebased.stderr.trim() || rebased.stdout.trim()}`)
+      }
       // YAZ-1897: settle the conflicts and finish; it aborts (losslessly) whatever it cannot settle.
       const report = await resolveRebase(bin, root, { before: span[0] ?? 'HEAD', upstream: span[1] ?? '@{u}' })
       merged = report ?? []
@@ -372,39 +380,11 @@ async function parkWhileRebasing(bin: string, root: string, tooLarge: readonly s
   // ACT-370: a dirty tracked file OUTSIDE the scope (the user's own edit in a shared repo) is the
   // same problem as a held-back one — `rebase` refuses over it — with the same answer: shelved by
   // copy for the length of the rebase, and its exact bytes (or its deletion) put back after.
-  const outside = zList(await git(bin, root, ['ls-files', '-z', '--modified', '--', ...OUTSIDE_SCOPE]))
-  const shelf = outside.length === 0 ? null : await shelve(bin, root, outside)
+  const shelf = await shelfOutsideScope(bin, root, OUTSIDE_SCOPE)
   try {
     return await parkTooLarge(bin, root, tooLarge, rebase)
   } finally {
     if (shelf !== null) await shelf.restore()
-  }
-}
-
-/**
- * Copies of the given dirty tracked files (a deleted one recorded as such), then `checkout` so
- * the tree is clean for the rebase. `restore` puts the copies back byte for byte, deletes again
- * what was deleted, and removes the copies. On disk, not in memory: a shared repo's dirty file can
- * be anything, a video included.
- */
-async function shelve(bin: string, root: string, rels: readonly string[]): Promise<{ restore: () => Promise<void> }> {
-  const dir = await mkdtemp(path.join(tmpdir(), 'yaseendraw-shelf-'))
-  const kept = new Map<string, string | null>()
-  for (const [i, rel] of rels.entries()) {
-    const copy = path.join(dir, String(i))
-    const ok = await copyFile(path.join(root, rel), copy).then(() => true, () => false)
-    kept.set(rel, ok ? copy : null)
-  }
-  await git(bin, root, ['checkout', '--', ...rels.map((p) => `:(literal)${p}`)])
-  return {
-    async restore() {
-      for (const [rel, copy] of kept) {
-        const target = path.join(root, rel)
-        if (copy === null) await rm(target, { force: true })
-        else await copyFile(copy, target).catch(() => undefined)
-      }
-      await rm(dir, { recursive: true, force: true })
-    },
   }
 }
 

@@ -188,3 +188,12 @@ change reports its before → after, and `thoughts/yaz-2073-scope/before-after.m
 - The vault is on NFS: saves can take 0.3–4 s, and on a network volume the watcher runs its chokidar polling fallback, which may double-fire. Echo suppression is by mtime (`Autosave.settled()`). This applies to the packaged app exactly as to dev — same main-process fs, same libuv.
 - The main process has no path jail (owner's choice): any absolute path the user can read or write, the app can too.
 - Linear project: https://linear.app/growprofit/issue/YAZ-1775 — the port's decision record.
+
+### Sync-fix build validation
+
+Production main-process code is minified with esbuild. Its hidden source maps are
+kept at `desktop/.maps/main/<version>/`, outside `desktop/out` and the packaged app.
+Renderer code uses the pinned Terser dependency; renderer maps retain their existing
+`desktop/.maps/<version>/` location. Keep both map directories for a shipped build.
+The size ceilings were lowered to the measured compressed output; no size limit
+was raised to accommodate sync recovery.
