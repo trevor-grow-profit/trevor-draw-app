@@ -44,6 +44,8 @@ test('Export Image… on a diagram writes the PNG the user named', async ({ sand
 
 test('⌘-wheel zooms around the cursor even where the page saw no pointermove (YAZ-3011)', async ({ openBoard }) => {
   const { app, page } = await openBoard({ 'Board.excalidraw': scene([rect('a', 100, 100)]) })
+  await expect(page.locator('.excalidraw .zoom-actions').filter({ visible: true })).toHaveCount(0)
+  await expect(page.locator('.excalidraw .fit-board-footer-island').filter({ visible: true })).toHaveCount(0)
   const box = await canvasBox(page)
   const a = { x: Math.round(box.x + box.width * 0.7), y: Math.round(box.y + box.height * 0.6) }
   const b = { x: a.x - 300, y: a.y - 200 }
