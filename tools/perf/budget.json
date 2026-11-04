@@ -14,7 +14,7 @@
     "asarNodeModulesFiles": { "max": 0, "target": 0 },
     "duplicateBytes": { "max": 81144, "target": 0 },
     "rendererEagerJsBytes": { "max": 410014, "$comment": "Raised from 413536 with YAZ-1989: the laser's three canvas prefs (lists, validators, mapping) in shared/canvasPrefs + shared/types, which the renderer loads eagerly." },
-    "rendererEagerCssBytes": { "max": 53426 },
+    "rendererEagerCssBytes": { "max": 53536, "$comment": "GRO-3408: +110 bytes to preserve Trevor’s existing scoped hidden zoom/fit controls in the delivered app. Other size ceilings are unchanged." },
     "rendererReachableChunks": { "max": 125 },
     "rendererTotalBytes": { "max": 22979027 },
     "rendererMapBytes": { "max": 0 },

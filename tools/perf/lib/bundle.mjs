@@ -198,7 +198,7 @@ export function checkApp(app) {
     const t = (plist.CFBundleDocumentTypes ?? []).find((d) => (d.CFBundleTypeExtensions ?? []).includes(ext))
     if (t?.LSHandlerRank !== 'Owner' || t?.CFBundleTypeRole !== 'Editor') fails.push(`Info.plist: .${ext} is not an Owner/Editor document type`)
   }
-  if (plist.CFBundleIdentifier !== 'com.yasinarshad.yaseendraw') fails.push(`Info.plist: appId is ${plist.CFBundleIdentifier}`)
+  if (plist.CFBundleIdentifier !== 'com.trevorrea.trevordraw') fails.push(`Info.plist: appId is ${plist.CFBundleIdentifier}`)
   // The deep ad-hoc seal (desktop/build/adhocSign.cjs): without it Gatekeeper calls a download "damaged".
   if (!/Signature=adhoc/.test(spawnSync('codesign', ['-dv', '--verbose=2', app]).stderr.toString())) fails.push('codesign: not ad-hoc sealed')
   try {

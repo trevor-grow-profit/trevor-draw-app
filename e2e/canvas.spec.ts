@@ -6,7 +6,7 @@
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import type { Page } from '@playwright/test'
 import { test, expect } from './support/fixtures'
-import { activeCanvas, canvasBox, canvasChanged, canvasReady, clickEmpty, savedChip, staticCanvasShot } from './support/canvas'
+import { activeCanvas, canvasBox, canvasChanged, canvasReady, clickEmpty, savedChip, sceneAt, staticCanvasShot } from './support/canvas'
 import { diagramReady } from './support/drawio'
 import { notice } from './support/sidebar'
 import { diagram, diagramBox, fileIdFor, frame, imageElement, liveElements, readScene, rect, scene, solidPNG, unchangedFor } from './support/vault'
@@ -40,6 +40,25 @@ test('Export Image… on a diagram writes the PNG the user named', async ({ sand
   await app.menu('menu.file.export-image', page)
   await expect.poll(() => existsSync(out), { timeout: 30_000 }).toBe(true)
   expect(readFileSync(out).subarray(0, 8)).toEqual(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))
+})
+
+test('⌘-wheel zooms around the cursor even where the page saw no pointermove (YAZ-3011)', async ({ openBoard }) => {
+  const { app, page } = await openBoard({ 'Board.excalidraw': scene([rect('a', 100, 100)]) })
+  await expect(page.locator('.excalidraw .zoom-actions').filter({ visible: true })).toHaveCount(0)
+  await expect(page.locator('.excalidraw .fit-board-footer-island').filter({ visible: true })).toHaveCount(0)
+  const box = await canvasBox(page)
+  const a = { x: Math.round(box.x + box.width * 0.7), y: Math.round(box.y + box.height * 0.6) }
+  const b = { x: a.x - 300, y: a.y - 200 }
+  await page.mouse.move(a.x, a.y) // the page's last pointermove is A
+  const before = await sceneAt(page, b.x, b.y)
+  // A ⌘-wheel at B with no mouse move first: the OS cursor is at B (another window covered this
+  // one while the mouse moved, then ⌘-Tab back). The engine must zoom around B, not A.
+  const cdp = await app.electron.context().newCDPSession(page)
+  await cdp.send('Input.dispatchMouseEvent', { type: 'mouseWheel', x: b.x, y: b.y, deltaX: 0, deltaY: -200, modifiers: 4 })
+  await expect.poll(async () => (await sceneAt(page, b.x, b.y)).zoom).toBeGreaterThan(before.zoom)
+  const after = await sceneAt(page, b.x, b.y)
+  expect(after.x).toBeCloseTo(before.x, 1)
+  expect(after.y).toBeCloseTo(before.y, 1)
 })
 
 test('View › Canvas Background changes the canvas and saves the colour into the board', async ({ openBoard }) => {

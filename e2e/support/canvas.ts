@@ -20,6 +20,30 @@ export async function canvasBox(page: Page): Promise<{ x: number; y: number; wid
   return box
 }
 
+/**
+ * The scene point under screen (x, y) on the active tab's canvas, and its zoom — read off the
+ * mounted engine's own state (the `App` class instance behind the visible `.excalidraw` element,
+ * found through its React fiber) with the engine's own formula, `(client − offset) / zoom − scroll`.
+ * Test-only: the app exposes no door to the engine's viewport, and a pixel probe cannot tell a
+ * 1 px drift from anti-aliasing. If the fork renames `state.offsetLeft` or `viewport`, this throws.
+ */
+export function sceneAt(page: Page, x: number, y: number): Promise<{ x: number; y: number; zoom: number }> {
+  return page.evaluate(
+    ({ x, y }) => {
+      const el = [...document.querySelectorAll<HTMLElement>('.excalidraw')].find((e) => e.getClientRects().length > 0 && getComputedStyle(e).visibility !== 'hidden')
+      if (el === undefined) throw new Error('no visible canvas')
+      const key = Object.keys(el).find((k) => k.startsWith('__reactFiber$'))
+      let fiber: any = key === undefined ? null : (el as any)[key]
+      while (fiber !== null && !(fiber.stateNode?.state && typeof fiber.stateNode.state.offsetLeft === 'number' && fiber.stateNode.viewport)) fiber = fiber.return
+      if (fiber === null) throw new Error('no engine instance behind the canvas')
+      const s = fiber.stateNode.state as { zoom: { value: number }; scrollX: number; scrollY: number }
+      const r = el.getBoundingClientRect()
+      return { x: (x - r.left) / s.zoom.value - s.scrollX, y: (y - r.top) / s.zoom.value - s.scrollY, zoom: s.zoom.value }
+    },
+    { x, y },
+  )
+}
+
 /** Clicks empty canvas near its bottom-right corner: the canvas takes focus and nothing is selected. */
 export async function clickEmpty(page: Page): Promise<void> {
   const box = await canvasBox(page)

@@ -240,3 +240,10 @@
 .editor--drawing .excalidraw.theme--dark {
   --color-primary-contrast-offset: #726dff;
 }
+
+/* Trevor prefers a clear canvas: keep navigation available through gestures and
+   keyboard shortcuts, without the persistent zoom and Fit board controls. */
+.editor--drawing .excalidraw .zoom-actions,
+.editor--drawing .excalidraw .fit-board-footer-island {
+  display: none;
+}

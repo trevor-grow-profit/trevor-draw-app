@@ -567,6 +567,25 @@ export function Sidebar({
           )}
         </span>
       </div>
+      <button
+        type="button"
+        className="btn btn--primary"
+        style={{ flex: 'none', margin: '8px 10px 0' }}
+        disabled={tree === null || pending !== null}
+        title="Create a whiteboard in this vault"
+        onClick={() => {
+          // Always use the vault root, even from search, Favorites, or a focused folder.
+          // Show the name box before creating anything on disk.
+          setQuery('')
+          setFocusDirs([])
+          onLensChange('files')
+          setMenu(null)
+          closePreview()
+          startCreateBox({ kind: 'drawing', seed: '', parentDir: root })
+        }}
+      >
+        <span aria-hidden="true">+</span> New whiteboard
+      </button>
       {/* Persistent search bar (YAZ-739 A-, chrome v2 row 2 — 🔒 YAZ-797): always visible, never a
           tab or a view — on BOTH lenses (YAZ-847 keeps that rule). YAZ-750's filter affordance
           sits beside it; YAZ-803 swaps the body to results while `query` is non-empty. */}
