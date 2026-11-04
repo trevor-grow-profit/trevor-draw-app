@@ -530,3 +530,13 @@ file, and the laser has no e2e run (Yasin's rule for YAZ-1989: no Playwright).
 | 1989-23 | Sticky marks left alone: no constant CPU in Activity Monitor (the render loop idles). | M |
 | 1989-24 | 10 (400 shapes): marking stays smooth. | M |
 | 1989-25 | With the laser out, ⌘Z / ⇧⌘Z / ↵ / Esc reach the engine (the Edit menu never takes them); Edit › Undo clicked in the menu bar behaves as it does for the board. | M |
+
+### YAZ-3011 — zoom anchors on the cursor
+
+The engine zooms a ⌘-wheel or a pinch around the wheel event's own position. Before, it used the last
+`pointermove` it saw, which goes stale when the mouse moves while another window covers this one.
+
+| ID | Scenario | Coverage |
+|---|---|---|
+| 3011-1 | Cover the draw window with another app (the terminal), move the mouse there, ⌘-Tab back, pinch or ⌘-wheel BEFORE the mouse moves: the zoom holds the point under the cursor. | A (part): `canvas` — a ⌘-wheel with no pointermove; the ⌘-Tab by hand |
+| 3011-2 | A fresh tab (open a board, do not move the mouse), pinch: the zoom holds the point under the cursor, not the window's top-left corner. | M |
